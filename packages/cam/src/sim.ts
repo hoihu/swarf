@@ -69,6 +69,18 @@ export class LatheMaterial {
     return [a, b];
   }
 
+  /** Bore radius at Z (0 = solid, or outside the stock). */
+  boreAt(z: number): number {
+    const i = Math.floor((z - this.z0) / this.dz);
+    return i >= 0 && i < this.n ? this.b[i]! : 0;
+  }
+
+  /** Outer radius at Z (0 outside the stock). */
+  radiusAt(z: number): number {
+    const i = Math.floor((z - this.z0) / this.dz);
+    return i >= 0 && i < this.n ? this.r[i]! : 0;
+  }
+
   /** The Z span the tool occupies behind its tip (relative to the tip Z). */
   static footprint(tool: Tool): [number, number] {
     if (tool.type === 'grooving') return [-(tool.width ?? 2), 0];
@@ -86,6 +98,20 @@ export class LatheMaterial {
       const rad = (tool.diameter ?? 0) / 2;
       const [a, c] = this.range(zmin, zmax + hi);
       for (let i = a; i <= c; i++) if (this.b[i]! < rad) this.b[i] = rad;
+      return;
+    }
+    if (tool.type === 'boring') {
+      // the bar opens the bore up to its tip
+      const xMax = (z: number) => (Math.abs(to.z - from.z) < 1e-9 ? Math.max(from.x, to.x) : from.x + ((to.x - from.x) * (z - from.z)) / (to.z - from.z));
+      const [a, c] = this.range(zmin + lo, zmax + hi);
+      for (let i = a; i <= c; i++) {
+        const zs = this.zAt(i);
+        const wLo = Math.max(zmin, zs - hi);
+        const wHi = Math.min(zmax, zs - lo);
+        if (wLo > wHi + 1e-9) continue;
+        const x = Math.max(xMax(wLo), xMax(wHi));
+        if (x > this.b[i]!) this.b[i] = Math.min(x, this.r[i]!);
+      }
       return;
     }
     const xAt = (z: number) => (Math.abs(to.z - from.z) < 1e-9 ? Math.min(from.x, to.x) : from.x + ((to.x - from.x) * (z - from.z)) / (to.z - from.z));
@@ -114,6 +140,15 @@ export class LatheMaterial {
     }
     const [a, c] = this.range(p.z + lo, p.z + hi);
     let best: Hit | null = null;
+    if (tool.internal) {
+      // an internal tool is in material where its tip is past the bore wall
+      for (let i = a; i <= c; i++) {
+        const solid = this.b[i]! < this.r[i]! - EPS;
+        const depth = Math.min(p.x, this.r[i]!) - this.b[i]!;
+        if (solid && depth > EPS && (!best || depth > best.depth)) best = { at: p, depth };
+      }
+      return best;
+    }
     for (let i = a; i <= c; i++) {
       const solid = this.b[i]! < this.r[i]! - EPS;
       const depth = this.r[i]! - p.x;

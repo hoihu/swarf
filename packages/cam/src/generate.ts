@@ -63,7 +63,9 @@ export function opLabel(op: Operation): string {
     case 'lathe_partoff':
       return `Part off at Z${op.z}`;
     case 'lathe_thread':
-      return `Thread Ø${op.diameter}×${op.pitch} to Z${op.zEnd}`;
+      return `${op.side === 'internal' ? 'Internal thread' : 'Thread'} M${op.diameter}×${op.pitch} to Z${op.zEnd}`;
+    case 'lathe_bore':
+      return `Bore Ø${op.diameter} to Z${op.zEnd}`;
     case 'lathe_drill':
       return `Drill ${op.depth} deep on centre`;
     case 'mill_face':

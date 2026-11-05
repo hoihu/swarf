@@ -55,6 +55,7 @@ const LABELS: Record<string, [string, string?]> = {
   firstCut: ['First pass depth', 'mm'],
   springPasses: ['Spring passes'],
   infeed: ['Infeed'],
+  internal: ['Internal tool'],
   // machine
   kind: ['Machine'],
   minRpm: ['Spindle min', 'rpm'],

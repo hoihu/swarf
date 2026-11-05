@@ -80,6 +80,15 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
     if (move.type === 'thread') continue;
 
     if (material instanceof LatheMaterial) {
+      // an internal tool cuts outwards from the bore: more than a pass deep means there was no hole
+      // (a mostly radial move faces a bottom shoulder: its depth is axial, not judged here)
+      if (tool.internal && Math.abs(move.to.z - from.z) >= Math.abs(move.to.x - from.x)) {
+        const limit = (tool.maxDoc ?? 1) * 2 + 0.1;
+        // judged 0.5 mm behind the tip, where the previous pass has certainly been
+        const bore = (z: number) => material.boreAt(z + 0.5);
+        const deep = pts.find((p) => p.x - bore(p.z) > limit && material.radiusAt(p.z + 0.5) > bore(p.z) + 0.02);
+        if (deep) once({ severity: 'error', code: 'BORE_SOLID', message: `T${tool.id} cuts ${(deep.x - bore(deep.z)).toFixed(2)} mm into solid material near ${fmt(deep, true)}: drill or bore the hole first (or check its diameter).`, opId, move: index });
+      }
       let prev = from;
       for (const p of pts) {
         material.cut(prev, p, tool);

@@ -173,6 +173,52 @@ describe('profile turning', () => {
   });
 });
 
+describe('boring and internal threads', () => {
+  const tools = () => {
+    const t = EXAMPLES.lathe().tools.filter((x) => x.id !== 3);
+    return [...t, { id: 3, name: 'Drill Ø12', type: 'drill' as const, diameter: 12, vc: 20, feedPerRev: 0.1, fluteLength: 60 }];
+  };
+  const job = (ops: OperationInput[], sync = true) => {
+    const base = EXAMPLES.lathe();
+    return withOps('lathe', ops, { tools: tools(), stock: { kind: 'bar', diameter: 40, stickout: 50, front: 1 }, machine: { ...base.machine, spindleSync: sync } });
+  };
+  const drill: OperationInput = { type: 'lathe_drill', tool: 3, depth: 25, peck: 5 };
+  const bore: OperationInput = { type: 'lathe_bore', tool: 5, diameter: 16.4, fromDiameter: 12, zEnd: -20 };
+
+  it('bores a drilled hole to size', () => {
+    const a = analyze(job([{ type: 'lathe_face', tool: 1 }, drill, bore]));
+    expect(a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    const m = a.material as LatheMaterial;
+    expect(m.boreAt(-10)).toBeCloseTo(8.2, 1);
+    expect(m.boreAt(-22)).toBeCloseTo(6, 1); // only the drill below the bore
+    expect(m.radiusAt(-10)).toBeCloseTo(20, 3);
+  });
+
+  it('notices boring into solid material', () => {
+    expect(codes(job([bore]))).toContain('BORE_SOLID');
+  });
+
+  it('refuses a bar that does not fit or reach', () => {
+    expect(codes(job([drill, { ...bore, fromDiameter: 8 } as OperationInput]))).toContain('OP_INVALID');
+    expect(codes(job([drill, { ...bore, zEnd: -40 } as OperationInput]))).toContain('OP_INVALID');
+  });
+
+  it('cuts an internal thread outwards from the minor diameter', () => {
+    const j = job([drill, bore, { type: 'lathe_thread', side: 'internal', tool: 6, diameter: 18, pitch: 1.5, zEnd: -15, infeed: 'radial' } as OperationInput]);
+    const a = analyze(j);
+    expect(a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    const xs = [...walk(a.program)].filter((w) => w.move.type === 'thread').map((w) => w.move.to.x);
+    const minor = 9 - 0.54127 * 1.5;
+    expect(xs[0]! - minor).toBeCloseTo(0.25, 1);
+    expect(xs.at(-1)).toBeCloseTo(9, 6);
+    for (let i = 1; i < xs.length; i++) expect(xs[i]!).toBeGreaterThanOrEqual(xs[i - 1]! - 1e-9);
+  });
+
+  it('matches internal tools to internal threads', () => {
+    expect(codes(job([drill, bore, { type: 'lathe_thread', side: 'internal', tool: 4, diameter: 18, pitch: 1.5, zEnd: -15 } as OperationInput]))).toContain('OP_INVALID');
+  });
+});
+
 describe('threading', () => {
   const threadJob = (op: Partial<OperationInput> = {}, sync = true) => {
     const base = EXAMPLES.lathe();

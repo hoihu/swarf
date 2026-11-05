@@ -41,6 +41,8 @@ export const LATHE_TOOLS: Tool[] = [
   { id: 2, name: 'Parting blade 2 mm', type: 'grooving', width: 2, vc: 60, feedPerRev: 0.04 },
   { id: 3, name: 'Drill Ø6 HSS', type: 'drill', diameter: 6, vc: 20, feedPerRev: 0.08, fluteLength: 50 },
   { id: 4, name: 'Threading insert 60°, 16ER', type: 'threading', vc: 60, edgeLength: 1.5 },
+  { id: 5, name: 'Boring bar, min. bore Ø10', type: 'boring', internal: true, diameter: 10, fluteLength: 30, vc: 100, feedPerRev: 0.08, maxDoc: 0.5, noseRadius: 0.2, edgeLength: 2 },
+  { id: 6, name: 'Internal threading bar 60°, min. bore Ø12', type: 'threading', internal: true, diameter: 12, fluteLength: 25, vc: 50, edgeLength: 1.5 },
 ];
 
 export const MILL_TOOLS: Tool[] = [

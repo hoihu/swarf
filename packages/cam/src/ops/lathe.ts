@@ -22,6 +22,7 @@ export function latheSpeedDiameter(op: LatheOp, job: Job, toolDiameter?: number)
       return toolDiameter ?? 5;
     case 'lathe_chamfer':
     case 'lathe_thread':
+    case 'lathe_bore':
       return op.diameter;
     default:
       return op.fromDiameter ?? stockD;
@@ -169,13 +170,49 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       return out;
     }
 
-    case 'lathe_thread': {
-      // External thread as G33 passes. Depths follow constant chip area (d·√(i/n)), so the
-      // first pass is `firstCut` deep and later ones shallower; spring passes repeat full depth.
+    case 'lathe_bore': {
+      // Boring: axial passes inside the hole, each cutting outwards by `doc`, then a finishing
+      // pass to size that also cleans the bottom shoulder. Retracts go towards the axis.
       const R = op.diameter / 2;
-      const depth = op.depth ?? 0.61343 * op.pitch;
+      const r0 = op.fromDiameter / 2;
+      if (R <= r0) throw new CamError(`bore Ø${op.diameter} is not larger than the hole Ø${op.fromDiameter}`);
+      if (op.zEnd >= op.zStart) throw new CamError('zEnd must be below zStart (more negative)');
+      if (ctx.tool.diameter && op.fromDiameter < ctx.tool.diameter - 1e-9) throw new CamError(`T${ctx.tool.id} needs a hole of at least Ø${ctx.tool.diameter}; this one is Ø${op.fromDiameter}`);
+      if (ctx.tool.fluteLength && op.zStart - op.zEnd > ctx.tool.fluteLength + 1e-9) throw new CamError(`the bore is ${op.zStart - op.zEnd} mm deep; T${ctx.tool.id} reaches ${ctx.tool.fluteLength} mm`);
+      const zs = Math.max(op.zStart, safe.front) + ctx.c;
+      const zBottom = op.zEnd;
+      const doc = op.doc ?? ctx.tool.maxDoc ?? 0.5;
+      let prev = r0;
+      for (const rp of R - op.finish > r0 + 1e-9 ? levels(r0, R - op.finish, doc) : []) {
+        out.push(rapid(safe.x, zs), rapid(Math.max(prev - 0.5, 0), zs), rapid(rp, zs));
+        out.push(f(rp, zBottom + op.finish));
+        out.push(f(rp - 0.3, zBottom + op.finish + 0.3));
+        out.push(rapid(rp - 0.3, zs));
+        prev = rp;
+      }
+      // finish: down the wall, across the bottom shoulder to the hole, out
+      out.push(rapid(safe.x, zs), rapid(Math.max(prev - 0.5, 0), zs), rapid(R, zs));
+      out.push(f(R, zBottom));
+      out.push(f(Math.max(r0 - 0.2, 0), zBottom));
+      out.push(f(Math.max(r0 - 0.4, 0), zBottom + 0.2));
+      out.push(rapid(Math.max(r0 - 0.4, 0), zs));
+      retract(zs);
+      return out;
+    }
+
+    case 'lathe_thread': {
+      // Thread as G33 passes. Depths follow constant chip area (d·√(i/n)), so the first pass is
+      // `firstCut` deep and later ones shallower; spring passes repeat full depth. External threads
+      // cut inwards from the major diameter, internal ones outwards from the minor diameter.
+      const internal = op.side === 'internal';
+      const R = op.diameter / 2;
+      const depth = op.depth ?? (internal ? 0.54127 : 0.61343) * op.pitch;
       if (op.zEnd >= op.zStart) throw new CamError('zEnd must be towards the chuck from zStart (more negative)');
       if (depth >= R) throw new CamError(`thread depth ${depth.toFixed(2)} mm is more than the radius`);
+      if (internal !== !!ctx.tool.internal) throw new CamError(`T${ctx.tool.id} is an ${ctx.tool.internal ? 'internal' : 'external'} threading tool; this thread is ${op.side}`);
+      const rMinor = R - depth;
+      if (internal && ctx.tool.diameter && rMinor * 2 < ctx.tool.diameter - 1e-9) throw new CamError(`T${ctx.tool.id} needs a bore of at least Ø${ctx.tool.diameter}; the minor diameter is Ø${(rMinor * 2).toFixed(2)}`);
+      if (internal && ctx.tool.fluteLength && op.zStart - op.zEnd > ctx.tool.fluteLength + 1e-9) throw new CamError(`the thread is ${op.zStart - op.zEnd} mm deep; T${ctx.tool.id} reaches ${ctx.tool.fluteLength} mm`);
       const n = Math.min(30, Math.max(3, Math.ceil((depth / op.firstCut) ** 2)));
       const depths = Array.from({ length: n }, (_, i) => depth * Math.sqrt((i + 1) / n));
       for (let k = 0; k < op.springPasses; k++) depths.push(depth);
@@ -184,11 +221,13 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       const accelDist = (v * v) / (2 * ctx.job.machine.accel);
       const leadIn = Math.max(3 * op.pitch, 1.5 * accelDist + 1);
       const flank = op.infeed === 'flank' ? Math.tan((29.5 * Math.PI) / 180) : 0;
-      const rOut = R + ctx.c / 2;
+      // where the tool waits between passes: outside the thread, or near the axis for an internal one
+      const rOut = internal ? Math.max(rMinor - ctx.c / 2, 0) : R + ctx.c / 2;
       for (const d of depths) {
         const zs = op.zStart + leadIn - d * flank;
-        out.push(rapid(safe.x, zs), rapid(rOut, zs), rapid(R - d, zs));
-        out.push({ type: 'thread', to: v3(R - d, op.zEnd), pitch: op.pitch, f: op.pitch * ctx.cut.rpm });
+        const x = internal ? rMinor + d : R - d;
+        out.push(rapid(safe.x, zs), rapid(rOut, zs), rapid(x, zs));
+        out.push({ type: 'thread', to: v3(x, op.zEnd), pitch: op.pitch, f: op.pitch * ctx.cut.rpm });
         out.push(rapid(rOut, op.zEnd), rapid(rOut, zs));
       }
       retract(op.zStart + leadIn);

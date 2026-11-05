@@ -41,7 +41,7 @@ export const Machine = z.object({
 });
 export type Machine = z.infer<typeof Machine>;
 
-export const ToolType = z.enum(['turning', 'grooving', 'threading', 'drill', 'endmill']);
+export const ToolType = z.enum(['turning', 'boring', 'grooving', 'threading', 'drill', 'endmill']);
 export type ToolType = z.infer<typeof ToolType>;
 
 export const Tool = z.object({
@@ -49,15 +49,17 @@ export const Tool = z.object({
   id: z.number().int().min(1),
   name: z.string(),
   type: ToolType,
-  /** Endmill or drill diameter. */
+  /** Endmill or drill diameter; boring bar or internal threading bar: the smallest bore it fits in. */
   diameter: pos.optional(),
+  /** Internal tool (boring bar, internal threading bar). */
+  internal: z.boolean().optional(),
   /** Grooving / parting blade width. The tool's reference point is its +Z flank (touched off on the face). */
   width: pos.optional(),
   /** Insert nose radius (turning tool). Paths are for the imaginary tool tip; tapers and chamfers are compensated. */
   noseRadius: z.number().min(0).optional(),
   /** Length of the cutting edge behind the tip (turning tool), used by the material model. */
   edgeLength: pos.optional(),
-  /** Usable flute length (endmill, drill). */
+  /** Usable flute length (endmill, drill); reach (boring bar, internal threading bar). */
   fluteLength: pos.optional(),
   flutes: z.number().int().min(1).optional(),
   /** Endmill can plunge straight down. */
@@ -168,14 +170,26 @@ export const LatheProfile = z.object({
   finish: z.number().min(0).default(0.2).describe('Allowance left by roughing for the finishing pass'),
 });
 
+export const LatheBore = z.object({
+  type: z.literal('lathe_bore'),
+  ...common,
+  diameter: pos.describe('Finished bore diameter'),
+  zEnd: mm.describe('Depth: Z of the bore bottom (negative)'),
+  fromDiameter: pos.describe('Diameter of the hole there now (the drill size)'),
+  zStart: mm.default(0).describe('Z where the bore starts (usually the face)'),
+  doc: pos.optional().describe('Radial depth per pass (default: tool maxDoc)'),
+  finish: z.number().min(0).default(0.15).describe('Radial allowance for one finishing pass'),
+});
+
 export const LatheThread = z.object({
   type: z.literal('lathe_thread'),
   ...common,
-  diameter: pos.describe('Major (outside) diameter of the thread, already turned'),
+  side: z.enum(['external', 'internal']).default('external').describe('internal: in a bore already at the minor diameter'),
+  diameter: pos.describe('Nominal (major) diameter of the thread, e.g. 10 for M10; external: turned to it first, internal: bored to the minor diameter first'),
   pitch: pos.describe('Pitch, mm (e.g. 1.5 for M10)'),
   zEnd: mm.describe('Z where the thread ends (towards the chuck); leave room, there is no pull-out'),
   zStart: mm.default(0).describe('Z where the thread starts (usually the face)'),
-  depth: pos.optional().describe('Radial thread depth (default ISO metric external: 0.6134 × pitch)'),
+  depth: pos.optional().describe('Radial thread depth (default ISO metric: external 0.6134 × pitch, internal 0.5413 × pitch)'),
   firstCut: pos.default(0.25).describe('Radial depth of the first pass; later passes get shallower (constant chip area)'),
   springPasses: z.number().int().min(0).max(5).default(1).describe('Extra passes at full depth'),
   infeed: z.enum(['flank', 'radial']).default('flank').describe('flank: along the 29.5° flank like a compound slide; radial: straight in'),
@@ -261,6 +275,7 @@ export const Operation = z.discriminatedUnion('type', [
   LatheChamfer,
   LatheGroove,
   LathePartoff,
+  LatheBore,
   LatheThread,
   LatheDrill,
   MillFace,
@@ -280,6 +295,7 @@ export const OP_MACHINE: Record<OpType, MachineKind> = {
   lathe_chamfer: 'lathe',
   lathe_groove: 'lathe',
   lathe_partoff: 'lathe',
+  lathe_bore: 'lathe',
   lathe_thread: 'lathe',
   lathe_drill: 'lathe',
   mill_face: 'mill',
@@ -297,6 +313,7 @@ export const OP_TOOLS: Record<OpType, ToolType[]> = {
   lathe_chamfer: ['turning'],
   lathe_groove: ['grooving'],
   lathe_partoff: ['grooving'],
+  lathe_bore: ['boring'],
   lathe_thread: ['threading'],
   lathe_drill: ['drill'],
   mill_face: ['endmill'],

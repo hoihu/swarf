@@ -61,12 +61,12 @@ not idle. The protocol logic lives in `packages/grbl` and is tested against a pr
 
 | | |
 |---|---|
-| Lathe | face, turn a diameter (roughing + finishing pass, shoulder), profile (a whole outline with steps, tapers, chamfers and radii: roughing, semi-finish and a nose-radius-compensated finish), 45° chamfer, groove, external threads (G33 passes, flank or radial infeed, spring passes), part off, drill on centre with pecking |
+| Lathe | face, turn a diameter (roughing + finishing pass, shoulder), profile (a whole outline with steps, tapers, chamfers and radii: roughing, semi-finish and a nose-radius-compensated finish), 45° chamfer, groove, boring, external and internal threads (G33 passes, flank or radial infeed, spring passes), part off, drill on centre with pecking |
 | Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside, drill hole patterns with pecking |
 | Speeds and feeds | from the tool table (cutting speed, chip load or feed per rev), clamped to the machine |
 | Entry and finish | ramped entry for pockets and contours, helical entry for circular pockets; lathe chamfers compensated for the insert's nose radius |
 | Time | estimated like grbl's planner: acceleration and junction deviation, forward and backward pass |
-| Checks | machine travel, chuck collision, rapids into material, cuts deeper than the flutes or the tool's depth of cut, plunging with a non-centre-cutting endmill, impossible operations |
+| Checks | machine travel, chuck collision, rapids into material, boring into solid material, boring bars that don't fit or reach, cuts deeper than the flutes or the tool's depth of cut, plunging with a non-centre-cutting endmill, impossible operations |
 | G-code | a "boring" subset (G0–G3, G17/G18, G7/G8, G21, G90, G94, G54, M0 tool changes) that runs the same on grblHAL, LinuxCNC and most others |
 | Preview | three.js: toolpath (feeds blue, rapids orange), the part as it is cut, timeline scrubber, tool marker |
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
@@ -76,7 +76,7 @@ Threading needs grblHAL in lathe mode with an index + pulse encoder ($32=2, $38,
 reach speed, since grblHAL does not correct the sync while accelerating. There is no pull-out at
 the end of a pass: end at a groove, or the thread runs out on the shank.
 
-Not yet: internal threads, arbitrary profiles from DXF. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Not yet: profiles from DXF for the mill. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Safety
 
