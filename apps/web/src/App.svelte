@@ -5,6 +5,10 @@
   import Settings from './lib/Settings.svelte';
   import { store } from './lib/store.svelte.ts';
   import { minutes } from './lib/ops.ts';
+  import { bridge } from './lib/bridge.svelte.ts';
+  import { onMount } from 'svelte';
+
+  onMount(() => bridge.start());
 
   let settings = $state(false);
   /** Which pane a phone shows. */
@@ -32,8 +36,13 @@
       {:else}<span class="st ok">Checks pass</span>{/if}
     </span>
     <span class="grow"></span>
+    {#if bridge.status !== 'off'}
+      <span class="link-state {bridge.status}" title={bridge.status === 'denied' ? bridge.reason : bridge.last ? `Last: ${bridge.last}` : 'Connected to the local swarf server'}>
+        <i></i>{bridge.status === 'connected' ? `${bridge.agent ?? 'Claude Code'} connected` : bridge.status === 'denied' ? 'Server refused' : bridge.status === 'offline' ? 'Server offline' : 'Connecting…'}
+      </span>
+    {/if}
     <button class="btn ghost" onclick={() => store.undo()} disabled={!store.history.length}>Undo</button>
-    <button class="btn ghost" onclick={() => (settings = true)}>Model</button>
+    <button class="btn ghost" onclick={() => (settings = true)}>Assistant</button>
   </header>
 
   <main class="panes" data-pane={pane}>
@@ -63,6 +72,11 @@
   .st.warn { color: #f0c76a; }
   .st.err { color: #ff8f86; }
   .grow { flex: 1; }
+  .link-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--on-iron-2); white-space: nowrap; }
+  .link-state i { width: 8px; height: 8px; border-radius: 50%; background: #8a958f; }
+  .link-state.connected { color: var(--on-iron); }
+  .link-state.connected i { background: #7fcf92; }
+  .link-state.offline i, .link-state.denied i { background: #ff8f86; }
   .btn.ghost { background: transparent; color: var(--on-iron); border-color: rgba(255, 255, 255, 0.2); }
   .btn.ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
   .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 340px) 1fr minmax(320px, 380px); }
@@ -73,6 +87,7 @@
 
   @media (max-width: 980px) {
     .facts span:not(.st) { display: none; }
+    .link-state { font-size: 0; gap: 0; }
     .panes { grid-template-columns: 1fr; }
     .panes > div { display: none; }
     .panes[data-pane='job'] .pane-job, .panes[data-pane='view'] .pane-view, .panes[data-pane='chat'] .pane-chat { display: flex; }

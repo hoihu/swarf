@@ -21,7 +21,10 @@ export class ScriptedProvider implements Provider {
   private userText = '';
   private seq = 0;
 
-  constructor(private scripts: Script[], opts: { label?: string; fallback?: string; streamDelayMs?: number } = {}) {
+  private scripts: Script[];
+
+  constructor(scripts: Script[], opts: { label?: string; fallback?: string; streamDelayMs?: number } = {}) {
+    this.scripts = scripts;
     this.label = opts.label ?? 'Offline demo';
     this.fallback = opts.fallback ?? 'I only know scripted demo scenarios.';
     this.delay = opts.streamDelayMs ?? 0;

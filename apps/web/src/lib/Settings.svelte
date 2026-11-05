@@ -1,6 +1,7 @@
 <script lang="ts">
   import { API_SERVICES, apiProblem, apiService, type ApiChoice, type ApiServiceId } from '@swarf/agent';
   import { store } from './store.svelte.ts';
+  import { bridge } from './bridge.svelte.ts';
 
   let { onClose }: { onClose: () => void } = $props();
 
@@ -26,7 +27,7 @@
 
 <dialog bind:this={dialog} onclose={onClose} aria-labelledby="settings-title">
   <form method="dialog" onsubmit={(e) => { e.preventDefault(); save(); }}>
-    <h2 id="settings-title">Model connection</h2>
+    <h2 id="settings-title">Assistant</h2>
     <p class="muted">The app talks to the model straight from this browser with your own key. The key is kept in this browser's storage only.</p>
 
     <label>
@@ -63,6 +64,21 @@
       {/if}
     </label>
 
+    <section class="cc">
+      <h3>Or let Claude Code drive</h3>
+      <p class="muted">Add swarf as an MCP server, then ask Claude Code for the part. It edits the job here while you watch.</p>
+      <code>claude mcp add swarf -- node /path/to/swarf/tools/server/src/main.ts</code>
+      <p class="muted small">
+        {#if bridge.status === 'connected'}
+          Connected{bridge.agent ? ` to ${bridge.agent}` : ''}. <button type="button" class="link" onclick={() => bridge.forget()}>Disconnect</button>
+        {:else if bridge.status === 'offline'}
+          Waiting for the server (it runs while Claude Code is open). <button type="button" class="link" onclick={() => bridge.forget()}>Forget it</button>
+        {:else}
+          Claude Code gives you a link that connects this page.
+        {/if}
+      </p>
+    </section>
+
     <div class="row">
       <span class="status">{problem ? `Without a ${problem.replace('no ', '')}, the chat runs the offline demo.` : 'Ready.'}</span>
       <button type="button" class="btn" onclick={() => dialog.close()}>Cancel</button>
@@ -85,4 +101,8 @@
   .row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
   .status { flex: 1; font-size: 12.5px; color: var(--ink-3); }
   a { color: var(--link); }
+  .cc { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; display: flex; flex-direction: column; gap: 6px; }
+  h3 { margin: 0; font-size: 14px; }
+  code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; overflow-x: auto; white-space: nowrap; }
+  .link { border: 0; background: none; padding: 0; color: var(--link); font-weight: 600; text-decoration: underline; }
 </style>

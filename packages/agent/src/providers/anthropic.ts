@@ -52,7 +52,10 @@ export class AnthropicProvider implements Provider {
   private client: Anthropic;
   private model: AnthropicModelInfo;
 
-  constructor(private opts: AnthropicOptions) {
+  private opts: AnthropicOptions;
+
+  constructor(opts: AnthropicOptions) {
+    this.opts = opts;
     const id = opts.model ?? DEFAULT_ANTHROPIC_MODEL;
     this.model = ANTHROPIC_MODELS.find((m) => m.id === id) ?? { id, label: id, adaptive: true, effort: true, fallbacks: false, price: { input: 0, output: 0 } };
     this.label = this.model.label;

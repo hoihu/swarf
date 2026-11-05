@@ -1,0 +1,18 @@
+{
+  "name": "@swarf/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local relay: offers swarf's tools to Claude Code (MCP) and forwards each call to the open app tab",
+  "bin": { "swarf-server": "./src/main.ts" },
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "start": "node src/main.ts" },
+  "engines": { "node": ">=22.18" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@swarf/agent": "0.1.0",
+    "@swarf/cam": "0.1.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": { "@types/ws": "^8.18.1" }
+}

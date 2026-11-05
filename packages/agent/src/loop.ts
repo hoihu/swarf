@@ -28,7 +28,11 @@ export class Agent {
   readonly messages: Message[] = [];
   private pending: PendingQuestion | null = null;
 
-  constructor(private opts: AgentOptions) {}
+  private opts: AgentOptions;
+
+  constructor(opts: AgentOptions) {
+    this.opts = opts;
+  }
 
   setProvider(p: Provider): void {
     this.opts.provider = p;

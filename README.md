@@ -20,6 +20,24 @@ Without an API key the chat runs an offline demo (two scripted requests). Add a 
 **Model**: Anthropic, OpenAI, OpenRouter, Gemini, a local Ollama/LM Studio, or any compatible
 gateway. The key stays in the browser.
 
+## Claude Code drives the app (MCP)
+
+swarf ships a small MCP server. Claude Code starts it; it relays every tool call to the open app
+tab, so you watch the part appear in the preview while Claude Code works (the 4k7 pattern).
+
+```
+claude mcp add swarf -- node /path/to/swarf/tools/server/src/main.ts
+```
+
+Inside this checkout the bundled `.mcp.json` does that already. Ask Claude Code for a part; the
+first tool call answers with a link (`http://localhost:7790/#connect=…`) that opens the app
+connected to it (`npm run build` first, or it points at `npm run dev`). The header then shows
+"Claude Code connected". Tools: `get_context`, the job edits, `get_gcode` and `save_gcode`, which
+writes the .nc file next to your project (refused while the job has errors).
+
+The server listens on 127.0.0.1 only, accepts the tab only from localhost pages, and only with
+the access key from `~/.swarf/server.json`.
+
 ## What works (tier 1)
 
 | | |

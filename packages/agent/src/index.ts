@@ -7,3 +7,6 @@ export { AnthropicProvider, ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL, costUsd, 
 export { OpenAICompatProvider, listOpenAIModels, type OpenAICompatOptions } from './providers/openai.ts';
 export { API_SERVICES, apiProblem, apiProvider, apiService, type ApiChoice, type ApiService, type ApiServiceId } from './providers/services.ts';
 export { ScriptedProvider, type Script, type ScriptStep } from './providers/scripted.ts';
+export { CAM_GUIDE } from './prompt.ts';
+export { MCP_INSTRUCTIONS, MCP_TOOL_NAMES, mcpTools, runTabTool } from './mcp.ts';
+export { SERVER_PORTS, SERVER_PROTOCOL, parseConnect, type ServerToTab, type TabToServer } from './protocol.ts';

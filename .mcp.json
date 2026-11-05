@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "swarf": {
+      "command": "node",
+      "args": ["tools/server/src/main.ts"]
+    }
+  }
+}
