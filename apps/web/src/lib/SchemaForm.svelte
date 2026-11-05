@@ -8,6 +8,7 @@
     errors = {},
     tools = [],
     shapes = [],
+    placeholders = {},
     onchange,
   }: {
     fields: Field[];
@@ -17,6 +18,8 @@
     tools?: Tool[];
     /** Drawings offered for a `shape` field. */
     shapes?: Shape[];
+    /** What an empty optional field means, e.g. the value the material table gives. */
+    placeholders?: Record<string, string>;
     onchange: (next: Record<string, unknown>) => void;
   } = $props();
 
@@ -70,7 +73,7 @@
       </select>
     {:else if f.kind === 'select'}
       <select id="f-{f.key}" value={(value[f.key] as string) ?? f.default ?? ''} onchange={(e) => set(f.key, (e.currentTarget as HTMLSelectElement).value)}>
-        {#if !f.required && f.default === undefined}<option value="">–</option>{/if}
+        {#if !f.required && f.default === undefined}<option value="">{placeholders[f.key] ? `${placeholders[f.key]} (auto)` : '–'}</option>{/if}
         {#each f.options ?? [] as o (o)}<option value={o}>{o}</option>{/each}
       </select>
     {:else if f.kind === 'checkbox'}
@@ -81,7 +84,7 @@
         type="text"
         inputmode="decimal"
         value={value[f.key] ?? ''}
-        placeholder={f.default !== undefined ? String(f.default) : f.required ? '' : 'auto'}
+        placeholder={f.default !== undefined ? String(f.default) : f.required ? '' : (placeholders[f.key] ?? 'auto')}
         onchange={(e) => set(f.key, num(e, f.kind === 'integer'))}
       />
     {:else if f.kind === 'rows'}

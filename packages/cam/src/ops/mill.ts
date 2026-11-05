@@ -73,7 +73,7 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
     arc(cx - rh, cy, zTo, cx, cy, false);
     arc(cx + rh, cy, zTo, cx, cy, false);
   };
-  const stepOf = (o: { stepDown?: number | undefined }) => o.stepDown ?? tool.maxDoc ?? r;
+  const stepOf = (o: { stepDown?: number | undefined }) => o.stepDown ?? ctx.cut.doc;
   const checkDepth = (zTop: number, zBottom: number) => {
     if (zBottom >= zTop) throw new CamError(`zBottom ${zBottom} is not below the top ${zTop}`);
   };
@@ -176,7 +176,7 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
     case 'mill_face': {
       const fromZ = op.fromZ ?? stock.top;
       if (op.z > fromZ + 1e-9) throw new CamError(`face Z${op.z} is above the material top Z${fromZ}`);
-      const step = op.stepDown ?? Math.min(tool.maxDoc ?? 1, 1);
+      const step = op.stepDown ?? Math.min(ctx.cut.doc, 1);
       const x0 = -r - ctx.c;
       const x1 = stock.x + r + ctx.c;
       const rows = [0, ...levels(0, stock.y, op.stepover * d)];

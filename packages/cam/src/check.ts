@@ -8,6 +8,8 @@ import { walk, type Program } from './program.ts';
 import { plannedSeconds } from './planner.ts';
 import type { Job, Tool, Vec3 } from './schema.ts';
 import { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
+import { cuttingData } from './feeds.ts';
+import { MATERIALS } from './materials.ts';
 
 export interface Analysis {
   program: Program;
@@ -22,6 +24,7 @@ const fmt = (p: Vec3, lathe: boolean) => (lathe ? `X${(p.x * 2).toFixed(2)} Z${p
 
 /** Run the material model over the first `upTo` moves (all by default) and report problems. */
 export function simulate(job: Job, program: Program, upTo = Infinity): { material: LatheMaterial | MillMaterial | null; diagnostics: Diagnostic[] } {
+  const docOf = (tool: Tool) => cuttingData(tool, job.workMaterial).doc;
   const diagnostics: Diagnostic[] = [];
   const lathe = program.kind === 'lathe';
   const material = job.stock.kind === 'bar' ? new LatheMaterial(job.stock) : new MillMaterial(job.stock);
@@ -83,7 +86,7 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
       // an internal tool cuts outwards from the bore: more than a pass deep means there was no hole
       // (a mostly radial move faces a bottom shoulder: its depth is axial, not judged here)
       if (tool.internal && Math.abs(move.to.z - from.z) >= Math.abs(move.to.x - from.x)) {
-        const limit = (tool.maxDoc ?? 1) * 2 + 0.1;
+        const limit = docOf(tool) * 2 + 0.1;
         // judged 0.5 mm behind the tip, where the previous pass has certainly been
         const bore = (z: number) => material.boreAt(z + 0.5);
         const deep = pts.find((p) => p.x - bore(p.z) > limit && material.radiusAt(p.z + 0.5) > bore(p.z) + 0.02);
@@ -103,8 +106,8 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
       const depth = material.cutPath(pts, tool);
       const limit = tool.fluteLength ?? Infinity;
       if (depth > limit + 0.05) once({ severity: 'error', code: 'TOO_DEEP', message: `Cut is ${depth.toFixed(2)} mm deep; T${tool.id}'s flutes are ${limit} mm.`, opId, move: index });
-      else if (!plunge && tool.maxDoc && depth > tool.maxDoc * 1.5 + 0.05)
-        once({ severity: 'warning', code: 'DOC_HIGH', message: `Side cut is ${depth.toFixed(2)} mm deep (T${tool.id} max ${tool.maxDoc} mm per pass).`, opId, move: index });
+      else if (!plunge && depth > docOf(tool) * 1.5 + 0.05)
+        once({ severity: 'warning', code: 'DOC_HIGH', message: `Side cut is ${depth.toFixed(2)} mm deep; T${tool.id} in ${MATERIALS[job.workMaterial].name.toLowerCase()} should take about ${docOf(tool)} mm per pass.`, opId, move: index });
     }
   }
   return { material, diagnostics };

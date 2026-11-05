@@ -1,14 +1,14 @@
 /**
  * System prompt (static, cacheable) and the per-turn job state that travels with each user message.
  */
-import { analyze, area, bbox, opLabel, profileFromDrawing, type Job } from '@swarf/cam';
+import { MATERIALS, analyze, area, bbox, cuttingData, opLabel, profileFromDrawing, type Job } from '@swarf/cam';
 import { formatDiagnostics } from './tools.ts';
 
 /** How to build jobs: shared by the in-app agent and the MCP instructions for Claude Code. */
 export const CAM_GUIDE = `Conventions:
 - Units are millimetres. Lathe: sizes are diameters, Z0 is the finished front face, negative Z goes towards the chuck; the stock's raw face is a little in front of Z0 (stock.front). Mill: X0 Y0 is the stock's front-left corner, Z0 the top after facing, negative Z goes down.
 - Use the tool table as it is. If an operation needs a tool that is not there, ask the user or describe what is missing; add a tool with set_tool only when the user has told you about it.
-- Speeds and feeds come from the tool's cutting data; override rpm/feed only for a reason (the user asked, or the material calls for it).
+- Speeds, feeds and depth per pass come from the workpiece material (workMaterial: aluminium, free_cutting_steel, steel, stainless, brass, plastic) and the tool (HSS or carbide); a tool's own vc, feed or maxDoc override the table. When the user names the material, set it with set_stock (the closest class for workMaterial, the grade in material: e.g. steel + "C45", free_cutting_steel + "1.0718"). If the material is not given, the job assumes aluminium: say so when it matters (steel, stainless). Override rpm/feed on an operation only for a reason (the user asked, a thin part chatters).
 
 How to build a job:
 - Order operations as a machinist would: face first, then rough and finish the outside from the face towards the chuck, chamfers and grooves, threads, drilling on centre, parting off last. On the mill: face, then pockets and contours, then holes. A contour that cuts a part free (through the stock) needs tabs so the part does not come loose.
@@ -44,11 +44,15 @@ export function formatJobContext(job: Job): string {
       ` Z${m.envelope.min.z}..${m.envelope.max.z}${m.kind === 'lathe' ? ' (X as radius)' : ''}` +
       (m.chuckDiameter ? `, chuck Ø${m.chuckDiameter}` : ''),
   );
-  lines.push(`stock: ${stockText(job)}${job.material ? `; material: ${job.material}` : '; material: not given'}`);
+  const mat = MATERIALS[job.workMaterial];
+  lines.push(`stock: ${stockText(job)}; material: ${job.workMaterial} (${mat.name}${job.material ? `, ${job.material}` : ''}), speeds and feeds from it`);
   lines.push('tools:');
   for (const t of job.tools) {
     const size = t.diameter ? ` Ø${t.diameter}` : t.width ? ` ${t.width} mm wide` : '';
-    lines.push(`  T${t.id} ${t.type}${size}: ${t.name}${t.maxDoc ? `, max ${t.maxDoc} mm/pass` : ''}${t.fluteLength ? `, flutes ${t.fluteLength} mm` : ''}`);
+    const c = cuttingData(t, job.workMaterial);
+    const feed = t.type === 'endmill' ? `${c.feed} mm/tooth` : t.type === 'threading' ? '' : `${c.feed} mm/rev`;
+    const data = [`vc ${c.vc} m/min`, feed, t.type === 'drill' || t.type === 'threading' ? '' : `${c.doc} mm/pass`].filter(Boolean).join(', ');
+    lines.push(`  T${t.id} ${t.type}${size}: ${t.name}; ${data}${c.fromTool.vc || c.fromTool.feed || c.fromTool.doc ? ' (partly set on the tool)' : ''}${t.fluteLength ? `; flutes ${t.fluteLength} mm` : ''}`);
   }
   if (job.shapes.length) {
     lines.push(`drawings (imported; refer to them by id in ${job.machine.kind === 'lathe' ? 'lathe_profile shape' : 'mill_contour / mill_pocket'}):`);

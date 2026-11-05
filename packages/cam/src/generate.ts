@@ -114,7 +114,7 @@ export function generate(job: Job): Generated {
       continue;
     }
     const speedD = kind === 'lathe' ? latheSpeedDiameter(op as never, job, tool.diameter) : (tool.diameter ?? 6);
-    const cut = cutting(tool, job.machine, speedD, { rpm: op.rpm, feed: op.feed });
+    const cut = cutting(tool, job.machine, speedD, { rpm: op.rpm, feed: op.feed }, job.workMaterial);
     if (op.type === 'lathe_thread') {
       if (!job.machine.spindleSync) {
         err('THREAD_SYNC', 'Threading needs spindle-synchronised moves (G33): grblHAL in lathe mode with an index + pulse encoder. If your controller has that, turn on "spindle sync" in the machine settings.');

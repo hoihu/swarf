@@ -44,7 +44,7 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       const fromR = (op.fromDiameter ?? safe.r * 2) / 2;
       const fromZ = op.fromZ ?? safe.front;
       if (op.z > fromZ + 1e-9) throw new CamError(`face Z${op.z} is in front of the material face Z${fromZ}`);
-      const step = op.stepDown ?? Math.min(ctx.tool.maxDoc ?? 1, 1);
+      const step = op.stepDown ?? Math.min(ctx.cut.doc, 1);
       let lastZ = fromZ;
       for (const zp of levels(fromZ, op.z, step)) {
         out.push(rapid(safe.x, zp), rapid(fromR + ctx.c / 2, zp));
@@ -62,7 +62,7 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       const r = op.diameter / 2;
       if (r > fromR + 1e-9) throw new CamError(`target Ø${op.diameter} is larger than the material Ø${fromR * 2}`);
       if (op.zEnd >= op.zStart) throw new CamError('zEnd must be towards the chuck from zStart (more negative)');
-      const doc = op.doc ?? ctx.tool.maxDoc ?? 1;
+      const doc = op.doc ?? ctx.cut.doc;
       const zs = op.zStart + ctx.c;
       const roughTo = r + op.finish;
       let prev = fromR;
@@ -103,7 +103,7 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       const profile = [{ x: outline[0]!.x, z: zs }, ...outline, ...(last0.x < fromR - 1e-9 ? [{ x: fromR, z: last0.z }] : [])];
       const rough = tipPath(profile, rn, op.finish);
       const finish = tipPath(profile, rn, 0);
-      const doc = op.doc ?? ctx.tool.maxDoc ?? 1;
+      const doc = op.doc ?? ctx.cut.doc;
       const minX = Math.min(...rough.map((p) => p.x));
       const zLast = last0.z;
       // roughing: axial passes, each stopping where the allowance-offset profile is reached
@@ -189,7 +189,7 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       if (ctx.tool.fluteLength && op.zStart - op.zEnd > ctx.tool.fluteLength + 1e-9) throw new CamError(`the bore is ${op.zStart - op.zEnd} mm deep; T${ctx.tool.id} reaches ${ctx.tool.fluteLength} mm`);
       const zs = Math.max(op.zStart, safe.front) + ctx.c;
       const zBottom = op.zEnd;
-      const doc = op.doc ?? ctx.tool.maxDoc ?? 0.5;
+      const doc = op.doc ?? ctx.cut.doc;
       let prev = r0;
       for (const rp of R - op.finish > r0 + 1e-9 ? levels(r0, R - op.finish, doc) : []) {
         out.push(rapid(safe.x, zs), rapid(Math.max(prev - 0.5, 0), zs), rapid(rp, zs));

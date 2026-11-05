@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { EXAMPLES, Job, Machine, OP_TOOLS, Operation, Tool, bbox, emptyJob, importDrawing, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
+  import { EXAMPLES, Job, MATERIALS, Machine, OP_TOOLS, cuttingData, defaultToolMaterial, type MaterialId, Operation, Tool, bbox, emptyJob, importDrawing, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
   import SchemaForm from './SchemaForm.svelte';
   import MachinePanel from './MachinePanel.svelte';
   import { machine } from './machine.svelte.ts';
-  import { issuesByField, machineFields, opFields, toolFields } from './form.ts';
+  import { issuesByField, machineFields, opFields, toolFieldsFor } from './form.ts';
   import { store } from './store.svelte.ts';
   import { OP_TEMPLATES } from './ops.ts';
 
@@ -134,12 +134,28 @@
     toolOpen = t.data.id;
   }
 
+  function cutText(t: Tool): string {
+    const c = cuttingData(t, job.workMaterial);
+    const feed = t.type === 'endmill' ? `${c.feed} mm/tooth` : t.type === 'threading' ? '' : `${c.feed} mm/rev`;
+    return [`vc ${c.vc} m/min`, feed].filter(Boolean).join(', ');
+  }
+
+  /** What the empty cutting-data fields mean for this tool in the job's material. */
+  function toolPlaceholders(t: Tool): Record<string, string> {
+    const c = cuttingData({ ...t, vc: undefined, chipload: undefined, feedPerRev: undefined, maxDoc: undefined }, job.workMaterial);
+    const p: Record<string, string> = { vc: String(c.vc), toolMaterial: defaultToolMaterial(t.type) === 'hss' ? 'HSS' : 'carbide' };
+    if (t.type === 'endmill') p.chipload = String(c.feed);
+    else if (t.type !== 'threading') p.feedPerRev = String(c.feed);
+    if (t.type !== 'drill' && t.type !== 'threading') p.maxDoc = String(c.doc);
+    return p;
+  }
+
   function addTool(): void {
     const id = Math.max(0, ...job.tools.map((t) => t.id)) + 1;
     const t: Tool =
       job.machine.kind === 'lathe'
-        ? { id, name: 'Turning tool', type: 'turning', vc: 120, feedPerRev: 0.1, maxDoc: 1, edgeLength: 3 }
-        : { id, name: `Endmill Ø6`, type: 'endmill', diameter: 6, flutes: 2, vc: 100, chipload: 0.03, fluteLength: 15, maxDoc: 3, centerCutting: true };
+        ? { id, name: 'Turning tool', type: 'turning', edgeLength: 3 }
+        : { id, name: `Endmill Ø6`, type: 'endmill', diameter: 6, flutes: 2, fluteLength: 15, centerCutting: true };
     store.set({ ...job, tools: [...job.tools, t] });
     toolOpen = id;
   }
@@ -270,7 +286,13 @@
         <label>Raw top at Z <input type="number" step="0.1" value={job.stock.top} onchange={(e) => setStock({ top: num(e) })} /> mm</label>
         <p class="muted">X0 Y0 is the front-left corner of the block, Z0 the top after facing.</p>
       {/if}
-      <label class="wide">Material <input type="text" value={job.material ?? ''} placeholder="e.g. aluminium 6082" onchange={(e) => store.set({ ...job, material: (e.currentTarget as HTMLInputElement).value || undefined })} /></label>
+      <label class="wide">Material
+        <select value={job.workMaterial} onchange={(e) => store.set({ ...job, workMaterial: (e.currentTarget as HTMLSelectElement).value as MaterialId })}>
+          {#each Object.entries(MATERIALS) as [id, m] (id)}<option value={id}>{m.name}</option>{/each}
+        </select>
+      </label>
+      <label class="wide">Grade <input type="text" value={job.material ?? ''} placeholder={MATERIALS[job.workMaterial].examples.split(',')[0]} onchange={(e) => store.set({ ...job, material: (e.currentTarget as HTMLInputElement).value || undefined })} /></label>
+      <p class="muted">The material sets cutting speed, feed and depth per pass for every tool ({MATERIALS[job.workMaterial].examples}). Values set on a tool override it.</p>
     {:else if tab === 'tools'}
       <ol class="ops">
         {#each job.tools as t (t.id)}
@@ -279,15 +301,16 @@
               <span class="n">{t.id}</span>
               <span class="what">
                 <span class="label">{t.name}</span>
-                <span class="sub">{t.type}{t.diameter ? `, Ø${t.diameter}` : ''}{t.width ? `, ${t.width} mm wide` : ''} · vc {t.vc} m/min{usedBy(t.id) ? ` · used ${usedBy(t.id)}×` : ''}</span>
+                <span class="sub">{t.type}{t.diameter ? `, Ø${t.diameter}` : ''}{t.width ? `, ${t.width} mm wide` : ''} · {cutText(t)}{usedBy(t.id) ? ` · used ${usedBy(t.id)}×` : ''}</span>
               </span>
             </button>
             {#if toolOpen === t.id}
               <div class="detail">
                 <SchemaForm
-                  fields={toolFields}
+                  fields={toolFieldsFor(toolDraft?.id === t.id ? toolDraft.value : (t as Record<string, unknown>))}
                   value={toolDraft?.id === t.id ? toolDraft.value : (t as Record<string, unknown>)}
                   errors={toolDraft?.id === t.id ? toolDraft.errors : {}}
+                  placeholders={toolPlaceholders(t)}
                   onchange={(v) => editTool(t.id, v)}
                 />
                 <div class="row">
@@ -360,6 +383,8 @@
   .add summary { cursor: pointer; color: var(--ink-2); font-weight: 600; padding: 4px 0; }
   label { display: grid; grid-template-columns: 1fr 110px auto; align-items: center; gap: 8px; margin: 6px 0; color: var(--ink-2); }
   label.wide { grid-template-columns: 1fr 2fr; margin-top: 14px; }
+  label.wide + label.wide { margin-top: 8px; }
+  label select { border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 8px; background: var(--panel); min-width: 0; }
   label input { border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 8px; background: var(--panel); text-align: right; font-variant-numeric: tabular-nums; }
   label.wide input { text-align: left; }
   .gcode { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.55; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 0; overflow: auto; }

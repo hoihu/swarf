@@ -16,6 +16,8 @@ import {
   tipPath,
   zAtRadius,
   plannedSeconds,
+  cuttingData,
+  MATERIALS,
   estimateSeconds,
   type Program,
   type JobInput,
@@ -428,7 +430,7 @@ describe('entry', () => {
       const run = Math.hypot(w.move.to.x - w.from.x, w.move.to.y - w.from.y);
       expect((w.from.z - w.move.to.z) / run).toBeLessThanOrEqual(Math.tan((5 * Math.PI) / 180) + 1e-9);
     }
-    expect(codes(job)).toEqual(['SPEED_LIMIT']);
+    expect(codes(job)).toEqual([]);
   });
 
   it('helixes into a circular pocket and writes helical arcs', () => {
@@ -500,7 +502,7 @@ describe('checks', () => {
 
   it('a normal stepdown is fine, a big one is a warning', () => {
     const ok = withOps('mill', [{ type: 'mill_contour_rect', tool: 1, x: 10, y: 10, w: 30, h: 20, zBottom: -9, zTop: 0.5 }]);
-    expect(codes(ok)).toEqual(['SPEED_LIMIT']);
+    expect(codes(ok)).toEqual([]);
     const deep = withOps('mill', [{ type: 'mill_contour_rect', tool: 1, x: 10, y: 10, w: 30, h: 20, zBottom: -9, zTop: 0.5, stepDown: 9.5 }]);
     expect(codes(deep)).toContain('DOC_HIGH');
   });
@@ -531,5 +533,57 @@ describe('checks', () => {
   it('ops get stable ids', () => {
     const job = withOps('lathe', [{ type: 'lathe_face', tool: 1 }, { id: 'op1', type: 'lathe_face', tool: 1, z: -0.5, fromZ: 0 }]);
     expect(analyze(job).program.segments.map((s) => s.opId)).toEqual(['op2', 'op1']);
+  });
+});
+
+describe('materials', () => {
+  const seg = (job: Job, opId: string) => analyze(job).program.segments.find((s) => s.opId === opId)!;
+  const feedOf = (job: Job, opId: string) => (seg(job, opId).moves.find((m) => m.type === 'feed') as { f: number }).f;
+  const passes = (job: Job, opId: string) => seg(job, opId).moves.filter((m) => m.type === 'feed').length;
+
+  it('steel is slower, fed lighter and cut shallower than aluminium', () => {
+    const ops: OperationInput[] = [{ id: 'op1', type: 'lathe_turn', tool: 1, diameter: 16, zEnd: -20 }];
+    const alu = withOps('lathe', ops, { workMaterial: 'aluminium' });
+    const steel = withOps('lathe', ops, { workMaterial: 'steel' });
+    expect(seg(steel, 'op1').rpm).toBeLessThan(seg(alu, 'op1').rpm);
+    expect(feedOf(steel, 'op1')).toBeLessThan(feedOf(alu, 'op1'));
+    expect(passes(steel, 'op1')).toBeGreaterThan(passes(alu, 'op1'));
+    expect(codes(steel)).toEqual([]);
+  });
+
+  it("a tool's own cutting data overrides the material", () => {
+    const base = EXAMPLES.lathe();
+    const tools = base.tools.map((t) => (t.id === 1 ? { ...t, vc: 40, feedPerRev: 0.05 } : t));
+    const job = withOps('lathe', [{ id: 'op1', type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -20 }], { tools, workMaterial: 'aluminium' });
+    expect(seg(job, 'op1').rpm).toBe(Math.round((40 * 1000) / (Math.PI * 25)));
+    expect(feedOf(job, 'op1')).toBe(Math.round(seg(job, 'op1').rpm * 0.05));
+  });
+
+  it('HSS runs slower than carbide; drills default to HSS', () => {
+    const mill = EXAMPLES.mill();
+    const t1 = mill.tools.find((t) => t.id === 1)!;
+    const carbide = cuttingData(t1, 'steel');
+    const hss = cuttingData({ ...t1, toolMaterial: 'hss' }, 'steel');
+    expect(hss.vc).toBeLessThan(carbide.vc);
+    expect(hss.feed).toBeLessThan(carbide.feed);
+    const drill = mill.tools.find((t) => t.type === 'drill')!;
+    expect(cuttingData(drill, 'steel').vc).toBe(MATERIALS.steel.vc.drilling.hss);
+  });
+
+  it("the tool's max depth caps the material's", () => {
+    const t = { ...EXAMPLES.mill().tools[0]!, maxDoc: 0.5 };
+    expect(cuttingData(t, 'aluminium').doc).toBe(0.5);
+    expect(cuttingData({ ...t, maxDoc: undefined }, 'aluminium').doc).toBe(3);
+  });
+
+  it('a stepdown fine in aluminium is too deep in stainless', () => {
+    const ops: OperationInput[] = [{ type: 'mill_contour_rect', tool: 1, x: 10, y: 10, w: 30, h: 20, zBottom: -6, zTop: 0.5, stepDown: 3 }];
+    expect(codes(withOps('mill', ops, { workMaterial: 'aluminium' }))).toEqual([]);
+    expect(codes(withOps('mill', ops, { workMaterial: 'stainless' }))).toContain('DOC_HIGH');
+  });
+
+  it('old jobs without a material read as aluminium', () => {
+    const j = Job.parse({ ...EXAMPLES.lathe(), workMaterial: undefined });
+    expect(j.workMaterial).toBe('aluminium');
   });
 });

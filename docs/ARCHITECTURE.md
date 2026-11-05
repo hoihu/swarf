@@ -29,6 +29,10 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   consumer reads this one IR.
 - **Material model** (`cam/src/sim.ts`): lathe = outer and bore radius per 0.05 mm slice of Z;
   mill = a height map. Fast enough to rerun on every edit and while scrubbing.
+- **Materials** (`cam/src/materials.ts`, `feeds.ts`): a small table of conservative hobby-machine
+  cutting data per workpiece material and kind of cut, for HSS and carbide; `cuttingData(tool,
+  material)` fills in what the tool does not set, `cutting()` turns it into rpm and mm/min for an
+  operation (no G96/G95: the speed is set for the largest diameter the operation cuts).
 - **Checks** (`cam/src/check.ts`): travel, chuck, rapids into material, depth of cut, plunging.
   Errors block the agent from finishing (fix budget 4) and the G-code download.
 - **Agent** (`agent/src/loop.ts`): the 4k7 loop. The model sees a compact job state with every

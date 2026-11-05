@@ -1,7 +1,7 @@
 /**
  * Starting points: a small grblHAL lathe and mill with a basic tool table, and an example job
- * for each. Cutting data is conservative and meant for aluminium/free-cutting steel with
- * carbide inserts (lathe) and carbide endmills (mill); edit to match your machine.
+ * for each. The tools carry no cutting data of their own: speeds, feeds and depth of cut come
+ * from the job's workpiece material (materials.ts); set a tool's values to override.
  */
 import { Job, type JobInput, type Machine, type Tool } from './schema.ts';
 
@@ -39,18 +39,18 @@ export const MILL: Machine = {
 };
 
 export const LATHE_TOOLS: Tool[] = [
-  { id: 1, name: 'Turning, CCMT 09 R0.4 carbide', type: 'turning', vc: 120, feedPerRev: 0.1, maxDoc: 1, edgeLength: 3, noseRadius: 0.4 },
-  { id: 2, name: 'Parting blade 2 mm', type: 'grooving', width: 2, vc: 60, feedPerRev: 0.04 },
-  { id: 3, name: 'Drill Ø6 HSS', type: 'drill', diameter: 6, vc: 20, feedPerRev: 0.08, fluteLength: 50 },
-  { id: 4, name: 'Threading insert 60°, 16ER', type: 'threading', vc: 60, edgeLength: 1.5 },
-  { id: 5, name: 'Boring bar, min. bore Ø10', type: 'boring', internal: true, diameter: 10, fluteLength: 30, vc: 100, feedPerRev: 0.08, maxDoc: 0.5, noseRadius: 0.2, edgeLength: 2 },
-  { id: 6, name: 'Internal threading bar 60°, min. bore Ø12', type: 'threading', internal: true, diameter: 12, fluteLength: 25, vc: 50, edgeLength: 1.5 },
+  { id: 1, name: 'Turning, CCMT 09 R0.4 carbide', type: 'turning', edgeLength: 3, noseRadius: 0.4 },
+  { id: 2, name: 'Parting blade 2 mm', type: 'grooving', width: 2 },
+  { id: 3, name: 'Drill Ø6 HSS', type: 'drill', diameter: 6, fluteLength: 50 },
+  { id: 4, name: 'Threading insert 60°, 16ER', type: 'threading', edgeLength: 1.5 },
+  { id: 5, name: 'Boring bar, min. bore Ø10', type: 'boring', internal: true, diameter: 10, fluteLength: 30, noseRadius: 0.2, edgeLength: 2 },
+  { id: 6, name: 'Internal threading bar 60°, min. bore Ø12', type: 'threading', internal: true, diameter: 12, fluteLength: 25, edgeLength: 1.5 },
 ];
 
 export const MILL_TOOLS: Tool[] = [
-  { id: 1, name: 'Endmill Ø6 3F carbide', type: 'endmill', diameter: 6, flutes: 3, vc: 120, chipload: 0.03, fluteLength: 15, maxDoc: 3, centerCutting: true },
-  { id: 2, name: 'Endmill Ø10 3F carbide', type: 'endmill', diameter: 10, flutes: 3, vc: 120, chipload: 0.04, fluteLength: 22, maxDoc: 4, centerCutting: true },
-  { id: 3, name: 'Drill Ø5 HSS', type: 'drill', diameter: 5, vc: 20, feedPerRev: 0.08, fluteLength: 40 },
+  { id: 1, name: 'Endmill Ø6 3F carbide', type: 'endmill', diameter: 6, flutes: 3, fluteLength: 15, centerCutting: true },
+  { id: 2, name: 'Endmill Ø10 3F carbide', type: 'endmill', diameter: 10, flutes: 3, fluteLength: 22, centerCutting: true },
+  { id: 3, name: 'Drill Ø5 HSS', type: 'drill', diameter: 5, fluteLength: 40 },
 ];
 
 const latheExample: JobInput = {
@@ -58,7 +58,8 @@ const latheExample: JobInput = {
   machine: LATHE,
   tools: LATHE_TOOLS,
   stock: { kind: 'bar', diameter: 25, stickout: 60, front: 1 },
-  material: 'aluminium 6082',
+  workMaterial: 'aluminium',
+  material: '6082',
   operations: [
     { id: 'op1', type: 'lathe_face', tool: 1, z: 0 },
     { id: 'op2', type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -30 },
@@ -72,7 +73,8 @@ const millExample: JobInput = {
   machine: MILL,
   tools: MILL_TOOLS,
   stock: { kind: 'block', x: 80, y: 50, z: 15, top: 0.5 },
-  material: 'aluminium 6082',
+  workMaterial: 'aluminium',
+  material: '6082',
   operations: [
     { id: 'op1', type: 'mill_face', tool: 2, z: 0 },
     { id: 'op2', type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 40, h: 20, zBottom: -5, zTop: 0 },

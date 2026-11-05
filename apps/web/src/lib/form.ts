@@ -83,6 +83,7 @@ const LABELS: Record<string, [string, string?]> = {
   fluteLength: ['Flute length', 'mm'],
   flutes: ['Flutes'],
   centerCutting: ['Centre cutting'],
+  toolMaterial: ['Tool material'],
   vc: ['Cutting speed', 'm/min'],
   chipload: ['Chip load', 'mm/tooth'],
   feedPerRev: ['Feed per rev', 'mm'],
@@ -126,6 +127,22 @@ export function opFields(type: OpType): Field[] {
 }
 
 export const toolFields: Field[] = fields(z.toJSONSchema(Tool, { io: 'input', unrepresentable: 'any' }) as Json, []);
+
+/** Tool fields that mean nothing for a type of tool. */
+const NOT_FOR: Record<string, string[]> = {
+  turning: ['width', 'flutes', 'centerCutting', 'chipload'],
+  boring: ['width', 'flutes', 'centerCutting', 'chipload'],
+  grooving: ['diameter', 'internal', 'noseRadius', 'flutes', 'centerCutting', 'chipload', 'fluteLength'],
+  threading: ['width', 'noseRadius', 'flutes', 'centerCutting', 'chipload', 'feedPerRev', 'maxDoc'],
+  drill: ['internal', 'width', 'noseRadius', 'edgeLength', 'flutes', 'centerCutting', 'chipload', 'maxDoc'],
+  endmill: ['internal', 'width', 'noseRadius', 'edgeLength', 'feedPerRev'],
+};
+
+/** The fields for one tool: those its type uses, and any it has a value for anyway. */
+export function toolFieldsFor(tool: Record<string, unknown>): Field[] {
+  const skip = NOT_FOR[tool.type as string] ?? [];
+  return toolFields.filter((f) => !skip.includes(f.key) || tool[f.key] !== undefined);
+}
 
 /** zod issues keyed by their top-level field. */
 export function issuesByField(e: z.ZodError): Record<string, string> {

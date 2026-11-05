@@ -46,6 +46,21 @@ describe('tools', () => {
   });
 });
 
+describe('material', () => {
+  it('set_stock can change only the material, and the context shows the cutting data', () => {
+    const p = port(EXAMPLES.lathe());
+    const stock = p.job.stock;
+    expect(runCamTool(p, 'set_stock', {})!.isError).toBe(true);
+    const r = runCamTool(p, 'set_stock', { workMaterial: 'steel', material: 'C45' })!;
+    expect(r.isError).toBeFalsy();
+    expect(p.job.stock).toEqual(stock);
+    expect(p.job.workMaterial).toBe('steel');
+    const ctx = formatJobContext(p.job);
+    expect(ctx).toContain('material: steel (Steel, C45)');
+    expect(ctx).toMatch(/T1 turning: .*vc 120 m\/min, 0\.08 mm\/rev, 0\.5 mm\/pass/);
+  });
+});
+
 describe('drawings', () => {
   it('summarises drawings for the model and moves them with place_shape', () => {
     const shape = { id: 's1', name: 'plate.dxf', at: { x: 0, y: 0 }, paths: [{ closed: true, pts: [[0, 0], [40, 0], [40, 30], [0, 30]] as [number, number][] }, { closed: false, pts: [[5, 5], [10, 5]] as [number, number][] }] };

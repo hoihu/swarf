@@ -6,6 +6,8 @@
 import { z } from 'zod';
 import {
   Job,
+  MATERIALS,
+  MaterialId,
   Operation,
   Stock,
   Tool,
@@ -51,7 +53,11 @@ export const AskUser = z.object({
   options: z.array(z.string()).min(2).max(5),
 });
 
-const SetStockInput = z.object({ stock: Stock, material: z.string().optional().describe('Workpiece material, if the user said') });
+const SetStockInput = z.object({
+  stock: Stock.optional().describe('The raw stock (leave out to change only the material)'),
+  workMaterial: MaterialId.optional().describe('Workpiece material class: sets speeds, feeds and depth per pass'),
+  material: z.string().optional().describe('The grade or notes as the user said it, e.g. "6082", "C45", "POM"'),
+});
 const AddOpInput = z.object({
   operation: Operation,
   before: z.string().optional().describe('Insert before this operation id (default: at the end)'),
@@ -84,7 +90,7 @@ export const CAM_TOOLS: ToolDefinition[] = [
   },
   {
     name: TOOL_NAMES.setStock,
-    description: 'Set the raw stock: a bar (lathe) or a block (mill), and optionally the material.',
+    description: 'Set the raw stock (a bar on the lathe, a block on the mill) and/or the workpiece material. The material sets speeds, feeds and depth per pass for every operation.',
     input_schema: schemaOf(SetStockInput),
   },
   {
@@ -164,9 +170,12 @@ export function runCamTool(port: JobPort, name: string, input: unknown): ToolOut
     case TOOL_NAMES.setStock: {
       const p = SetStockInput.safeParse(input);
       if (!p.success) return fail('stock', `Invalid input: ${zodMessage(p.error)}`);
-      const s = p.data.stock;
-      const what = s.kind === 'bar' ? `stock: bar Ø${s.diameter}, ${s.stickout} mm out` : `stock: block ${s.x}×${s.y}×${s.z}`;
-      return commit('stock', { ...job, stock: s, ...(p.data.material ? { material: p.data.material } : {}) }, what);
+      const { stock: s, workMaterial, material } = p.data;
+      if (!s && !workMaterial && material === undefined) return fail('stock', 'Give the stock, the material or both.');
+      const parts: string[] = [];
+      if (s) parts.push(s.kind === 'bar' ? `stock: bar Ø${s.diameter}, ${s.stickout} mm out` : `stock: block ${s.x}×${s.y}×${s.z}`);
+      if (workMaterial || material) parts.push(`material: ${MATERIALS[workMaterial ?? job.workMaterial].name.toLowerCase()}${material ? ` ${material}` : ''}`);
+      return commit('stock', { ...job, ...(s ? { stock: s } : {}), ...(workMaterial ? { workMaterial } : {}), ...(material !== undefined ? { material: material || undefined } : {}) }, parts.join('; '));
     }
     case TOOL_NAMES.addOp: {
       const p = AddOpInput.safeParse(input);

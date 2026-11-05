@@ -1,6 +1,6 @@
 export * from './schema.ts';
 export * from './program.ts';
-export { cutting, rpmFor, type Cutting } from './feeds.ts';
+export { cutting, cuttingData, rpmFor, type Cutting, type CuttingData } from './feeds.ts';
 export { generate, withIds, opLabel, homeOf, type Diagnostic, type Generated } from './generate.ts';
 export { analyze, simulate, hasErrors, type Analysis } from './check.ts';
 export { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
@@ -16,3 +16,4 @@ export { offsetRegion, orient, normalize, area, bbox, pointInLoop, type Loop, ty
 export { importDrawing } from './importers/index.ts';
 export { fitArcs } from './arcfit.ts';
 export { profileFromDrawing } from './importers/lathe.ts';
+export { MATERIALS, MaterialId, cutKind, defaultToolMaterial, type CutKind, type ToolMaterial } from './materials.ts';

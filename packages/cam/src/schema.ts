@@ -5,6 +5,7 @@
  * On the mill, X0 Y0 is the stock's front-left corner and Z0 its top.
  */
 import { z } from 'zod';
+import { MaterialId } from './materials.ts';
 
 const mm = z.number().finite();
 const pos = z.number().finite().positive();
@@ -66,13 +67,15 @@ export const Tool = z.object({
   flutes: z.number().int().min(1).optional(),
   /** Endmill can plunge straight down. */
   centerCutting: z.boolean().optional(),
-  /** Cutting speed, m/min. */
-  vc: pos,
-  /** Feed per tooth, mm (endmill). */
+  /** Cutting edge: HSS or carbide (default: HSS for drills, carbide otherwise). Picks the material table's speeds. */
+  toolMaterial: z.enum(['hss', 'carbide']).optional(),
+  /** Cutting speed, m/min (default: from the workpiece material). */
+  vc: pos.optional(),
+  /** Feed per tooth, mm (endmill; default: from the material). */
   chipload: pos.optional(),
-  /** Feed per revolution, mm (turning, grooving, drill). */
+  /** Feed per revolution, mm (turning, grooving, drill; default: from the material). */
   feedPerRev: pos.optional(),
-  /** Largest depth of cut per pass, mm (radial on the lathe, axial on the mill). */
+  /** Largest depth of cut per pass, mm (radial on the lathe, axial on the mill); caps the material's value. */
   maxDoc: pos.optional(),
 });
 export type Tool = z.infer<typeof Tool>;
@@ -381,7 +384,9 @@ export const Job = z.object({
   operations: z.array(Operation),
   /** Imported drawings that operations refer to. */
   shapes: z.array(Shape).default([]),
-  /** What the user said about the workpiece material, free text (shown to the agent). */
+  /** Workpiece material: sets speeds, feeds and depth of cut. */
+  workMaterial: MaterialId.default('aluminium'),
+  /** The grade or notes, free text (e.g. "6082 T6"), shown to the agent. */
   material: z.string().optional(),
 });
 export type Job = z.infer<typeof Job>;
