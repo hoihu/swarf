@@ -4,27 +4,38 @@
  * the server, the server forwards each tool call to the one connected tab, the tab runs it against
  * its job and answers. The tab stays the single source of truth, so the preview updates live.
  *
- * The other direction: a message typed into the app's chat can be answered by Claude Code on this
- * computer. The tab sends `chat`, the server runs `claude -p` headlessly with swarf as its only MCP
- * server, and streams `chat_event`s back; the tool calls of that run arrive as `call`s like any other.
+ * The other direction: a message typed into the app's chat can be answered by a coding agent's CLI on
+ * this computer (Claude Code, GitHub Copilot CLI or Codex CLI, with the user's own login). The tab
+ * sends `chat`, the server runs the CLI headlessly with swarf as its only MCP server, and streams
+ * `chat_event`s back; the tool calls of that run arrive as `call`s like any other.
  */
-export const SERVER_PROTOCOL = 2;
+export const SERVER_PROTOCOL = 3;
 /** Ports the server tries in turn (HTTP and WebSocket share one). */
 export const SERVER_PORTS = [7790, 7791, 7792, 7793, 7794] as const;
 
 export type TabToServer =
   | { type: 'hello'; protocol: number; accessKey: string; client: string }
   | { type: 'result'; id: number; isError: boolean; text: string }
-  /** A chat message for Claude Code. `session`: continue that conversation (null: a new one). */
-  | { type: 'chat'; id: string; text: string; session: string | null; model?: string }
+  /** A chat message for a coding agent (default Claude Code). `session`: continue that conversation (null: a new one). */
+  | { type: 'chat'; id: string; text: string; session: string | null; model?: string; harness?: HarnessId }
   | { type: 'chat_cancel'; id: string };
 
-/** Whether the server can answer the chat with Claude Code on this computer. */
+/** The coding agents' CLIs the server can run for the chat. */
+export const HARNESSES = { claude: 'Claude Code', copilot: 'GitHub Copilot CLI', codex: 'Codex CLI' } as const;
+export type HarnessId = keyof typeof HARNESSES;
+export const isHarnessId = (v: unknown): v is HarnessId => typeof v === 'string' && v in HARNESSES;
+
+/** Whether the server can answer the chat with a CLI on this computer. */
 export interface ChatCapability {
   available: boolean;
-  /** `claude --version` */
+  /** `<cli> --version` */
   version?: string;
   reason?: string;
+}
+
+export interface HarnessInfo extends ChatCapability {
+  id: HarnessId;
+  name: string;
 }
 
 export type ChatEvent =
@@ -35,7 +46,8 @@ export type ChatEvent =
   | { kind: 'done'; ok: boolean; error?: string; costUsd?: number; session?: string };
 
 export type ServerToTab =
-  | { type: 'welcome'; protocol: number; agent: string | null; chat: ChatCapability }
+  /** `chat`: Claude Code's (older tabs read it); `harnesses`: every CLI the server knows. */
+  | { type: 'welcome'; protocol: number; agent: string | null; chat: ChatCapability; harnesses: HarnessInfo[] }
   | { type: 'chat_event'; id: string; event: ChatEvent }
   | { type: 'denied'; reason: string }
   | { type: 'call'; id: number; tool: string; input: unknown }

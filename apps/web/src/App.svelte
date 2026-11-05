@@ -46,7 +46,7 @@
     <span class="grow"></span>
     {#if bridge.status !== 'off'}
       <span class="link-state {bridge.status}" title={bridge.status === 'denied' ? bridge.reason : bridge.last ? `Last: ${bridge.last}` : 'Connected to the local swarf server'}>
-        <i></i>{bridge.status === 'connected' ? `${bridge.agent ?? 'Claude Code'} connected` : bridge.status === 'denied' ? 'Server refused' : bridge.status === 'offline' ? 'Server offline' : 'Connecting…'}
+        <i></i>{bridge.status === 'connected' ? bridge.agent ? `${bridge.agent} connected` : 'swarf server connected' : bridge.status === 'denied' ? 'Server refused' : bridge.status === 'offline' ? 'Server offline' : 'Connecting…'}
       </span>
     {/if}
     <button class="btn ghost" onclick={() => store.undo()} disabled={!store.history.length}>Undo</button>

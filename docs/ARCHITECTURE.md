@@ -44,12 +44,12 @@ user text ──► agent ──tool calls──► Job (zod-validated)
 Tier 1 (this): parametric 2-axis lathe and 2.5D mill operations, checks, preview, agent.
 
 Tier 2, toward everyday use (done: forms, MCP for Claude Code, the app chat answered by Claude
-Code headless, streaming over Web Serial, planner time estimate, ramp/helix entry, nose radius on
+Code, Copilot CLI or Codex CLI headless, a material library for speeds and feeds, streaming over Web Serial, planner time estimate, ramp/helix entry, nose radius on
 chamfers, external and internal threading as G33 passes, boring, lathe profiles, contour tabs, WebSocket streaming, a review card per assistant turn, DXF/SVG import with contours and pockets of any outline, lathe profiles from drawings, arc fitting):
 - Multi-start threads, a thread pull-out (G33 with X moving), internal profiles.
 - Arcs on the lathe (G18, in diameter mode) are still written as short lines.
 - Climb/conventional choice.
-- Other headless agents for the chat (Copilot CLI, Codex, OpenCode), as 4k7 has.
+- OpenCode for the chat, as 4k7 has.
 
 Tier 3 (only by reusing libraries): STEP import (build123d / OpenCascade), adaptive clearing,
 3D finishing.

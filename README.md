@@ -18,17 +18,22 @@ npm run typecheck
 
 ## Who answers the chat
 
-- **Claude Code on this computer** (no API key, your own Claude login and plan): run
-  `npm run build && npm run server` and open the link it prints. The server runs `claude -p` for
-  each message with swarf as its only MCP server: no shell, no files, no web, just the CAM tools,
-  which act on the open tab. Conversations continue (`--resume`); if the checks still find errors
-  when Claude Code finishes, the app sends it back to fix them (twice at most). Set
-  `SWARF_CLAUDE_BIN` if `claude` is not on the PATH.
+- **A coding agent on this computer** (no API key, your own login and plan): Claude Code, GitHub
+  Copilot CLI or Codex CLI, picked under **Assistant**. Run `npm run build && npm run server` and
+  open the link it prints. The server runs the CLI headlessly for each message with swarf as its
+  only MCP server: no shell, no files, no web, just the CAM tools, which act on the open tab.
+  Conversations continue; if the checks still find errors when the agent finishes, the app sends it
+  back to fix them (twice at most). Set `SWARF_CLAUDE_BIN`, `SWARF_COPILOT_BIN` or
+  `SWARF_CODEX_BIN` if a CLI is not on the PATH.
+  Copilot and Codex have no single "only these tools" switch, so the server turns off what each
+  would add, the user's own MCP servers included. `npm run check:copilot` and
+  `npm run check:codex` run the real CLIs (offline, against a stand-in model API, no login needed)
+  and fail if a new version offers the model anything else.
 - **A model API with your key**, under **Assistant**: Anthropic, OpenAI, OpenRouter, Gemini, a local
   Ollama/LM Studio, or any compatible gateway. The key stays in the browser.
 - Neither: an offline demo with two scripted requests.
 
-By default the chat uses Claude Code whenever the server is running, and the API otherwise.
+By default the chat uses the chosen coding agent whenever the server is running and has it, and the API otherwise.
 
 ## Claude Code in the terminal drives the app (MCP)
 

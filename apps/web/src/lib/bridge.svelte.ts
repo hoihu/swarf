@@ -1,9 +1,9 @@
 /**
- * Connects the tab to the local swarf server, so Claude Code (through MCP) can build the job
+ * Connects the tab to the local swarf server, so a coding agent (through MCP) can build the job
  * here. The app link carries `#connect=<key>@<port>`; it is remembered, so a reload reconnects.
  * Each tool call runs against the store like an edit by hand (one undo step per call).
  */
-import { SERVER_PROTOCOL, parseConnect, runTabTool, type ChatCapability, type ChatEvent, type ServerToTab, type TabToServer } from '@swarf/agent';
+import { SERVER_PROTOCOL, parseConnect, runTabTool, type ChatEvent, type HarnessId, type HarnessInfo, type ServerToTab, type TabToServer } from '@swarf/agent';
 import type { Job } from '@swarf/cam';
 import { store } from './store.svelte.ts';
 
@@ -17,10 +17,10 @@ class Bridge {
   /** The last tool call, for the header (e.g. "add · op3"). */
   last = $state<string | null>(null);
   reason = $state('');
-  /** Whether the server can answer the chat with Claude Code. */
-  chat = $state<ChatCapability | null>(null);
+  /** The coding agents' CLIs the server can answer the chat with (empty: not connected). */
+  harnesses = $state<HarnessInfo[]>([]);
   #chatListeners = new Map<string, (e: ChatEvent) => void>();
-  /** Told about every tool call the tab runs (the chat shows them while Claude Code works). */
+  /** Told about every tool call the tab runs (the chat shows them while a coding agent works). */
   onCall: ((label: string, ok: boolean, detail: string) => void) | null = null;
   /** While a chat turn runs, its edits share one undo step (the turn's checkpoint) instead of one each. */
   batch = false;
@@ -56,8 +56,12 @@ class Bridge {
     this.status = 'off';
   }
 
-  /** Send a chat message to Claude Code through the server; events arrive at `on` until done. */
-  sendChat(msg: { id: string; text: string; session: string | null; model?: string }, on: (e: ChatEvent) => void): boolean {
+  harness(id: HarnessId): HarnessInfo | undefined {
+    return this.harnesses.find((h) => h.id === id);
+  }
+
+  /** Send a chat message to a coding agent through the server; events arrive at `on` until done. */
+  sendChat(msg: { id: string; text: string; session: string | null; model?: string; harness: HarnessId }, on: (e: ChatEvent) => void): boolean {
     if (this.status !== 'connected' || !this.#ws) return false;
     this.#chatListeners.set(msg.id, on);
     this.#ws.send(JSON.stringify({ type: 'chat', ...msg } satisfies TabToServer));
@@ -100,7 +104,7 @@ class Bridge {
         case 'welcome':
           this.status = 'connected';
           this.agent = msg.agent;
-          this.chat = msg.chat ?? null;
+          this.harnesses = msg.harnesses ?? (msg.chat ? [{ id: 'claude', name: 'Claude Code', ...msg.chat }] : []);
           this.#retry = 0;
           break;
         case 'chat_event': {
@@ -133,7 +137,7 @@ class Bridge {
     ws.onclose = (ev) => {
       if (this.#ws !== ws) return;
       this.#ws = null;
-      this.chat = null;
+      this.harnesses = [];
       // a chat run in progress cannot report back any more
       for (const on of this.#chatListeners.values()) on({ kind: 'done', ok: false, error: 'Lost the connection to the swarf server.' });
       this.#chatListeners.clear();

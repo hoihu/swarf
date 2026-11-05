@@ -9,4 +9,4 @@ export { API_SERVICES, apiProblem, apiProvider, apiService, type ApiChoice, type
 export { ScriptedProvider, type Script, type ScriptStep } from './providers/scripted.ts';
 export { CAM_GUIDE } from './prompt.ts';
 export { CHAT_RULES, MCP_INSTRUCTIONS, MCP_TOOL_NAMES, chatTools, mcpTools, runTabTool } from './mcp.ts';
-export { SERVER_PORTS, SERVER_PROTOCOL, parseConnect, type ChatCapability, type ChatEvent, type ServerToTab, type TabToServer } from './protocol.ts';
+export { HARNESSES, SERVER_PORTS, SERVER_PROTOCOL, isHarnessId, parseConnect, type ChatCapability, type ChatEvent, type HarnessId, type HarnessInfo, type ServerToTab, type TabToServer } from './protocol.ts';

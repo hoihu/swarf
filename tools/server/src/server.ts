@@ -9,7 +9,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { SERVER_PORTS, SERVER_PROTOCOL, type ChatCapability, type ServerToTab, type TabToServer } from '@swarf/agent';
+import { SERVER_PORTS, SERVER_PROTOCOL, type ChatCapability, type HarnessInfo, type ServerToTab, type TabToServer } from '@swarf/agent';
 
 export interface CallResult {
   isError: boolean;
@@ -50,6 +50,7 @@ export class LocalServer {
   #seq = 0;
   #agent: string | null = null;
   #chat: ChatCapability = { available: false, reason: 'This server does not run Claude Code for the chat.' };
+  #harnesses: HarnessInfo[] = [];
   #chatHandler: ((m: ChatMessage) => void) | null = null;
 
   constructor(opts: LocalServerOptions) {
@@ -103,10 +104,16 @@ export class LocalServer {
     this.#opts.appUrl = url;
   }
 
-  /** Answer the tab's chat messages (Claude Code headless); `capability` is told to every tab. */
-  setChatHandler(h: (m: ChatMessage) => void, capability: ChatCapability): void {
+  /** Answer the tab's chat messages (coding agents' CLIs, headless); what they can do is told to every tab. */
+  setChatHandler(h: (m: ChatMessage) => void, harnesses: HarnessInfo[]): void {
     this.#chatHandler = h;
-    this.#chat = capability;
+    this.#harnesses = harnesses;
+    const claude = harnesses.find((x) => x.id === 'claude');
+    this.#chat = claude ? { available: claude.available, ...(claude.version ? { version: claude.version } : {}), ...(claude.reason ? { reason: claude.reason } : {}) } : { available: false, reason: 'Claude Code is not set up on this server.' };
+  }
+
+  get harnesses(): HarnessInfo[] {
+    return this.#harnesses;
   }
 
   get chatCapability(): ChatCapability {
@@ -203,7 +210,7 @@ export class LocalServer {
         accepted = true;
         if (this.#tab && this.#tab !== ws) this.#tab.close(4000, 'replaced by another tab');
         this.#tab = ws;
-        ws.send(JSON.stringify({ type: 'welcome', protocol: SERVER_PROTOCOL, agent: this.#agent, chat: this.#chat } satisfies ServerToTab));
+        ws.send(JSON.stringify({ type: 'welcome', protocol: SERVER_PROTOCOL, agent: this.#agent, chat: this.#chat, harnesses: this.#harnesses } satisfies ServerToTab));
         this.#log(`tab connected (${msg.client}, origin ${origin})`);
         return;
       }

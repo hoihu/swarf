@@ -2,14 +2,14 @@
  * App state: the job (persisted in this browser), its analysis, undo history and the API choice.
  */
 import { EXAMPLES, Job, analyze, emit, type Analysis, type Emitted } from '@swarf/cam';
-import { API_SERVICES, type ApiChoice } from '@swarf/agent';
+import { API_SERVICES, isHarnessId, type ApiChoice, type HarnessId } from '@swarf/agent';
 
 const JOB_KEY = 'swarf.job';
 const API_KEY = 'swarf.api';
 const ENGINE_KEY = 'swarf.engine';
 
-/** Who answers the chat: Claude Code through the local server, a model API with the user's key, or whichever is there (Claude Code first). */
-export type Engine = 'auto' | 'claude-code' | 'api';
+/** Who answers the chat: a coding agent's CLI through the local server, a model API with the user's key, or whichever is there (the CLI first). */
+export type Engine = 'auto' | 'local' | 'api';
 
 function load<T>(key: string, parse: (v: unknown) => T | null, fallback: () => T): T {
   try {
@@ -38,15 +38,26 @@ class Store {
   api = $state<ApiChoice>(
     load<ApiChoice>(API_KEY, (v) => (v && typeof v === 'object' && 'service' in v ? (v as ApiChoice) : null), () => ({ service: 'anthropic', baseURL: '', apiKey: '', model: API_SERVICES[0]!.models[0]! })),
   );
-  engine = $state<Engine>(load<Engine>(ENGINE_KEY, (v) => (v === 'claude-code' || v === 'api' || v === 'auto' ? v : null), () => 'auto'));
-  /** Model for Claude Code runs ('' = Claude Code's default). */
-  ccModel = $state<string>(load<string>('swarf.ccModel', (v) => (typeof v === 'string' ? v : null), () => ''));
+  engine = $state<Engine>(load<Engine>(ENGINE_KEY, (v) => (v === 'claude-code' ? 'local' : v === 'local' || v === 'api' || v === 'auto' ? v : null), () => 'auto'));
+  /** Which coding agent on this computer answers. */
+  harness = $state<HarnessId>(load<HarnessId>('swarf.harness', (v) => (isHarnessId(v) ? v : null), () => 'claude'));
+  /** Model per coding agent ('' or missing = the CLI's default). */
+  models = $state<Partial<Record<HarnessId, string>>>(
+    load<Partial<Record<HarnessId, string>>>('swarf.models', (v) => (v && typeof v === 'object' ? (v as Partial<Record<HarnessId, string>>) : null), () => ({ claude: load<string>('swarf.ccModel', (v) => (typeof v === 'string' ? v : null), () => '') })),
+  );
 
-  setEngine(e: Engine, ccModel: string): void {
+  /** The model for the chosen coding agent ('' = its default). */
+  get model(): string {
+    return this.models[this.harness] ?? '';
+  }
+
+  setEngine(e: Engine, harness: HarnessId, models: Partial<Record<HarnessId, string>>): void {
     this.engine = e;
-    this.ccModel = ccModel;
+    this.harness = harness;
+    this.models = models;
     save(ENGINE_KEY, e);
-    save('swarf.ccModel', ccModel);
+    save('swarf.harness', harness);
+    save('swarf.models', models);
   }
 
   /** Bumped when the user switches to another job: a running agent turn must not edit the new one. */

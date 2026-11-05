@@ -9,9 +9,10 @@
  * for the app tab. The link it logs (and returns from any tool while no tab is connected) opens
  * the app connected to it. `--serve` runs only the relay and app (no MCP), `--open` opens the link.
  *
- * The other direction: the app's own chat can be answered by Claude Code on this computer (your
- * login and plan, no API key). The server runs `claude -p` per message with swarf as its only MCP
- * server (SWARF_CLAUDE_BIN: where claude is, if not on the PATH).
+ * The other direction: the app's own chat can be answered by a coding agent on this computer, with
+ * your login and plan and no API key: Claude Code, GitHub Copilot CLI or Codex CLI. The server runs
+ * the CLI headlessly per message with swarf as its only MCP server (SWARF_CLAUDE_BIN,
+ * SWARF_COPILOT_BIN, SWARF_CODEX_BIN: where they are, if not on the PATH).
  *
  * In stdio mode stdout belongs to the MCP protocol; logs go to stderr.
  */
@@ -21,7 +22,9 @@ import { appHandler } from './app.ts';
 import { appDir, configDir, configPath, DEV_APP, loadConfig } from './config.ts';
 import { createMcpServer, mcpHttpHandler, VERSION } from './mcp.ts';
 import { ChatRunner } from './chat.ts';
-import { ClaudeHarness } from './claude.ts';
+import { ClaudeHarness } from './harness/claude.ts';
+import { CodexHarness } from './harness/codex.ts';
+import { CopilotHarness } from './harness/copilot.ts';
 import { LocalServer } from './server.ts';
 import { spawn } from 'node:child_process';
 
@@ -33,16 +36,21 @@ async function main(): Promise<void> {
   const cfg = loadConfig();
   const dir = appDir();
   const server = new LocalServer({ accessKey: cfg.accessKey, devPorts: [5173, 4173], log, ...(dir ? {} : { appUrl: DEV_APP }) });
-  const claude = new ClaudeHarness(process.env.SWARF_CLAUDE_BIN ?? 'claude');
-  const chat = new ChatRunner({ server, claude, workDir: join(configDir(), 'claude-workspace'), log });
-  const capability = claude.detect();
-  server.setChatHandler(chat.handle, capability);
+  const workDir = join(configDir(), 'agent-workspace');
+  const harnesses = [
+    new ClaudeHarness(process.env.SWARF_CLAUDE_BIN ?? 'claude'),
+    new CopilotHarness(process.env.SWARF_COPILOT_BIN ?? 'copilot', workDir),
+    new CodexHarness(process.env.SWARF_CODEX_BIN ?? 'codex', workDir),
+  ];
+  const chat = new ChatRunner({ server, harnesses, workDir, log });
+  const found = chat.detect();
+  server.setChatHandler(chat.handle, found);
   const app = appHandler(dir);
   const mcpHttp = mcpHttpHandler(server, chat.validToken);
   server.setHttpHandler((req, res) => ((req.url ?? '').split('?')[0] === '/mcp' ? mcpHttp(req, res) : app(req, res)));
   const port = await server.start();
   log(`v${VERSION} on 127.0.0.1:${port}; access key in ${configPath()}`);
-  log(capability.available ? `app chat via Claude Code ${capability.version}` : `app chat via Claude Code: no (${capability.reason})`);
+  for (const h of found) log(h.available ? `app chat via ${h.name}: ${h.version}` : `app chat via ${h.name}: no (${h.reason})`);
   if (!dir) log(`the app is not built (npm run build): the link points at the dev server (npm run dev)`);
   log(`open the app: ${server.appLink()}`);
   if (open) openBrowser(server.appLink());

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { API_SERVICES, apiProblem, apiService, type ApiChoice, type ApiServiceId } from '@swarf/agent';
+  import { API_SERVICES, HARNESSES, apiProblem, apiService, type ApiChoice, type ApiServiceId, type HarnessId } from '@swarf/agent';
   import { store, type Engine } from './store.svelte.ts';
   import { bridge } from './bridge.svelte.ts';
 
@@ -7,7 +7,10 @@
 
   let draft = $state<ApiChoice>({ ...store.api });
   let engine = $state<Engine>(store.engine);
-  let ccModel = $state(store.ccModel);
+  let harness = $state<HarnessId>(store.harness);
+  let models = $state({ ...store.models });
+  const info = $derived(bridge.harness(harness));
+  const HARNESS_IDS = Object.keys(HARNESSES) as HarnessId[];
   const service = $derived(apiService(draft.service));
   const problem = $derived(apiProblem(draft));
 
@@ -18,7 +21,7 @@
 
   function save(): void {
     store.setApi({ ...draft });
-    store.setEngine(engine, ccModel.trim());
+    store.setEngine(engine, harness, Object.fromEntries(Object.entries(models).map(([k, v]) => [k, (v ?? '').trim()]).filter(([, v]) => v)));
     onClose();
   }
 
@@ -34,28 +37,37 @@
     <label>
       <span>Answered by</span>
       <select bind:value={engine}>
-        <option value="auto">Claude Code when the swarf server runs, else the API</option>
-        <option value="claude-code">Claude Code on this computer</option>
+        <option value="auto">Automatic: a coding agent here, else the API</option>
+        <option value="local">A coding agent on this computer</option>
         <option value="api">A model API with your key</option>
       </select>
     </label>
     {#if engine !== 'api'}
+      <label>
+        <span>Coding agent</span>
+        <select bind:value={harness}>
+          {#each HARNESS_IDS as id (id)}
+            {@const h = bridge.harness(id)}
+            <option value={id}>{HARNESSES[id]}{bridge.status === 'connected' ? (h?.available ? '' : ' (not found)') : ''}</option>
+          {/each}
+        </select>
+      </label>
       <p class="muted small">
-        {#if bridge.status === 'connected' && bridge.chat?.available}
-          Claude Code {bridge.chat.version} is ready on this computer; it uses your own login and plan.
+        {#if bridge.status === 'connected' && info?.available}
+          {info.version} is ready on this computer; it uses your own login and plan, and only gets swarf's tools.
         {:else if bridge.status === 'connected'}
-          {bridge.chat?.reason ?? 'The server cannot run Claude Code.'}
+          {info?.reason ?? `The server cannot run ${HARNESSES[harness]}.`}
         {:else}
           Start the swarf server with <code class="inline">npm run server</code> and open the link it prints.
         {/if}
       </p>
       <label>
         <span>Model</span>
-        <input type="text" bind:value={ccModel} placeholder="Claude Code's default (e.g. sonnet, opus)" />
+        <input type="text" value={models[harness] ?? ''} oninput={(e) => (models = { ...models, [harness]: (e.currentTarget as HTMLInputElement).value })} placeholder={harness === 'claude' ? "Claude Code's default (e.g. sonnet, opus)" : `${HARNESSES[harness]}'s default`} />
       </label>
     {/if}
 
-    {#if engine !== 'claude-code'}
+    {#if engine !== 'local'}
     <h3>Model API</h3>
     <p class="muted">The app talks to the model straight from this browser with your own key. The key is kept in this browser's storage only.</p>
 
@@ -110,7 +122,7 @@
     </section>
 
     <div class="row">
-      <span class="status">{engine === 'claude-code' ? '' : problem ? `Without a ${problem.replace('no ', '')}, the chat runs the offline demo when Claude Code is not there.` : 'Ready.'}</span>
+      <span class="status">{engine === 'local' ? '' : problem ? `Without a ${problem.replace('no ', '')}, the chat runs the offline demo when no coding agent is there.` : 'Ready.'}</span>
       <button type="button" class="btn" onclick={() => dialog.close()}>Cancel</button>
       <button type="submit" class="btn pri">Save</button>
     </div>

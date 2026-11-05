@@ -4,11 +4,13 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { SERVER_PROTOCOL, runTabTool, type ChatEvent, type ServerToTab, type TabToServer } from '@swarf/agent';
+import { SERVER_PROTOCOL, runTabTool, type ChatEvent, type HarnessId, type ServerToTab, type TabToServer } from '@swarf/agent';
 import { emptyJob, type Job } from '@swarf/cam';
-import { ChatRunner, ClaudeHarness, LocalServer, mcpHttpHandler, streamReader } from '../src/index.ts';
+import { ChatRunner, ClaudeHarness, CodexHarness, CopilotHarness, LocalServer, mcpHttpHandler, streamReader, type Harness } from '../src/index.ts';
 
 const FAKE = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
+const FAKE_COPILOT = fileURLToPath(new URL('./fake-copilot.mjs', import.meta.url));
+const FAKE_CODEX = fileURLToPath(new URL('./fake-codex.mjs', import.meta.url));
 const KEY = 'chat-test-key-0123456789';
 let cleanup: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
@@ -18,9 +20,10 @@ afterEach(async () => {
 
 async function setup() {
   const server = new LocalServer({ accessKey: KEY, ports: [0], devPorts: [5173] });
-  const claude = new ClaudeHarness(FAKE);
-  const chat = new ChatRunner({ server, claude, workDir: mkdtempSync(join(tmpdir(), 'swarf-cc-')) });
-  server.setChatHandler(chat.handle, claude.detect());
+  const workDir = mkdtempSync(join(tmpdir(), 'swarf-cc-'));
+  const harnesses: Harness[] = [new ClaudeHarness(FAKE), new CopilotHarness(FAKE_COPILOT, workDir), new CodexHarness(FAKE_CODEX, workDir)];
+  const chat = new ChatRunner({ server, harnesses, workDir });
+  server.setChatHandler(chat.handle, chat.detect());
   server.setHttpHandler(mcpHttpHandler(server, chat.validToken));
   await server.start();
   cleanup.push(() => server.stop());
@@ -41,8 +44,8 @@ async function setup() {
       ws.send(JSON.stringify({ type: 'result', id: m.id, isError: r.isError, text: r.content } satisfies TabToServer));
     } else if (m.type === 'chat_event') events.set(m.id, [...(events.get(m.id) ?? []), m.event]);
   });
-  const send = (id: string, text: string, session: string | null = null) => {
-    ws.send(JSON.stringify({ type: 'chat', id, text, session } satisfies TabToServer));
+  const send = (id: string, text: string, session: string | null = null, harness?: HarnessId) => {
+    ws.send(JSON.stringify({ type: 'chat', id, text, session, ...(harness ? { harness } : {}) } satisfies TabToServer));
     return new Promise<ChatEvent[]>((resolve, reject) => {
       const t = setTimeout(() => reject(new Error(`no answer: ${JSON.stringify(events.get(id))}`)), 15000);
       const check = setInterval(() => {
@@ -63,7 +66,15 @@ const textOf = (ev: ChatEvent[]) => ev.filter((e) => e.kind === 'text').map((e) 
 describe('chat via Claude Code', () => {
   it('tells the tab that Claude Code is there', async () => {
     const { welcome } = await setup();
-    expect(welcome).toMatchObject({ type: 'welcome', chat: { available: true, version: '9.9.9 (Claude Code, fake)' } });
+    expect(welcome).toMatchObject({
+      type: 'welcome',
+      chat: { available: true, version: '9.9.9 (Claude Code, fake)' },
+      harnesses: [
+        { id: 'claude', available: true },
+        { id: 'copilot', name: 'GitHub Copilot CLI', available: true, version: 'GitHub Copilot CLI 9.9.9 (fake)' },
+        { id: 'codex', available: true, version: 'codex-cli 0.166.0' },
+      ],
+    });
   });
 
   it('runs claude headless with only the swarf tools, and its edits reach the tab', async () => {
@@ -114,5 +125,79 @@ describe('chat via Claude Code', () => {
     read(JSON.stringify({ type: 'result', subtype: 'error_max_turns', is_error: true, result: '' }));
     expect(got).toEqual([{ kind: 'text', text: 'whole text' }]);
     expect(done).toEqual({ kind: 'done', ok: false, error: 'error_max_turns' });
+  });
+});
+
+describe('chat via GitHub Copilot CLI', () => {
+  it('runs copilot with only the swarf tools, the rules opening a new conversation', async () => {
+    const s = await setup();
+    const ev = await s.send('p1', 'what can you do', null, 'copilot');
+    const session = (ev.find((e) => e.kind === 'session') as { session: string }).session;
+    expect(session).toMatch(/^[0-9a-f-]{36}$/);
+    const t = textOf(ev);
+    expect(t).toContain('available: swarf; allowed: swarf');
+    expect(t).toContain('rules first: true; rules in: true; no-ask: true; disabled: their_own');
+    expect(t).toContain('add_operation');
+    expect(ev.at(-1)).toMatchObject({ kind: 'done', ok: true, session });
+    // a continued conversation already has the rules
+    const next = textOf(await s.send('p2', 'and now?', session, 'copilot'));
+    expect(next).toContain('rules first: false; rules in: false');
+  });
+
+  it('its edits reach the tab, and a whole message is not repeated after its deltas', async () => {
+    const s = await setup();
+    const ev = await s.send('p3', 'turn a pin', null, 'copilot');
+    expect(textOf(ev)).toBe('Adding the pin.\n\nDone: turned Ø18.');
+    expect(s.job().operations).toMatchObject([{ type: 'lathe_turn', diameter: 18 }]);
+  });
+
+  it('reports a session error', async () => {
+    const s = await setup();
+    const ev = await s.send('p4', 'fail please', null, 'copilot');
+    expect(ev.at(-1)).toMatchObject({ kind: 'done', ok: false, error: 'quota exceeded' });
+  });
+});
+
+describe('chat via Codex CLI', () => {
+  it('runs codex exec with the swarf endpoint, the user\'s servers off, read-only', async () => {
+    const s = await setup();
+    const ev = await s.send('x1', 'what can you do', null, 'codex');
+    expect(ev[0]).toEqual({ kind: 'session', session: 'thread-77' });
+    expect(ev.some((e) => e.kind === 'thinking')).toBe(true);
+    const t = textOf(ev);
+    expect(t).toContain('theirs off: true; sandbox: "read-only"; rules ok: true; resumed: false');
+    expect(t).toContain('add_operation');
+    expect(ev.at(-1)).toMatchObject({ kind: 'done', ok: true, session: 'thread-77' });
+    expect(textOf(await s.send('x2', 'more', 'thread-77', 'codex'))).toContain('resumed: true');
+  });
+
+  it('its edits reach the tab', async () => {
+    const s = await setup();
+    const ev = await s.send('x3', 'turn a pin', null, 'codex');
+    expect(textOf(ev)).toBe('Adding the pin.\n\nDone: turned Ø17.');
+    expect(s.job().operations).toMatchObject([{ type: 'lathe_turn', diameter: 17 }]);
+  });
+
+  it('says what to do when it is not signed in', async () => {
+    const s = await setup();
+    const ev = await s.send('x4', 'fail please', null, 'codex');
+    expect(ev).toContainEqual({ kind: 'status', text: 'Reconnecting... 1/5' });
+    expect(ev.at(-1)).toMatchObject({ kind: 'done', ok: false, session: 'thread-77' });
+    expect((ev.at(-1) as { error: string }).error).toContain('codex login');
+  });
+
+  it('refuses a Codex that is too old', () => {
+    process.env.FAKE_CODEX_VERSION = 'codex-cli 0.120.3';
+    try {
+      expect(new CodexHarness(FAKE_CODEX, tmpdir()).detect()).toMatchObject({ available: false, reason: expect.stringContaining('too old') });
+    } finally {
+      delete process.env.FAKE_CODEX_VERSION;
+    }
+  });
+
+  it('refuses a coding agent it does not know', async () => {
+    const s = await setup();
+    const ev = await s.send('x5', 'hi', null, 'gemini' as HarnessId);
+    expect(ev.at(-1)).toMatchObject({ kind: 'done', ok: false, error: expect.stringContaining('gemini') });
   });
 });

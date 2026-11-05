@@ -2,67 +2,13 @@
  * Claude Code as the app chat's engine: `claude -p` with stream-json output, swarf's HTTP MCP
  * endpoint as its only MCP server and no other tools, the chat rules appended to its system prompt.
  * The message goes in on stdin and the rules in a file (neither fits a Windows command line).
- * Ported from 4k7 (tools/server/src/harness/claude.ts and claude-bin.ts), reduced to Claude Code.
+ * Ported from 4k7 (tools/server/src/harness/claude.ts).
  */
-import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { accessSync, constants, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { delimiter, join, sep } from 'node:path';
-import { CHAT_RULES, type ChatCapability, type ChatEvent } from '@swarf/agent';
-
-export type DoneEvent = Extract<ChatEvent, { kind: 'done' }>;
-
-export interface ChatJob {
-  text: string;
-  session: string | null;
-  model?: string;
-  mcpUrl: string;
-  token: string;
-  /** Where the rules file is written. */
-  rulesDir: string;
-}
-
-export interface RunSink {
-  emit(event: ChatEvent): void;
-  /** The run's outcome; the first one counts. */
-  finish(done: DoneEvent): void;
-  log(msg: string): void;
-}
-
-export interface Invocation {
-  args: string[];
-  env: NodeJS.ProcessEnv;
-  stdin: string;
-  line(line: string): void;
-}
-
-function isExecutable(file: string): boolean {
-  try {
-    if (!statSync(file).isFile()) return false;
-    if (process.platform !== 'win32') accessSync(file, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { CHAT_RULES, type HarnessInfo } from '@swarf/agent';
+import { detectCli, findCli, rulesFile, type ChatJob, type Harness, type Invocation, type RunSink } from './types.ts';
 
 /** `bin` itself when it is a path, else the first match on the PATH or in the usual install folders. */
-export function findClaude(bin: string, env = process.env, home = homedir()): string | null {
-  if (bin.includes(sep) || bin.includes('/')) return isExecutable(bin) ? bin : null;
-  const dirs = [
-    ...(env.PATH ?? '').split(delimiter),
-    join(home, '.claude', 'local'),
-    join(home, '.local', 'bin'),
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    join(home, '.npm-global', 'bin'),
-    ...(env.APPDATA ? [join(env.APPDATA, 'npm')] : []),
-  ].filter(Boolean);
-  const exts = process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''];
-  for (const d of dirs) for (const e of exts) if (isExecutable(join(d, bin + e))) return join(d, bin + e);
-  return null;
-}
+export const findClaude = findCli;
 
 /**
  * Environment for the headless Claude: never the markers of a Claude Code session that may have
@@ -75,31 +21,12 @@ export function childEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-export function detectClaude(bin: string): ChatCapability {
-  const path = findClaude(bin);
-  if (!path) return { available: false, reason: `Claude Code not found ("${bin}"). Install it (claude.com/claude-code), or set SWARF_CLAUDE_BIN to its path.` };
-  const r = spawnSync(path, ['--version'], { encoding: 'utf8', timeout: 15_000, env: childEnv(), shell: process.platform === 'win32' && path.endsWith('.cmd') });
-  if (r.error || r.status !== 0) return { available: false, reason: `Claude Code at ${path} did not start: ${r.error?.message ?? r.stderr?.trim() ?? `exit ${r.status}`}` };
-  return { available: true, version: r.stdout.trim().split(/\r?\n/)[0] ?? '' };
+export function detectClaude(bin: string): HarnessInfo {
+  return { id: 'claude', name: 'Claude Code', ...detectCli(bin, 'Claude Code', childEnv(), 'SWARF_CLAUDE_BIN', 'claude.com/claude-code') };
 }
 
-/** The rules in a file named after its content, written atomically (runs may share it). */
-export function rulesFile(dir: string, text: string): string {
-  const file = join(dir, `rules-${createHash('sha256').update(text).digest('hex').slice(0, 16)}.md`);
-  if (existsSync(file)) return file;
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, text, { mode: 0o600 });
-  try {
-    renameSync(tmp, file);
-  } catch (e) {
-    rmSync(tmp, { force: true });
-    if (!existsSync(file)) throw e;
-  }
-  return file;
-}
-
-export class ClaudeHarness {
+export class ClaudeHarness implements Harness {
+  readonly id = 'claude' as const;
   readonly name = 'Claude Code';
   bin: string;
 
@@ -107,12 +34,7 @@ export class ClaudeHarness {
     this.bin = bin;
   }
 
-  /** The program to start (resolved on the PATH and the usual folders). */
-  get path(): string {
-    return findClaude(this.bin) ?? this.bin;
-  }
-
-  detect(): ChatCapability {
+  detect(): HarnessInfo {
     return detectClaude(this.bin);
   }
 

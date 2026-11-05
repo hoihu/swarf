@@ -21,7 +21,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm run check -w @swarf/web",
     "server": "node tools/server/src/main.ts --serve",
-    "mcp": "node tools/server/src/main.ts"
+    "mcp": "node tools/server/src/main.ts",
+    "check:codex": "node scripts/check-codex.mjs",
+    "check:copilot": "node scripts/check-copilot.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

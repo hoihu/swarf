@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Agent, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, apiProblem, apiProvider, formatDiagnostics, formatJobContext, type AgentEvent, type ChatEvent, type Provider } from '@swarf/agent';
+  import { Agent, DEMO_FALLBACK, HARNESSES, DEMO_SCRIPTS, ScriptedProvider, apiProblem, apiProvider, formatDiagnostics, formatJobContext, type AgentEvent, type ChatEvent, type HarnessId, type Provider } from '@swarf/agent';
   import { diffJobs, isEmptyDiff, type Job, type JobDiff } from '@swarf/cam';
   import { store } from './store.svelte.ts';
   import { bridge } from './bridge.svelte.ts';
@@ -46,14 +46,15 @@
   let controller: AbortController | null = null;
   let log: HTMLDivElement;
 
-  /** Claude Code on this computer answers (through the local swarf server). */
-  const claudeReady = $derived(bridge.status === 'connected' && !!bridge.chat?.available);
-  const useClaude = $derived(store.engine === 'claude-code' || (store.engine === 'auto' && claudeReady));
-  const demo = $derived(!useClaude && apiProblem(store.api) !== null);
-  const engineLabel = $derived(useClaude ? (store.ccModel ? `Claude Code · ${store.ccModel}` : 'Claude Code') : demo ? 'offline demo' : store.api.model);
+  /** A coding agent on this computer answers (through the local swarf server). */
+  const agentName = $derived(HARNESSES[store.harness]);
+  const localReady = $derived(bridge.status === 'connected' && !!bridge.harness(store.harness)?.available);
+  const useLocal = $derived(store.engine === 'local' || (store.engine === 'auto' && localReady));
+  const demo = $derived(!useLocal && apiProblem(store.api) !== null);
+  const engineLabel = $derived(useLocal ? (store.model ? `${agentName} · ${store.model}` : agentName) : demo ? 'offline demo' : store.api.model);
 
-  /** Claude Code's conversation, continued with --resume; and the run in progress. */
-  let ccSession: string | null = null;
+  /** The coding agent's conversation, continued with its session id (only with the agent that started it); and the run in progress. */
+  let ccSession: { harness: HarnessId; id: string } | null = null;
   let ccRun: string | null = null;
   let ccStopped = false;
 
@@ -107,9 +108,9 @@
     const beforeJob = $state.snapshot(store.job) as Job;
     epoch = store.epoch;
     store.checkpoint();
-    if (useClaude) {
+    if (useLocal) {
       try {
-        await viaClaude(text, cur);
+        await viaLocal(text, cur);
       } finally {
         busy = false;
         if (store.epoch === epoch && JSON.stringify(store.job) === before) store.history = store.history.slice(0, -1);
@@ -160,15 +161,18 @@
     }
   }
 
-  /** One turn answered by Claude Code; sent back once or twice to fix errors the checks still find. */
-  async function viaClaude(text: string, cur: Item): Promise<void> {
-    if (!claudeReady) {
+  /** One turn answered by a coding agent on this computer; sent back once or twice to fix errors the checks still find. */
+  async function viaLocal(text: string, cur: Item): Promise<void> {
+    const harness = store.harness;
+    const name = HARNESSES[harness];
+    if (!localReady) {
       cur.error =
         bridge.status !== 'connected'
-          ? 'Claude Code answers through the swarf server on this computer: start it with npm run server and open the link it prints.'
-          : (bridge.chat?.reason ?? 'The swarf server cannot run Claude Code.');
+          ? `${name} answers through the swarf server on this computer: start it with npm run server and open the link it prints.`
+          : (bridge.harness(harness)?.reason ?? `The swarf server cannot run ${name}.`);
       return;
     }
+    if (ccSession?.harness !== harness) ccSession = null;
     ccStopped = false;
     bridge.batch = true;
     bridge.onCall = (label, ok, detail) => {
@@ -187,12 +191,12 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
         const done = await new Promise<Extract<ChatEvent, { kind: 'done' }>>((resolve) => {
           const id = crypto.randomUUID();
           ccRun = id;
-          const sent = bridge.sendChat({ id, text: message, session: ccSession, ...(store.ccModel ? { model: store.ccModel } : {}) }, (e) => {
-            if (e.kind === 'session') ccSession = e.session;
+          const sent = bridge.sendChat({ id, text: message, session: ccSession?.id ?? null, harness, ...(store.model ? { model: store.model } : {}) }, (e) => {
+            if (e.kind === 'session') ccSession = { harness, id: e.session };
             else if (e.kind === 'text') cur.text += e.text;
             else if (e.kind === 'status') cur.notes.push(e.text);
             else if (e.kind === 'done') {
-              if (e.session) ccSession = e.session;
+              if (e.session) ccSession = { harness, id: e.session };
               resolve(e);
             }
             void scroll();
@@ -202,7 +206,7 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
         ccRun = null;
         cur.text = cur.text.trim();
         if (!done.ok) {
-          cur.error = done.error ?? 'Claude Code stopped.';
+          cur.error = done.error ?? `${name} stopped.`;
           return;
         }
         const errors = store.analysis.diagnostics.filter((d) => d.severity === 'error').length;
@@ -210,7 +214,7 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
           if (errors) cur.notes.push(`${errors} error${errors === 1 ? '' : 's'} remain.`);
           return;
         }
-        cur.notes.push(`Checks found ${errors} error${errors === 1 ? '' : 's'}; asked Claude Code to fix ${errors === 1 ? 'it' : 'them'}.`);
+        cur.notes.push(`Checks found ${errors} error${errors === 1 ? '' : 's'}; asked ${name} to fix ${errors === 1 ? 'it' : 'them'}.`);
         cur.text += '\n\n';
       }
     } finally {
@@ -250,7 +254,7 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
 <section class="chat">
   <header>
     <b>Assistant</b>
-    <span class="model" title={demo ? 'No API key set and no Claude Code: scripted demo answers' : 'Who answers'}>{engineLabel}</span>
+    <button class="model" title={demo ? 'No API key set and no coding agent: scripted demo answers. Change in settings.' : 'Who answers: change in settings'} onclick={onSettings}>{engineLabel}</button>
     <span class="grow"></span>
     {#if items.length}<button class="link" onclick={clear}>New conversation</button>{/if}
   </header>
@@ -260,9 +264,9 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
       <div class="intro">
         <p>Describe the part in your own words: sizes, which faces, what is already done. The assistant builds the operations, the checks verify them, and you review the toolpath before running anything.</p>
         {#if demo}
-          <p class="muted">No model is connected, so only two scripted examples work. Start the swarf server (<code>npm run server</code>) to use Claude Code on this computer, or <button class="link" onclick={onSettings}>add an API key</button>.</p>
-        {:else if useClaude}
-          <p class="muted">Claude Code on this computer answers, with your own login. It only gets swarf's tools.</p>
+          <p class="muted">No model is connected, so only two scripted examples work. Start the swarf server (<code>npm run server</code>) to use Claude Code, GitHub Copilot or Codex on this computer, or <button class="link" onclick={onSettings}>add an API key</button>.</p>
+        {:else if useLocal}
+          <p class="muted">{agentName} on this computer answers, with your own login. It only gets swarf's tools.</p>
         {/if}
         <div class="examples">
           {#each examples as ex (ex)}
@@ -332,7 +336,8 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
 <style>
   .chat { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--panel); }
   header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex: none; }
-  .model { font-size: 12px; color: var(--ink-3); background: var(--panel-2); border: 1px solid var(--line); padding: 1px 8px; border-radius: 10px; }
+  .model { font: inherit; font-size: 12px; color: var(--ink-3); background: var(--panel-2); border: 1px solid var(--line); padding: 1px 8px; border-radius: 10px; cursor: pointer; }
+  .model:hover { color: var(--ink); border-color: var(--line-2); }
   .grow { flex: 1; }
   .link { border: 0; background: none; color: var(--link); padding: 0; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
   .log { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
