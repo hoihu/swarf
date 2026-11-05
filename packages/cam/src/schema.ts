@@ -166,7 +166,9 @@ export const ProfilePoint = z.object({
 export const LatheProfile = z.object({
   type: z.literal('lathe_profile'),
   ...common,
-  points: z.array(ProfilePoint).min(2).describe('The outline from the face towards the chuck; diameters never get smaller going towards the chuck. Start at d 0, z 0 to face as well.'),
+  points: z.array(ProfilePoint).min(2).optional().describe('The outline from the face towards the chuck; diameters never get smaller going towards the chuck. Start at d 0, z 0 to face as well. Or give shape instead.'),
+  shape: z.string().optional().describe('Instead of points: an imported drawing of the part seen from the side, spindle axis horizontal (a full outline, or only the half above the axis)'),
+  face: z.enum(['right', 'left']).default('right').describe('With shape: which end of the drawing is the front face (Z0)'),
   fromDiameter: pos.optional().describe('Diameter of the material now (default: stock diameter)'),
   doc: pos.optional().describe('Radial depth per roughing pass (default: tool maxDoc)'),
   finish: z.number().min(0).default(0.2).describe('Allowance left by roughing for the finishing pass'),

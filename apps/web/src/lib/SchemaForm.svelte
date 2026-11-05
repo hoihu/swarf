@@ -58,9 +58,10 @@
   <div class="f" class:bad={errors[f.key]}>
     <label for="f-{f.key}">{f.label}{#if f.unit}<span class="unit">{f.unit}</span>{/if}</label>
     {#if f.kind === 'shape'}
-      <select id="f-{f.key}" value={value[f.key] as string} onchange={(e) => set(f.key, (e.currentTarget as HTMLSelectElement).value)}>
+      <select id="f-{f.key}" value={(value[f.key] as string) ?? ''} onchange={(e) => set(f.key, (e.currentTarget as HTMLSelectElement).value || undefined)}>
+        {#if !f.required}<option value="">–</option>{/if}
         {#each shapes as sh (sh.id)}<option value={sh.id}>{sh.id} · {sh.name}</option>{/each}
-        {#if !shapes.some((sh) => sh.id === value[f.key])}<option value={value[f.key] as string}>{value[f.key] || 'none'} (missing)</option>{/if}
+        {#if value[f.key] && !shapes.some((sh) => sh.id === value[f.key])}<option value={value[f.key] as string}>{value[f.key] || 'none'} (missing)</option>{/if}
       </select>
     {:else if f.kind === 'tool'}
       <select id="f-{f.key}" value={value[f.key] as number} onchange={(e) => set(f.key, Number((e.currentTarget as HTMLSelectElement).value))}>

@@ -90,7 +90,7 @@ export const CAM_TOOLS: ToolDefinition[] = [
   {
     name: TOOL_NAMES.addOp,
     description:
-      'Add an operation. Lathe: lathe_face, lathe_turn, lathe_profile (a whole outline with chamfers and radii, roughed and finished with nose radius compensation), lathe_chamfer, lathe_groove, lathe_bore (boring bar, in a drilled hole), lathe_thread (G33 passes, external or internal), lathe_partoff, lathe_drill (all sizes are diameters, Z0 = finished face, negative Z towards the chuck). ' +
+      'Add an operation. Lathe: lathe_face, lathe_turn, lathe_profile (a whole outline with chamfers and radii, from points or from an imported side-view drawing, roughed and finished with nose radius compensation), lathe_chamfer, lathe_groove, lathe_bore (boring bar, in a drilled hole), lathe_thread (G33 passes, external or internal), lathe_partoff, lathe_drill (all sizes are diameters, Z0 = finished face, negative Z towards the chuck). ' +
       'Mill: mill_face, mill_pocket_rect, mill_pocket_circle, mill_contour_rect, mill_contour and mill_pocket (an imported drawing, by shape id), mill_drill (X0 Y0 = stock front-left corner, Z0 = top after facing). ' +
       'Speeds and feeds come from the tool table unless you override rpm/feed. Answers with the check results.',
     input_schema: schemaOf(AddOpInput),

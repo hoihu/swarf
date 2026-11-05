@@ -10,6 +10,7 @@ export const OP_TEMPLATES: Record<MachineKind, { type: OpType; name: string; mak
       name: 'Profile (steps, tapers, radii)',
       make: () => ({ type: 'lathe_profile', tool: 1, points: [{ d: 0, z: 0 }, { d: 12, z: 0, c: 0.5 }, { d: 12, z: -10 }, { d: 18, z: -10, r: 1 }, { d: 18, z: -25 }] }),
     },
+    { type: 'lathe_profile', name: 'Profile from a drawing', needsShape: true, make: (job) => ({ type: 'lathe_profile', tool: 1, shape: job.shapes[0]?.id ?? '' }) },
     { type: 'lathe_chamfer', name: 'Chamfer', make: () => ({ type: 'lathe_chamfer', tool: 1, diameter: 20, z: 0, size: 0.5 }) },
     { type: 'lathe_groove', name: 'Groove', make: () => ({ type: 'lathe_groove', tool: 2, diameter: 16, z: -10, width: 3 }) },
     { type: 'lathe_bore', name: 'Bore', make: () => ({ type: 'lathe_bore', tool: 5, diameter: 16, fromDiameter: 12, zEnd: -15 }) },

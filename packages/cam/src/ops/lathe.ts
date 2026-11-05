@@ -8,6 +8,7 @@ import { CamError, levels, v, type Move } from '../program.ts';
 import type { Job, Operation } from '../schema.ts';
 import { latheSafe, type OpContext } from './context.ts';
 import { buildProfile, tipPath, zAtRadius, type P2 } from './profile.ts';
+import { profileFromDrawing } from '../importers/lathe.ts';
 
 type LatheOp = Extract<Operation, { type: `lathe_${string}` }>;
 
@@ -85,7 +86,14 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
 
     case 'lathe_profile': {
       const fromR = (op.fromDiameter ?? safe.r * 2) / 2;
-      const outline = buildProfile(op.points);
+      let pts = op.points;
+      if (op.shape) {
+        const sh = ctx.job.shapes.find((x) => x.id === op.shape);
+        if (!sh) throw new CamError(`there is no drawing ${op.shape}${ctx.job.shapes.length ? ` (drawings: ${ctx.job.shapes.map((x) => x.id).join(', ')})` : '; import a DXF or SVG first'}`);
+        pts = profileFromDrawing(sh, op.face).points;
+      }
+      if (!pts) throw new CamError('give the profile points or a drawing (shape)');
+      const outline = buildProfile(pts);
       if (Math.max(...outline.map((p) => p.x)) > fromR + 1e-9) throw new CamError(`the profile is larger than the material Ø${fromR * 2}`);
       const rn = ctx.tool.noseRadius ?? 0;
       const zs = outline[0]!.z + ctx.c;

@@ -15,3 +15,4 @@ export { importSvg, parsePathData, parseTransform } from './importers/svg.ts';
 export { offsetRegion, orient, normalize, area, bbox, pointInLoop, type Loop, type Pt } from './geom2d.ts';
 export { importDrawing } from './importers/index.ts';
 export { fitArcs } from './arcfit.ts';
+export { profileFromDrawing } from './importers/lathe.ts';

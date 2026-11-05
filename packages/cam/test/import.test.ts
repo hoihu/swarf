@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXAMPLES, Job, analyze, area, importDrawing, importDxf, importSvg, parsePathData, parseTransform, type MillMaterial } from '../src/index.ts';
+import { EXAMPLES, Job, analyze, area, importDrawing, profileFromDrawing, importDxf, importSvg, parsePathData, parseTransform, type MillMaterial } from '../src/index.ts';
 
 /** A minimal DXF: header units and entities, as group code / value pairs. */
 function dxf(units: number, entities: (string | number)[][]): string {
@@ -63,6 +63,35 @@ describe('SVG import', () => {
     expect(r.paths).toHaveLength(1);
     const xs = r.paths[0]!.pts.map((p) => p[0]);
     expect((Math.min(...xs) + Math.max(...xs)) / 2).toBeCloseTo(5, 3);
+  });
+});
+
+describe('lathe profiles from drawings', () => {
+  const full = { id: 's1', name: 'shaft', at: { x: 0, y: 0 }, paths: [{ closed: true, pts: [[30, -5], [30, 5], [18, 5], [18, 8], [0, 8], [0, -8], [18, -8], [18, -5]] as [number, number][] }] };
+  const expected = [{ d: 0, z: 0 }, { d: 10, z: 0 }, { d: 10, z: -12 }, { d: 16, z: -12 }, { d: 16, z: -30 }];
+  const near = (got: { d: number; z: number }[]) => expect(got.map((p) => [Number(p.d.toFixed(6)), Number(p.z.toFixed(6))])).toEqual(expected.map((p) => [p.d, p.z]));
+
+  it('reads a full side view (axis through the middle)', () => {
+    const r = profileFromDrawing(full);
+    near(r.points);
+    expect(r.notes.join()).toMatch(/full side view/);
+  });
+
+  it('reads a half profile drawn on the axis, and a face on the left', () => {
+    near(profileFromDrawing({ ...full, paths: [{ closed: true, pts: [[30, 0], [30, 5], [18, 5], [18, 8], [0, 8], [0, 0]] }] }).points);
+    const mirrored = { ...full, paths: [{ closed: true, pts: full.paths[0]!.pts.map(([x, y]) => [100 - x, y] as [number, number]) }] };
+    near(profileFromDrawing(mirrored, 'left').points);
+  });
+
+  it('turns a drawn part on the lathe', () => {
+    const base = EXAMPLES.lathe();
+    const j = Job.parse({ ...base, shapes: [full], operations: [{ type: 'lathe_profile', tool: 1, shape: 's1' }] });
+    const a = analyze(j);
+    expect(a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    const m = a.material as unknown as { r: Float32Array; z0: number; dz: number };
+    const r = (z: number) => m.r[Math.floor((z - m.z0) / m.dz)]!;
+    expect(r(-6)).toBeCloseTo(5, 1);
+    expect(r(-20)).toBeCloseTo(8, 1);
   });
 });
 

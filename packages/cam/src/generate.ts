@@ -52,8 +52,8 @@ export function opLabel(op: Operation): string {
       return `Face to Z${op.z}`;
     case 'lathe_turn':
       return `Turn Ø${op.diameter} to Z${op.zEnd}`;
-    case 'lathe_profile':
-      {
+    case 'lathe_profile': {
+      if (!op.points) return `Profile from ${op.shape ?? 'a drawing'}`;
       const ds = op.points.map((p) => p.d).filter((d) => d > 0);
       return `Profile Ø${Math.min(...ds)}–Ø${Math.max(...ds)} to Z${op.points.at(-1)!.z}`;
     }

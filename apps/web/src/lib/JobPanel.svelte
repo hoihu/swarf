@@ -185,22 +185,23 @@
           <p class="muted">Describe the part in the chat, or add an operation below.</p>
         </div>
       {/if}
-      {#if job.machine.kind === 'mill'}
-        <div class="drawings">
+      <div class="drawings">
           {#each job.shapes as sh (sh.id)}
             {@const z = sizeOf(sh)}
             <div class="drawing">
               <span class="what"><span class="label">{sh.id} · {sh.name}</span><span class="sub">{z.w.toFixed(1)} × {z.h.toFixed(1)} mm, {sh.paths.length} path{sh.paths.length === 1 ? '' : 's'}</span></span>
-              <label class="at">X <input value={z.x.toFixed(2)} onchange={(e) => moveShape(sh.id, 'x', e)} aria-label="{sh.id} left edge X" /></label>
-              <label class="at">Y <input value={z.y.toFixed(2)} onchange={(e) => moveShape(sh.id, 'y', e)} aria-label="{sh.id} bottom edge Y" /></label>
+              {#if job.machine.kind === 'mill'}
+                <label class="at">X <input value={z.x.toFixed(2)} onchange={(e) => moveShape(sh.id, 'x', e)} aria-label="{sh.id} left edge X" /></label>
+                <label class="at">Y <input value={z.y.toFixed(2)} onchange={(e) => moveShape(sh.id, 'y', e)} aria-label="{sh.id} bottom edge Y" /></label>
+              {/if}
               <button class="ib" aria-label="Remove {sh.id}" disabled={shapeUsed(sh.id)} title={shapeUsed(sh.id) ? 'Operations use this drawing' : 'Remove'} onclick={() => store.set({ ...job, shapes: job.shapes.filter((x) => x.id !== sh.id) })}>×</button>
             </div>
           {/each}
           <label class="btn import">Import DXF or SVG<input type="file" accept=".dxf,.svg,image/svg+xml" onchange={importFile} hidden /></label>
           {#if importError}<p class="diag error">{importError}</p>{/if}
           {#each importNotes as n, k (k)}<p class="muted small">{n}</p>{/each}
+          {#if job.machine.kind === 'lathe' && !job.shapes.length}<p class="muted small">A drawing of the part from the side (axis horizontal, face on the right) can be turned with "Profile from a drawing".</p>{/if}
         </div>
-      {/if}
       <ol class="ops">
         {#each job.operations as op, i (op.id)}
           {@const ds = errorsByOp.get(op.id!) ?? []}
@@ -238,7 +239,7 @@
       <details class="add">
         <summary>Add an operation</summary>
         <div class="grid">
-          {#each OP_TEMPLATES[job.machine.kind] as t (t.type)}
+          {#each OP_TEMPLATES[job.machine.kind] as t (t.name)}
             <button class="btn" onclick={() => addOp(t.make)} disabled={t.needsShape && !job.shapes.length} title={t.needsShape && !job.shapes.length ? 'Import a DXF or SVG first' : ''}>{t.name}</button>
           {/each}
         </div>
