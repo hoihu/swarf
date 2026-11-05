@@ -39,15 +39,16 @@ user text ──► agent ──tool calls──► Job (zod-validated)
 
 Tier 1 (this): parametric 2-axis lathe and 2.5D mill operations, checks, preview, agent.
 
-Tier 2, toward everyday use (done: forms, MCP for Claude Code, streaming over Web Serial,
-planner time estimate, ramp/helix entry, nose radius on chamfers):
+Tier 2, toward everyday use (done: forms, MCP for Claude Code, the app chat answered by Claude
+Code headless, streaming over Web Serial, planner time estimate, ramp/helix entry, nose radius on
+chamfers):
 - Threading as a sequence of G33 passes (grblHAL with spindle sync).
 - Profiles: turn an arbitrary 2D profile (polyline with arcs) on the lathe; DXF/SVG import for
   mill contours and pockets, offsets via clipper2.
 - Tabs for contours; climb/conventional choice.
 - Streaming over WebSocket for networked grblHAL boards (the streamer takes any transport).
 - Nose radius compensation for general profiles (tapers and arcs), once profiles exist.
-- Running the app's chat through Claude Code/Copilot headless (4k7's harness) instead of an API key.
+- Other headless agents for the chat (Copilot CLI, Codex, OpenCode), as 4k7 has.
 - A changeset review step like 4k7 (accept or reject an agent turn) instead of plain undo.
 
 Tier 3 (only by reusing libraries): STEP import (build123d / OpenCascade), adaptive clearing,

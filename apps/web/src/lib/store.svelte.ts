@@ -6,6 +6,10 @@ import { API_SERVICES, type ApiChoice } from '@swarf/agent';
 
 const JOB_KEY = 'swarf.job';
 const API_KEY = 'swarf.api';
+const ENGINE_KEY = 'swarf.engine';
+
+/** Who answers the chat: Claude Code through the local server, a model API with the user's key, or whichever is there (Claude Code first). */
+export type Engine = 'auto' | 'claude-code' | 'api';
 
 function load<T>(key: string, parse: (v: unknown) => T | null, fallback: () => T): T {
   try {
@@ -34,6 +38,17 @@ class Store {
   api = $state<ApiChoice>(
     load<ApiChoice>(API_KEY, (v) => (v && typeof v === 'object' && 'service' in v ? (v as ApiChoice) : null), () => ({ service: 'anthropic', baseURL: '', apiKey: '', model: API_SERVICES[0]!.models[0]! })),
   );
+  engine = $state<Engine>(load<Engine>(ENGINE_KEY, (v) => (v === 'claude-code' || v === 'api' || v === 'auto' ? v : null), () => 'auto'));
+  /** Model for Claude Code runs ('' = Claude Code's default). */
+  ccModel = $state<string>(load<string>('swarf.ccModel', (v) => (typeof v === 'string' ? v : null), () => ''));
+
+  setEngine(e: Engine, ccModel: string): void {
+    this.engine = e;
+    this.ccModel = ccModel;
+    save(ENGINE_KEY, e);
+    save('swarf.ccModel', ccModel);
+  }
+
   /** Bumped when the user switches to another job: a running agent turn must not edit the new one. */
   epoch = $state(0);
   /** Selected operation id (highlighted in the list and the preview). */

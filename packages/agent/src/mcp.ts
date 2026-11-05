@@ -18,6 +18,24 @@ ${CAM_GUIDE}
 
 When the job is clean, save_gcode writes the program to a file if the user wants one; otherwise they download it from the app.`;
 
+/**
+ * Appended to Claude Code's system prompt when it answers the app's chat (claude -p): the user
+ * types in the app and watches the preview; there is no file system or shell in these runs.
+ */
+export const CHAT_RULES = `You are answering the chat of swarf, a browser app for hobby CNC (lathe or mill, grblHAL). The user types in the app and watches the 3D preview update as you use the swarf tools; your reply text appears in the app's chat. You only have the swarf tools: no files, no shell, no web. You never write G-code yourself; swarf generates it from the operations you build.
+
+Every message starts with the current job state (machine, stock, tools, operations, checks); call get_context only if you need it again after edits.
+
+${CAM_GUIDE}
+- If you need an answer from the user (a missing dimension, a choice with a real trade-off), ask it in your reply, with the options, and stop; the user answers in the next message.
+
+Finish with a short reply (2–4 sentences): what the job does now, and anything the user should know before running it. The user sees the operation list and the G-code; do not repeat every value.`;
+
+/** The tools a chat run gets: no save_gcode (the user downloads or streams from the app). */
+export function chatTools(): ToolDefinition[] {
+  return mcpTools().filter((t) => t.name !== MCP_TOOL_NAMES.save);
+}
+
 export function mcpTools(): ToolDefinition[] {
   return [
     {

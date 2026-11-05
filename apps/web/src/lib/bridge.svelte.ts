@@ -3,7 +3,7 @@
  * here. The app link carries `#connect=<key>@<port>`; it is remembered, so a reload reconnects.
  * Each tool call runs against the store like an edit by hand (one undo step per call).
  */
-import { SERVER_PROTOCOL, parseConnect, runTabTool, type ServerToTab, type TabToServer } from '@swarf/agent';
+import { SERVER_PROTOCOL, parseConnect, runTabTool, type ChatCapability, type ChatEvent, type ServerToTab, type TabToServer } from '@swarf/agent';
 import type { Job } from '@swarf/cam';
 import { store } from './store.svelte.ts';
 
@@ -17,6 +17,13 @@ class Bridge {
   /** The last tool call, for the header (e.g. "add · op3"). */
   last = $state<string | null>(null);
   reason = $state('');
+  /** Whether the server can answer the chat with Claude Code. */
+  chat = $state<ChatCapability | null>(null);
+  #chatListeners = new Map<string, (e: ChatEvent) => void>();
+  /** Told about every tool call the tab runs (the chat shows them while Claude Code works). */
+  onCall: ((label: string, ok: boolean, detail: string) => void) | null = null;
+  /** While a chat turn runs, its edits share one undo step (the turn's checkpoint) instead of one each. */
+  batch = false;
   #target: { accessKey: string; port: number } | null = null;
   #ws: WebSocket | null = null;
   #retry = 0;
@@ -47,6 +54,18 @@ class Bridge {
     clearTimeout(this.#timer);
     this.#ws?.close();
     this.status = 'off';
+  }
+
+  /** Send a chat message to Claude Code through the server; events arrive at `on` until done. */
+  sendChat(msg: { id: string; text: string; session: string | null; model?: string }, on: (e: ChatEvent) => void): boolean {
+    if (this.status !== 'connected' || !this.#ws) return false;
+    this.#chatListeners.set(msg.id, on);
+    this.#ws.send(JSON.stringify({ type: 'chat', ...msg } satisfies TabToServer));
+    return true;
+  }
+
+  cancelChat(id: string): void {
+    this.#ws?.send(JSON.stringify({ type: 'chat_cancel', id } satisfies TabToServer));
   }
 
   #saved(): { accessKey: string; port: number } | null {
@@ -81,8 +100,15 @@ class Bridge {
         case 'welcome':
           this.status = 'connected';
           this.agent = msg.agent;
+          this.chat = msg.chat ?? null;
           this.#retry = 0;
           break;
+        case 'chat_event': {
+          const on = this.#chatListeners.get(msg.id);
+          on?.(msg.event);
+          if (msg.event.kind === 'done') this.#chatListeners.delete(msg.id);
+          break;
+        }
         case 'denied':
           this.status = 'denied';
           this.reason = msg.reason;
@@ -93,11 +119,12 @@ class Bridge {
           break;
         case 'call': {
           const r = runTabTool(
-            { get: () => $state.snapshot(store.job) as Job, set: (j: Job) => store.set(j) },
+            { get: () => $state.snapshot(store.job) as Job, set: (j: Job) => store.set(j, !this.batch) },
             msg.tool,
             msg.input,
           );
           this.last = r.isError ? `${r.label} failed` : r.label;
+          this.onCall?.(r.label, !r.isError, r.detail);
           ws.send(JSON.stringify({ type: 'result', id: msg.id, isError: r.isError, text: r.content } satisfies TabToServer));
           break;
         }
@@ -106,6 +133,10 @@ class Bridge {
     ws.onclose = (ev) => {
       if (this.#ws !== ws) return;
       this.#ws = null;
+      this.chat = null;
+      // a chat run in progress cannot report back any more
+      for (const on of this.#chatListeners.values()) on({ kind: 'done', ok: false, error: 'Lost the connection to the swarf server.' });
+      this.#chatListeners.clear();
       if (this.status === 'denied' || !this.#target) return;
       // replaced by another tab: stay quiet rather than fight over the connection
       if (ev.code === 4000) {

@@ -1,8 +1,9 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Agent, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, apiProblem, apiProvider, type AgentEvent, type Provider } from '@swarf/agent';
+  import { Agent, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, apiProblem, apiProvider, formatDiagnostics, formatJobContext, type AgentEvent, type ChatEvent, type Provider } from '@swarf/agent';
   import type { Job } from '@swarf/cam';
   import { store } from './store.svelte.ts';
+  import { bridge } from './bridge.svelte.ts';
 
   let { onSettings }: { onSettings: () => void } = $props();
 
@@ -26,7 +27,16 @@
   let controller: AbortController | null = null;
   let log: HTMLDivElement;
 
-  const demo = $derived(apiProblem(store.api) !== null);
+  /** Claude Code on this computer answers (through the local swarf server). */
+  const claudeReady = $derived(bridge.status === 'connected' && !!bridge.chat?.available);
+  const useClaude = $derived(store.engine === 'claude-code' || (store.engine === 'auto' && claudeReady));
+  const demo = $derived(!useClaude && apiProblem(store.api) !== null);
+  const engineLabel = $derived(useClaude ? (store.ccModel ? `Claude Code · ${store.ccModel}` : 'Claude Code') : demo ? 'offline demo' : store.api.model);
+
+  /** Claude Code's conversation, continued with --resume; and the run in progress. */
+  let ccSession: string | null = null;
+  let ccRun: string | null = null;
+  let ccStopped = false;
 
   function provider(): Provider {
     if (apiProblem(store.api)) return new ScriptedProvider(DEMO_SCRIPTS, { fallback: DEMO_FALLBACK, streamDelayMs: 12 });
@@ -54,6 +64,7 @@
   $effect(() => {
     if (store.epoch !== seenEpoch) {
       seenEpoch = store.epoch;
+      if (ccRun) bridge.cancelChat(ccRun);
       if (!busy) clear();
     }
   });
@@ -75,8 +86,18 @@
 
     const before = JSON.stringify(store.job);
     epoch = store.epoch;
-    let lastWasText = false;
     store.checkpoint();
+    if (useClaude) {
+      try {
+        await viaClaude(text, cur);
+      } finally {
+        busy = false;
+        if (store.epoch === epoch && JSON.stringify(store.job) === before) store.history = store.history.slice(0, -1);
+        void scroll();
+      }
+      return;
+    }
+    let lastWasText = false;
     agent.setProvider(provider());
     controller = new AbortController();
     const on = (e: AgentEvent) => {
@@ -117,12 +138,76 @@
     }
   }
 
+  /** One turn answered by Claude Code; sent back once or twice to fix errors the checks still find. */
+  async function viaClaude(text: string, cur: Item): Promise<void> {
+    if (!claudeReady) {
+      cur.error =
+        bridge.status !== 'connected'
+          ? 'Claude Code answers through the swarf server on this computer: start it with npm run server and open the link it prints.'
+          : (bridge.chat?.reason ?? 'The swarf server cannot run Claude Code.');
+      return;
+    }
+    ccStopped = false;
+    bridge.batch = true;
+    bridge.onCall = (label, ok, detail) => {
+      cur.activity.push({ label, ok, detail });
+      void scroll();
+    };
+    try {
+      for (let round = 0; ; round++) {
+        const message =
+          round === 0
+            ? `${formatJobContext($state.snapshot(store.job) as Job)}
+
+${text}`
+            : `[job verification] The job still has errors. Fix them (or remove the operation and say why), then finish:
+${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'error'))}`;
+        const done = await new Promise<Extract<ChatEvent, { kind: 'done' }>>((resolve) => {
+          const id = crypto.randomUUID();
+          ccRun = id;
+          const sent = bridge.sendChat({ id, text: message, session: ccSession, ...(store.ccModel ? { model: store.ccModel } : {}) }, (e) => {
+            if (e.kind === 'session') ccSession = e.session;
+            else if (e.kind === 'text') cur.text += e.text;
+            else if (e.kind === 'status') cur.notes.push(e.text);
+            else if (e.kind === 'done') {
+              if (e.session) ccSession = e.session;
+              resolve(e);
+            }
+            void scroll();
+          });
+          if (!sent) resolve({ kind: 'done', ok: false, error: 'Not connected to the swarf server.' });
+        });
+        ccRun = null;
+        cur.text = cur.text.trim();
+        if (!done.ok) {
+          cur.error = done.error ?? 'Claude Code stopped.';
+          return;
+        }
+        const errors = store.analysis.diagnostics.filter((d) => d.severity === 'error').length;
+        if (!errors || round >= 2 || ccStopped) {
+          if (errors) cur.notes.push(`${errors} error${errors === 1 ? '' : 's'} remain.`);
+          return;
+        }
+        cur.notes.push(`Checks found ${errors} error${errors === 1 ? '' : 's'}; asked Claude Code to fix ${errors === 1 ? 'it' : 'them'}.`);
+        cur.text += '\n\n';
+      }
+    } finally {
+      bridge.batch = false;
+      bridge.onCall = null;
+    }
+  }
+
   function stop(): void {
     controller?.abort();
+    if (ccRun) {
+      ccStopped = true;
+      bridge.cancelChat(ccRun);
+    }
   }
 
   function clear(): void {
     agent.reset();
+    ccSession = null;
     items = [];
   }
 
@@ -143,7 +228,7 @@
 <section class="chat">
   <header>
     <b>Assistant</b>
-    <span class="model" title={demo ? 'No API key set: scripted demo answers' : 'Model in use'}>{demo ? 'offline demo' : store.api.model}</span>
+    <span class="model" title={demo ? 'No API key set and no Claude Code: scripted demo answers' : 'Who answers'}>{engineLabel}</span>
     <span class="grow"></span>
     {#if items.length}<button class="link" onclick={clear}>New conversation</button>{/if}
   </header>
@@ -153,7 +238,9 @@
       <div class="intro">
         <p>Describe the part in your own words: sizes, which faces, what is already done. The assistant builds the operations, the checks verify them, and you review the toolpath before running anything.</p>
         {#if demo}
-          <p class="muted">No model is connected, so only two scripted examples work. <button class="link" onclick={onSettings}>Add an API key</button> to use a real model.</p>
+          <p class="muted">No model is connected, so only two scripted examples work. Start the swarf server (<code>npm run server</code>) to use Claude Code on this computer, or <button class="link" onclick={onSettings}>add an API key</button>.</p>
+        {:else if useClaude}
+          <p class="muted">Claude Code on this computer answers, with your own login. It only gets swarf's tools.</p>
         {/if}
         <div class="examples">
           {#each examples as ex (ex)}
@@ -209,6 +296,7 @@
   .log { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   .intro p { margin: 0 0 10px; color: var(--ink-2); max-width: 60ch; }
   .muted { color: var(--ink-3); }
+  .muted code { font-family: var(--mono); font-size: 12px; }
   .examples { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
   .examples button { text-align: left; border: 1px dashed var(--line-2); background: var(--panel-2); border-radius: 8px; padding: 8px 10px; color: var(--ink-2); }
   .examples button:hover { border-style: solid; color: var(--ink); }

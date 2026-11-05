@@ -1,11 +1,13 @@
 <script lang="ts">
   import { API_SERVICES, apiProblem, apiService, type ApiChoice, type ApiServiceId } from '@swarf/agent';
-  import { store } from './store.svelte.ts';
+  import { store, type Engine } from './store.svelte.ts';
   import { bridge } from './bridge.svelte.ts';
 
   let { onClose }: { onClose: () => void } = $props();
 
   let draft = $state<ApiChoice>({ ...store.api });
+  let engine = $state<Engine>(store.engine);
+  let ccModel = $state(store.ccModel);
   const service = $derived(apiService(draft.service));
   const problem = $derived(apiProblem(draft));
 
@@ -16,6 +18,7 @@
 
   function save(): void {
     store.setApi({ ...draft });
+    store.setEngine(engine, ccModel.trim());
     onClose();
   }
 
@@ -28,6 +31,32 @@
 <dialog bind:this={dialog} onclose={onClose} aria-labelledby="settings-title">
   <form method="dialog" onsubmit={(e) => { e.preventDefault(); save(); }}>
     <h2 id="settings-title">Assistant</h2>
+    <label>
+      <span>Answered by</span>
+      <select bind:value={engine}>
+        <option value="auto">Claude Code when the swarf server runs, else the API</option>
+        <option value="claude-code">Claude Code on this computer</option>
+        <option value="api">A model API with your key</option>
+      </select>
+    </label>
+    {#if engine !== 'api'}
+      <p class="muted small">
+        {#if bridge.status === 'connected' && bridge.chat?.available}
+          Claude Code {bridge.chat.version} is ready on this computer; it uses your own login and plan.
+        {:else if bridge.status === 'connected'}
+          {bridge.chat?.reason ?? 'The server cannot run Claude Code.'}
+        {:else}
+          Start the swarf server with <code class="inline">npm run server</code> and open the link it prints.
+        {/if}
+      </p>
+      <label>
+        <span>Model</span>
+        <input type="text" bind:value={ccModel} placeholder="Claude Code's default (e.g. sonnet, opus)" />
+      </label>
+    {/if}
+
+    {#if engine !== 'claude-code'}
+    <h3>Model API</h3>
     <p class="muted">The app talks to the model straight from this browser with your own key. The key is kept in this browser's storage only.</p>
 
     <label>
@@ -63,10 +92,11 @@
         <input type="text" bind:value={draft.model} placeholder="model id, e.g. gpt-5" />
       {/if}
     </label>
+    {/if}
 
     <section class="cc">
-      <h3>Or let Claude Code drive</h3>
-      <p class="muted">Add swarf as an MCP server, then ask Claude Code for the part. It edits the job here while you watch.</p>
+      <h3>Or work from the Claude Code terminal</h3>
+      <p class="muted">Add swarf as an MCP server, then ask Claude Code for the part in your terminal. It edits the job here while you watch.</p>
       <code>claude mcp add swarf -- node /path/to/swarf/tools/server/src/main.ts</code>
       <p class="muted small">
         {#if bridge.status === 'connected'}
@@ -80,7 +110,7 @@
     </section>
 
     <div class="row">
-      <span class="status">{problem ? `Without a ${problem.replace('no ', '')}, the chat runs the offline demo.` : 'Ready.'}</span>
+      <span class="status">{engine === 'claude-code' ? '' : problem ? `Without a ${problem.replace('no ', '')}, the chat runs the offline demo when Claude Code is not there.` : 'Ready.'}</span>
       <button type="button" class="btn" onclick={() => dialog.close()}>Cancel</button>
       <button type="submit" class="btn pri">Save</button>
     </div>
@@ -103,6 +133,7 @@
   a { color: var(--link); }
   .cc { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; display: flex; flex-direction: column; gap: 6px; }
   h3 { margin: 0; font-size: 14px; }
+  code.inline { display: inline; padding: 1px 4px; white-space: normal; }
   code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; overflow-x: auto; white-space: nowrap; }
   .link { border: 0; background: none; padding: 0; color: var(--link); font-weight: 600; text-decoration: underline; }
 </style>

@@ -16,11 +16,21 @@ npm test           # CAM core and agent loop
 npm run typecheck
 ```
 
-Without an API key the chat runs an offline demo (two scripted requests). Add a key under
-**Assistant**: Anthropic, OpenAI, OpenRouter, Gemini, a local Ollama/LM Studio, or any compatible
-gateway. The key stays in the browser.
+## Who answers the chat
 
-## Claude Code drives the app (MCP)
+- **Claude Code on this computer** (no API key, your own Claude login and plan): run
+  `npm run build && npm run server` and open the link it prints. The server runs `claude -p` for
+  each message with swarf as its only MCP server: no shell, no files, no web, just the CAM tools,
+  which act on the open tab. Conversations continue (`--resume`); if the checks still find errors
+  when Claude Code finishes, the app sends it back to fix them (twice at most). Set
+  `SWARF_CLAUDE_BIN` if `claude` is not on the PATH.
+- **A model API with your key**, under **Assistant**: Anthropic, OpenAI, OpenRouter, Gemini, a local
+  Ollama/LM Studio, or any compatible gateway. The key stays in the browser.
+- Neither: an offline demo with two scripted requests.
+
+By default the chat uses Claude Code whenever the server is running, and the API otherwise.
+
+## Claude Code in the terminal drives the app (MCP)
 
 swarf ships a small MCP server. Claude Code starts it; it relays every tool call to the open app
 tab, so you watch the part appear in the preview while Claude Code works (the 4k7 pattern).

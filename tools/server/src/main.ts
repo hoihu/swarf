@@ -9,12 +9,19 @@
  * for the app tab. The link it logs (and returns from any tool while no tab is connected) opens
  * the app connected to it. `--serve` runs only the relay and app (no MCP), `--open` opens the link.
  *
+ * The other direction: the app's own chat can be answered by Claude Code on this computer (your
+ * login and plan, no API key). The server runs `claude -p` per message with swarf as its only MCP
+ * server (SWARF_CLAUDE_BIN: where claude is, if not on the PATH).
+ *
  * In stdio mode stdout belongs to the MCP protocol; logs go to stderr.
  */
+import { join } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { appHandler } from './app.ts';
-import { appDir, configPath, DEV_APP, loadConfig } from './config.ts';
-import { createMcpServer, VERSION } from './mcp.ts';
+import { appDir, configDir, configPath, DEV_APP, loadConfig } from './config.ts';
+import { createMcpServer, mcpHttpHandler, VERSION } from './mcp.ts';
+import { ChatRunner } from './chat.ts';
+import { ClaudeHarness } from './claude.ts';
 import { LocalServer } from './server.ts';
 import { spawn } from 'node:child_process';
 
@@ -26,9 +33,16 @@ async function main(): Promise<void> {
   const cfg = loadConfig();
   const dir = appDir();
   const server = new LocalServer({ accessKey: cfg.accessKey, devPorts: [5173, 4173], log, ...(dir ? {} : { appUrl: DEV_APP }) });
-  server.setHttpHandler(appHandler(dir));
+  const claude = new ClaudeHarness(process.env.SWARF_CLAUDE_BIN ?? 'claude');
+  const chat = new ChatRunner({ server, claude, workDir: join(configDir(), 'claude-workspace'), log });
+  const capability = claude.detect();
+  server.setChatHandler(chat.handle, capability);
+  const app = appHandler(dir);
+  const mcpHttp = mcpHttpHandler(server, chat.validToken);
+  server.setHttpHandler((req, res) => ((req.url ?? '').split('?')[0] === '/mcp' ? mcpHttp(req, res) : app(req, res)));
   const port = await server.start();
   log(`v${VERSION} on 127.0.0.1:${port}; access key in ${configPath()}`);
+  log(capability.available ? `app chat via Claude Code ${capability.version}` : `app chat via Claude Code: no (${capability.reason})`);
   if (!dir) log(`the app is not built (npm run build): the link points at the dev server (npm run dev)`);
   log(`open the app: ${server.appLink()}`);
   if (open) openBrowser(server.appLink());
@@ -39,6 +53,7 @@ async function main(): Promise<void> {
     await mcp.connect(new StdioServerTransport());
   }
   const shutdown = async () => {
+    chat.stopAll();
     await server.stop();
     await mcp?.close().catch(() => {});
     process.exit(0);

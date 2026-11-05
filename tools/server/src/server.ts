@@ -9,7 +9,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { SERVER_PORTS, SERVER_PROTOCOL, type ServerToTab, type TabToServer } from '@swarf/agent';
+import { SERVER_PORTS, SERVER_PROTOCOL, type ChatCapability, type ServerToTab, type TabToServer } from '@swarf/agent';
 
 export interface CallResult {
   isError: boolean;
@@ -28,6 +28,7 @@ export interface LocalServerOptions {
 }
 
 export type HttpHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
+export type ChatMessage = Extract<TabToServer, { type: 'chat' | 'chat_cancel' }>;
 
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::(\d+))?$/;
 
@@ -48,6 +49,8 @@ export class LocalServer {
   #pending = new Map<number, { resolve: (r: CallResult) => void; timer: ReturnType<typeof setTimeout> }>();
   #seq = 0;
   #agent: string | null = null;
+  #chat: ChatCapability = { available: false, reason: 'This server does not run Claude Code for the chat.' };
+  #chatHandler: ((m: ChatMessage) => void) | null = null;
 
   constructor(opts: LocalServerOptions) {
     this.#opts = opts;
@@ -98,6 +101,21 @@ export class LocalServer {
 
   setAppUrl(url: string | undefined): void {
     this.#opts.appUrl = url;
+  }
+
+  /** Answer the tab's chat messages (Claude Code headless); `capability` is told to every tab. */
+  setChatHandler(h: (m: ChatMessage) => void, capability: ChatCapability): void {
+    this.#chatHandler = h;
+    this.#chat = capability;
+  }
+
+  get chatCapability(): ChatCapability {
+    return this.#chat;
+  }
+
+  /** Send to the connected tab (dropped when none is connected). */
+  sendToTab(msg: ServerToTab): void {
+    this.#send(msg);
   }
 
   /** The MCP client driving the app (shown in the tab). */
@@ -185,8 +203,13 @@ export class LocalServer {
         accepted = true;
         if (this.#tab && this.#tab !== ws) this.#tab.close(4000, 'replaced by another tab');
         this.#tab = ws;
-        ws.send(JSON.stringify({ type: 'welcome', protocol: SERVER_PROTOCOL, agent: this.#agent } satisfies ServerToTab));
+        ws.send(JSON.stringify({ type: 'welcome', protocol: SERVER_PROTOCOL, agent: this.#agent, chat: this.#chat } satisfies ServerToTab));
         this.#log(`tab connected (${msg.client}, origin ${origin})`);
+        return;
+      }
+      if (msg.type === 'chat' || msg.type === 'chat_cancel') {
+        if (this.#chatHandler) this.#chatHandler(msg);
+        else if (msg.type === 'chat') this.#send({ type: 'chat_event', id: msg.id, event: { kind: 'done', ok: false, error: this.#chat.reason ?? 'Chat is not available on this server.' } });
         return;
       }
       if (msg.type === 'result') {
