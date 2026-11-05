@@ -54,6 +54,8 @@ not idle. The protocol logic lives in `packages/grbl` and is tested against a pr
 | Lathe | face, turn a diameter (roughing + finishing pass, shoulder), 45° chamfer, groove, part off, drill on centre with pecking |
 | Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside, drill hole patterns with pecking |
 | Speeds and feeds | from the tool table (cutting speed, chip load or feed per rev), clamped to the machine |
+| Entry and finish | ramped entry for pockets and contours, helical entry for circular pockets; lathe chamfers compensated for the insert's nose radius |
+| Time | estimated like grbl's planner: acceleration and junction deviation, forward and backward pass |
 | Checks | machine travel, chuck collision, rapids into material, cuts deeper than the flutes or the tool's depth of cut, plunging with a non-centre-cutting endmill, impossible operations |
 | G-code | a "boring" subset (G0–G3, G17/G18, G7/G8, G21, G90, G94, G54, M0 tool changes) that runs the same on grblHAL, LinuxCNC and most others |
 | Preview | three.js: toolpath (feeds blue, rapids orange), the part as it is cut, timeline scrubber, tool marker |

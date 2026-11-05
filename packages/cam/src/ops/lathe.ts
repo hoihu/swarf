@@ -83,9 +83,13 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       const r = op.diameter / 2;
       const s = op.size;
       if (s >= r) throw new CamError(`chamfer ${s} mm is larger than the radius`);
-      out.push(rapid(safe.x, op.z + ctx.c), rapid(r - s, op.z + ctx.c));
-      out.push(f(r - s, op.z, plunge));
-      out.push(f(r, op.z - s));
+      // The path is for the imaginary tool tip (touched off on diameter and face). On a 45° line
+      // the round nose would leave the chamfer short by rn·(2 − √2) on each leg: lengthen both.
+      const rn = ctx.tool.noseRadius ?? 0;
+      const e = rn * (2 - Math.SQRT2);
+      out.push(rapid(safe.x, op.z + ctx.c), rapid(r - s - e, op.z + ctx.c));
+      out.push(f(r - s - e, op.z, plunge));
+      out.push(f(r, op.z - s - e));
       out.push(f(r + ctx.c / 2, op.z - s));
       retract(op.z - s);
       return out;

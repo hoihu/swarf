@@ -4,7 +4,8 @@
  * finished part for the preview.
  */
 import { generate, type Diagnostic } from './generate.ts';
-import { estimateSeconds, walk, type Program } from './program.ts';
+import { walk, type Program } from './program.ts';
+import { plannedSeconds } from './planner.ts';
 import type { Job, Tool, Vec3 } from './schema.ts';
 import { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
 
@@ -101,7 +102,7 @@ export function analyze(job: Job): Analysis {
     program: gen.program,
     diagnostics: [...gen.diagnostics, ...sim.diagnostics],
     material: sim.material,
-    seconds: estimateSeconds(gen.program, job.machine.rapidRate),
+    seconds: plannedSeconds(gen.program, job.machine),
     moves,
   };
 }

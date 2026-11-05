@@ -1,7 +1,9 @@
 /**
  * 2.5D mill operations with a flat endmill (or a drill for holes). Climb milling with M3:
  * pockets and inside contours run counter-clockwise, outside contours clockwise.
- * Entry is a straight plunge at the plunge feed (needs a centre-cutting endmill); ramping is tier 2.
+ * Entry into each level is a ramp along the first pass (pockets, contours) or a helix (circular
+ * pockets) at a shallow angle, or a straight plunge at the plunge feed if asked for (that needs a
+ * centre-cutting endmill).
  */
 import { CamError, levels, v, type Move } from '../program.ts';
 import type { Operation } from '../schema.ts';
@@ -31,6 +33,45 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
     if (zTop + 1 < safeZ) rapid(x, y, zTop + 1);
   };
   const zTopOf = (o: { zTop?: number | undefined }) => o.zTop ?? stock.top;
+
+  /**
+   * From (ax, ay, zFrom) down to zTo, zigzagging along a→b at the ramp angle; ends at a.
+   * Falls back to a plunge when the run is too short to ramp along.
+   */
+  const rampDown = (ax: number, ay: number, bx: number, by: number, zFrom: number, zTo: number, angle: number) => {
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < r * 0.5) {
+      feed(ax, ay, zTo, cut.plunge);
+      return;
+    }
+    const drop = len * Math.tan((angle * Math.PI) / 180);
+    let z = zFrom;
+    let atA = true;
+    while (z > zTo + 1e-9) {
+      z = Math.max(zTo, z - drop);
+      if (atA) feed(bx, by, z);
+      else feed(ax, ay, z);
+      atA = !atA;
+    }
+    if (!atA) feed(ax, ay, zTo);
+  };
+
+  /** Helix down around (cx, cy) with radius rh from zFrom to zTo, then one flat lap; ends at (cx + rh, cy). */
+  const helixDown = (cx: number, cy: number, rh: number, zFrom: number, zTo: number, angle: number) => {
+    const perHalf = Math.PI * rh * Math.tan((angle * Math.PI) / 180);
+    feed(cx + rh, cy, zFrom, cut.plunge);
+    let z = zFrom;
+    let side = 1;
+    while (z > zTo + 1e-9) {
+      z = Math.max(zTo, z - perHalf);
+      side = -side;
+      arc(cx + side * rh, cy, z, cx, cy, false);
+    }
+    // flat lap at the bottom so the floor is clean, back on the +X side
+    if (side < 0) arc(cx + rh, cy, zTo, cx, cy, false);
+    arc(cx - rh, cy, zTo, cx, cy, false);
+    arc(cx + rh, cy, zTo, cx, cy, false);
+  };
   const stepOf = (o: { stepDown?: number | undefined }) => o.stepDown ?? tool.maxDoc ?? r;
   const checkDepth = (zTop: number, zBottom: number) => {
     if (zBottom >= zTop) throw new CamError(`zBottom ${zBottom} is not below the top ${zTop}`);
@@ -67,8 +108,14 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       const [x0, x1, y0, y1] = [op.x + r, op.x + op.w - r, op.y + r, op.y + op.h - r];
       const rows = y1 - y0 < 1e-9 ? [y0] : [y0, ...levels(y0, y1, op.stepover * d)];
       approach(x0, y0, zTop);
+      // ramp along the first row, or up the side when the pocket is one tool wide
+      const [bx, by] = x1 - x0 >= y1 - y0 ? [x1, y0] : [x0, y1];
+      let zPrev = zTop + 0.2;
+      feed(x0, y0, zPrev, cut.plunge);
       for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
-        feed(x0, y0, zl, cut.plunge);
+        if (op.entry === 'ramp') rampDown(x0, y0, bx, by, zPrev, zl, op.rampAngle);
+        else feed(x0, y0, zl, cut.plunge);
+        zPrev = zl;
         rows.forEach((y, i) => {
           const [a, b] = i % 2 === 0 ? [x0, x1] : [x1, x0];
           if (i > 0) feed(a, y, zl);
@@ -92,8 +139,17 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       if (R < -1e-9) throw new CamError(`hole Ø${op.diameter} is smaller than the Ø${d} tool`);
       const rings = R < 1e-6 ? [] : levels(0, R, op.stepover * d);
       approach(op.cx, op.cy, zTop);
+      // helix radius: inside the hole, small enough to stay near the centre
+      const rh = Math.min(R, d * 0.35);
+      const helix = op.entry === 'helix' && rh >= d * 0.1;
+      let zPrev = zTop + 0.2;
+      feed(op.cx, op.cy, zPrev, cut.plunge);
       for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
-        feed(op.cx, op.cy, zl, cut.plunge);
+        if (helix) {
+          helixDown(op.cx, op.cy, rh, zPrev, zl, op.rampAngle);
+          feed(op.cx, op.cy, zl);
+        } else feed(op.cx, op.cy, zl, cut.plunge);
+        zPrev = zl;
         for (const ri of rings) {
           feed(op.cx + ri, op.cy, zl);
           arc(op.cx - ri, op.cy, zl, op.cx, op.cy, false);
@@ -116,8 +172,13 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
         ? [[x0, y1], [x1, y1], [x1, y0], [x0, y0]]
         : [[x1, y0], [x1, y1], [x0, y1], [x0, y0]];
       approach(x0, y0, zTop);
+      let zPrev = zTop + 0.2;
+      feed(x0, y0, zPrev, cut.plunge);
+      const [fx, fy] = loop[0]!;
       for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
-        feed(x0, y0, zl, cut.plunge);
+        if (op.entry === 'ramp') rampDown(x0, y0, fx!, fy!, zPrev, zl, op.rampAngle);
+        else feed(x0, y0, zl, cut.plunge);
+        zPrev = zl;
         for (const [x, y] of loop) feed(x!, y!, zl);
       }
       rapid(x0, y0, safeZ);

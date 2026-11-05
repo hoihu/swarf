@@ -57,7 +57,7 @@ export const DEMO_SCRIPTS: Script[] = [
           }),
         ];
       },
-      [say('Added the pocket. It plunges straight in, so the endmill must be centre-cutting.')],
+      [say('Added the pocket. The endmill ramps into each level at 3°, so it does not need to be centre-cutting.')],
     ],
   },
 ];

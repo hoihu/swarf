@@ -48,6 +48,9 @@ const LABELS: Record<string, [string, string?]> = {
   zTop: ['Top Z', 'mm'],
   side: ['Side'],
   points: ['Holes'],
+  entry: ['Entry'],
+  rampAngle: ['Ramp angle', '°'],
+  noseRadius: ['Nose radius', 'mm'],
   // tools
   id: ['Number'],
   name: ['Name'],

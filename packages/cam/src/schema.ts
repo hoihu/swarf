@@ -32,6 +32,10 @@ export const Machine = z.object({
   chuckDiameter: pos.optional(),
   /** Clearance kept above / beside the stock for rapids, mm. */
   clearance: pos.default(2),
+  /** Acceleration, mm/s² (grbl $120…), for the time estimate. */
+  accel: pos.default(250),
+  /** Junction deviation, mm (grbl $11), for the time estimate. */
+  junctionDeviation: pos.default(0.01),
 });
 export type Machine = z.infer<typeof Machine>;
 
@@ -47,6 +51,8 @@ export const Tool = z.object({
   diameter: pos.optional(),
   /** Grooving / parting blade width. The tool's reference point is its +Z flank (touched off on the face). */
   width: pos.optional(),
+  /** Insert nose radius (turning tool). Paths are for the imaginary tool tip; tapers and chamfers are compensated. */
+  noseRadius: z.number().min(0).optional(),
   /** Length of the cutting edge behind the tip (turning tool), used by the material model. */
   edgeLength: pos.optional(),
   /** Usable flute length (endmill, drill). */
@@ -174,12 +180,16 @@ const depthFields = {
   stepDown: pos.optional().describe('Z per level (default: tool maxDoc)'),
 };
 
+const rampAngle = z.number().gt(0).max(30).default(3).describe('Entry ramp angle, degrees');
+
 export const MillPocketRect = z.object({
   type: z.literal('mill_pocket_rect'),
   ...common,
   ...rect,
   ...depthFields,
   stepover: z.number().gt(0).max(1).default(0.45),
+  entry: z.enum(['ramp', 'plunge']).default('ramp').describe('How the tool gets down to each level'),
+  rampAngle,
 });
 
 export const MillPocketCircle = z.object({
@@ -190,6 +200,8 @@ export const MillPocketCircle = z.object({
   diameter: pos,
   ...depthFields,
   stepover: z.number().gt(0).max(1).default(0.45),
+  entry: z.enum(['helix', 'plunge']).default('helix').describe('How the tool gets down to each level'),
+  rampAngle,
 });
 
 export const MillContourRect = z.object({
@@ -198,6 +210,8 @@ export const MillContourRect = z.object({
   ...rect,
   ...depthFields,
   side: z.enum(['outside', 'inside']).default('outside').describe('Which side of the line the tool runs'),
+  entry: z.enum(['ramp', 'plunge']).default('ramp').describe('How the tool gets down to each level'),
+  rampAngle,
 });
 
 export const MillDrill = z.object({

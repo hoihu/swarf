@@ -9,6 +9,9 @@ import {
   levels,
   parseGcode,
   walk,
+  plannedSeconds,
+  estimateSeconds,
+  type Program,
   type JobInput,
   type OperationInput,
 } from '../src/index.ts';
@@ -41,7 +44,8 @@ describe('example jobs', () => {
     expect(radiusAt(-15)).toBeCloseTo(10, 2); // Ø20 section
     expect(radiusAt(-34)).toBeCloseTo(12.5, 2); // untouched bar behind the shoulder
     expect(radiusAt(0.5)).toBe(0); // faced off
-    expect(radiusAt(-0.5)).toBeCloseTo(9.5, 1); // halfway down the 1 mm chamfer
+    // halfway down the 1 mm chamfer; the tip path is lengthened for the 0.4 nose radius
+    expect(radiusAt(-0.5)).toBeCloseTo(9.5 - 0.4 * (2 - Math.SQRT2), 1);
     expect(radiusAt(-39)).toBe(0); // parted off
   });
 
@@ -100,6 +104,74 @@ describe('G-code', () => {
   });
 });
 
+describe('nose radius', () => {
+  it('lengthens a 45° chamfer by rn·(2 − √2) on each leg', () => {
+    const job = withOps('lathe', [{ type: 'lathe_chamfer', tool: 1, diameter: 20, z: 0, size: 1 }]);
+    const feeds = [...walk(analyze(job).program)].filter((w) => w.move.type === 'feed').map((w) => w.move.to);
+    const e = 0.4 * (2 - Math.SQRT2);
+    expect(feeds[0]!.x).toBeCloseTo(9 - e, 6);
+    expect(feeds[1]!.z).toBeCloseTo(-1 - e, 6);
+    const sharp = Job.parse({ ...job, tools: job.tools.map((t) => (t.id === 1 ? { ...t, noseRadius: 0 } : t)) });
+    expect([...walk(analyze(sharp).program)].filter((w) => w.move.type === 'feed')[0]!.move.to.x).toBeCloseTo(9, 6);
+  });
+});
+
+describe('entry', () => {
+  it('ramps into a pocket at the ramp angle', () => {
+    const job = withOps('mill', [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 30, h: 20, zBottom: -3, zTop: 0, stepDown: 3, rampAngle: 5 }]);
+    const moves = [...walk(analyze(job).program)];
+    const ramps = moves.filter((w) => w.move.type === 'feed' && w.move.to.z < w.from.z - 1e-9 && Math.hypot(w.move.to.x - w.from.x, w.move.to.y - w.from.y) > 1);
+    expect(ramps.length).toBeGreaterThan(1);
+    for (const w of ramps) {
+      const run = Math.hypot(w.move.to.x - w.from.x, w.move.to.y - w.from.y);
+      expect((w.from.z - w.move.to.z) / run).toBeLessThanOrEqual(Math.tan((5 * Math.PI) / 180) + 1e-9);
+    }
+    expect(codes(job)).toEqual(['SPEED_LIMIT']);
+  });
+
+  it('helixes into a circular pocket and writes helical arcs', () => {
+    const job = withOps('mill', [{ type: 'mill_pocket_circle', tool: 1, cx: 40, cy: 25, diameter: 20, zBottom: -2, zTop: 0 }]);
+    const a = analyze(job);
+    const helical = [...walk(a.program)].filter((w) => w.move.type === 'arc' && w.move.to.z < w.from.z - 1e-9);
+    expect(helical.length).toBeGreaterThan(2);
+    const { text } = emit(job, a.program);
+    const parsed = parseGcode(text, 'mill').moves.filter((m) => m.move.type === 'arc');
+    expect(parsed.some((m, i) => i > 0 && m.move.to.z < parsed[i - 1]!.move.to.z)).toBe(true);
+    expect(a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+  });
+});
+
+describe('time estimate', () => {
+  const line = (pts: [number, number][], f: number): Program => ({
+    kind: 'mill',
+    home: { x: 0, y: 0, z: 0 },
+    segments: [{ opId: 'a', label: 'a', tool: 1, rpm: 1000, moves: pts.map(([x, y]) => ({ type: 'feed' as const, to: { x, y, z: 0 }, f })) }],
+  });
+  const s = { accel: 100, junctionDeviation: 0.01, rapidRate: 3000 };
+
+  it('adds acceleration to a straight move', () => {
+    // 100 mm at 600 mm/min = 10 mm/s: 10 s cruising plus v/a = 0.1 s for speeding up and slowing down
+    expect(plannedSeconds(line([[100, 0]], 600), s)).toBeCloseTo(10.1, 3);
+    // a short move never reaches the feed: 1 mm at a = 100 mm/s² takes 2·√(1/100) = 0.2 s
+    expect(plannedSeconds(line([[1, 0]], 6000), s)).toBeCloseTo(0.2, 3);
+  });
+
+  it('slows down for corners but not for straight joins', () => {
+    const straight = plannedSeconds(line([[10, 0], [20, 0], [30, 0], [40, 0]], 3000), s);
+    const zigzag = plannedSeconds(line([[10, 0], [10, 10], [20, 10], [20, 20]], 3000), s);
+    expect(zigzag).toBeGreaterThan(straight * 1.5);
+    expect(straight).toBeCloseTo(plannedSeconds(line([[40, 0]], 3000), s), 6);
+  });
+
+  it('is longer than the plain length/feed estimate for real jobs', () => {
+    for (const kind of ['lathe', 'mill'] as const) {
+      const job = EXAMPLES[kind]();
+      const a = analyze(job);
+      expect(a.seconds).toBeGreaterThan(estimateSeconds(a.program, job.machine.rapidRate));
+    }
+  });
+});
+
 describe('checks', () => {
   it('rapid into material: drilling from a wrong top', () => {
     const job = withOps('mill', [{ type: 'mill_drill', tool: 3, points: [{ x: 10, y: 10 }], zBottom: -12, zTop: -8 }]);
@@ -134,8 +206,11 @@ describe('checks', () => {
   it('plunging with a tool that cannot', () => {
     const base = EXAMPLES.mill();
     const tools = base.tools.map((t) => (t.id === 1 ? { ...t, centerCutting: false } : t));
-    const job = withOps('mill', [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 20, h: 20, zBottom: -2 }], { tools });
-    expect(codes(job)).toContain('PLUNGE');
+    const plunge = withOps('mill', [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 20, h: 20, zBottom: -2, entry: 'plunge' }], { tools });
+    expect(codes(plunge)).toContain('PLUNGE');
+    // the default ramp entry is fine without centre cutting
+    const ramp = withOps('mill', [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 20, h: 20, zBottom: -2 }], { tools });
+    expect(codes(ramp)).not.toContain('PLUNGE');
   });
 
   it('impossible operations become errors and the rest still generates', () => {
