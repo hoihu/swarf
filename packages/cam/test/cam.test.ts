@@ -303,6 +303,27 @@ describe('threading', () => {
   });
 });
 
+describe('contour tabs', () => {
+  it('leaves tabs standing at the tab height', () => {
+    const job = withOps('mill', [{ type: 'mill_contour_rect', tool: 1, x: 20, y: 10, w: 40, h: 30, zBottom: -14.5, zTop: 0.5, tabs: 4, tabWidth: 5, tabHeight: 1.5 }]);
+    const a = analyze(job);
+    expect(a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    const m = a.material as MillMaterial;
+    const at = (x: number, y: number) => m.h[Math.floor(y / m.cell) * m.nx + Math.floor(x / m.cell)]!;
+    // along the cut: mostly through, but some tab material at −13
+    const ring: number[] = [];
+    for (let x = 20; x <= 60; x += 0.25) ring.push(at(x, 10 - 3), at(x, 40 + 3));
+    for (let y = 10; y <= 40; y += 0.25) ring.push(at(20 - 3, y), at(60 + 3, y));
+    expect(ring.some((h) => Math.abs(h - -13) < 0.01)).toBe(true);
+    expect(ring.filter((h) => h <= -14.49).length).toBeGreaterThan(ring.length * 0.6);
+    expect(at(40, 25)).toBeCloseTo(0.5, 3); // the part itself untouched
+  });
+
+  it('refuses tabs that do not fit', () => {
+    expect(codes(withOps('mill', [{ type: 'mill_contour_rect', tool: 1, x: 20, y: 10, w: 10, h: 8, zBottom: -5, tabs: 12, tabWidth: 6 }]))).toContain('OP_INVALID');
+  });
+});
+
 describe('entry', () => {
   it('ramps into a pocket at the ramp angle', () => {
     const job = withOps('mill', [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 30, h: 20, zBottom: -3, zTop: 0, stepDown: 3, rampAngle: 5 }]);

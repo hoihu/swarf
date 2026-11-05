@@ -11,7 +11,7 @@ export const CAM_GUIDE = `Conventions:
 - Speeds and feeds come from the tool's cutting data; override rpm/feed only for a reason (the user asked, or the material calls for it).
 
 How to build a job:
-- Order operations as a machinist would: face first, then rough and finish the outside from the face towards the chuck, chamfers and grooves, threads, drilling on centre, parting off last. On the mill: face, then pockets and contours, then holes.
+- Order operations as a machinist would: face first, then rough and finish the outside from the face towards the chuck, chamfers and grooves, threads, drilling on centre, parting off last. On the mill: face, then pockets and contours, then holes. A contour that cuts a part free (through the stock) needs tabs so the part does not come loose.
 - For an outside shape with several diameters, tapers, chamfers or radii, prefer one lathe_profile: list the corners from the face towards the chuck (start at d 0, z 0 to face too), with c (chamfer) or r (radius) on the corners that have them. Diameters must not get smaller towards the chuck; necks and undercuts are grooves. lathe_turn is for a single plain diameter.
 - Leave the part length plus the parting blade width before the chuck; keep everything clear of the chuck jaws.
 - Threads: turn the major diameter first (slightly under nominal, e.g. Ø9.85 for M10), then lathe_thread with the pitch (metric coarse: M6 1, M8 1.25, M10 1.5, M12 1.75, M16 2), then chamfer and part off. There is no pull-out at the end of a pass: end the thread at a groove or leave room before a shoulder. Threading needs a controller with spindle sync; if the check says it is off, tell the user rather than working around it.

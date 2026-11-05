@@ -3,6 +3,9 @@
  */
 import { RT, Streamer, type JobState, type Status } from '@swarf/grbl';
 import { openSerial, serialSupported } from './serial.ts';
+import { openWebSocket } from './websocket.ts';
+
+const URL_KEY = 'swarf.grblUrl';
 
 export interface ConsoleLine {
   dir: 'in' | 'out' | 'note';
@@ -21,16 +24,35 @@ class Machine {
   line = $state(-1);
   console = $state<ConsoleLine[]>([]);
   readonly supported = serialSupported();
+  /** Network address of a grblHAL board (ws://host:81), remembered. */
+  url = $state<string>((() => {
+    try {
+      return localStorage.getItem(URL_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  })());
   #s: Streamer | null = null;
 
   #log(l: ConsoleLine): void {
     this.console = [...this.console.slice(-199), l];
   }
 
-  async connect(): Promise<void> {
+  /** Connect over USB (Web Serial), or to `url` over the network when given. */
+  async connect(network = false): Promise<void> {
     if (this.#s) return;
     try {
-      const t = await openSerial();
+      let t;
+      if (network) {
+        const [address, protocol] = this.url.trim().split(/\s+/);
+        if (!address) throw new Error('Give the controller\'s address, e.g. ws://192.168.1.50:81');
+        try {
+          localStorage.setItem(URL_KEY, this.url.trim());
+        } catch {
+          // not remembered
+        }
+        t = await openWebSocket(/^wss?:\/\//.test(address) ? address : `ws://${address}`, protocol);
+      } else t = await openSerial();
       this.label = t.label;
       this.#s = new Streamer(t, {
         status: (s) => (this.status = s),

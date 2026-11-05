@@ -35,16 +35,21 @@
   });
 </script>
 
-{#if !machine.supported}
+{#if !machine.connected}
   <div class="empty">
-    <p>Streaming to the machine needs a browser with Web Serial (Chrome or Edge on a computer).</p>
-    <p class="muted">You can still download the .nc file from the G-code tab and run it with your usual sender.</p>
-  </div>
-{:else if !machine.connected}
-  <div class="empty">
-    <p>Connect the grblHAL controller over USB to run the job from here.</p>
-    <p class="muted">The browser asks which port to use. 115200 baud.</p>
-    <button class="btn pri" onclick={() => machine.connect()}>Connect controller</button>
+    <p>Connect the grblHAL controller to run the job from here.</p>
+    {#if machine.supported}
+      <button class="btn pri" onclick={() => machine.connect()}>Connect over USB</button>
+      <p class="muted small">The browser asks which port to use. 115200 baud.</p>
+    {:else}
+      <p class="muted small">USB needs a browser with Web Serial (Chrome or Edge on a computer).</p>
+    {/if}
+    <form class="mdi" onsubmit={(e) => { e.preventDefault(); void machine.connect(true); }}>
+      <input bind:value={machine.url} placeholder="ws://192.168.1.50:81" aria-label="Controller address" spellcheck="false" autocomplete="off" />
+      <button class="btn" type="submit" disabled={!machine.url.trim()}>Connect over network</button>
+    </form>
+    <p class="muted small">Networked grblHAL boards: the WebSocket server ($307, usually port 81). If yours wants a subprotocol, add it after a space, e.g. <code>ws://192.168.1.50:81 arduino</code>.</p>
+    <p class="muted small">Or download the .nc file from the G-code tab and run it with your usual sender.</p>
     {#if machine.message}<p class="diag error">{machine.message}</p>{/if}
   </div>
 {:else}
@@ -98,6 +103,8 @@
 
 <style>
   .empty p { margin: 0 0 8px; }
+  .empty .mdi { margin: 14px 0 6px; }
+  .empty code { font-family: var(--mono); font-size: 11.5px; }
   .muted { color: var(--ink-3); }
   .small { font-size: 12px; }
   .grow { flex: 1; }

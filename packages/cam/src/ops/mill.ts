@@ -175,11 +175,55 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       let zPrev = zTop + 0.2;
       feed(x0, y0, zPrev, cut.plunge);
       const [fx, fy] = loop[0]!;
+      // tabs: intervals along the loop (not on the first side, where the ramp goes down), each the
+      // tab width plus the tool diameter of tool-centre travel
+      const pts: [number, number][] = [[x0, y0], ...(loop as [number, number][])];
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1]! + Math.hypot(pts[i]![0] - pts[i - 1]![0], pts[i]![1] - pts[i - 1]![1]));
+      const perimeter = cum.at(-1)!;
+      const free = cum[1]!;
+      const half = op.tabWidth / 2 + r;
+      const tabs: [number, number][] = [];
+      for (let k = 0; k < op.tabs; k++) {
+        const c = free + ((perimeter - free) * (k + 0.5)) / op.tabs;
+        tabs.push([c - half, c + half]);
+      }
+      if (op.tabs && (perimeter - free) / op.tabs < 2 * half + d) throw new CamError(`${op.tabs} tabs of ${op.tabWidth} mm do not fit around this contour`);
+      const zTab = op.zBottom + op.tabHeight;
+      if (op.tabs && zTab >= zTop) throw new CamError('the tabs are taller than the cut');
+      const lap = (zl: number) => {
+        if (!op.tabs || zl >= zTab - 1e-9) {
+          for (const [x, y] of loop) feed(x!, y!, zl);
+          return;
+        }
+        // split every side at the tab edges; over a tab the tool rides at the tab top
+        let z = zl;
+        for (let i = 1; i < pts.length; i++) {
+          const [ax, ay] = pts[i - 1]!;
+          const [bx, by] = pts[i]!;
+          const s0 = cum[i - 1]!;
+          const s1 = cum[i]!;
+          const cuts = [s0, ...tabs.flat().filter((t) => t > s0 + 1e-9 && t < s1 - 1e-9), s1];
+          for (let k = 1; k < cuts.length; k++) {
+            const mid = (cuts[k - 1]! + cuts[k]!) / 2;
+            const want = tabs.some(([lo, hi]) => mid > lo && mid < hi) ? zTab : zl;
+            const at = (sv: number) => [ax + ((bx - ax) * (sv - s0)) / (s1 - s0), ay + ((by - ay) * (sv - s0)) / (s1 - s0)] as const;
+            const [px, py] = at(cuts[k - 1]!);
+            if (want !== z) {
+              feed(px, py, want, want > z ? cut.feed : cut.plunge);
+              z = want;
+            }
+            const [qx, qy] = at(cuts[k]!);
+            feed(qx, qy, z);
+          }
+        }
+        if (z !== zl) feed(x0, y0, zl, cut.plunge);
+      };
       for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
         if (op.entry === 'ramp') rampDown(x0, y0, fx!, fy!, zPrev, zl, op.rampAngle);
         else feed(x0, y0, zl, cut.plunge);
         zPrev = zl;
-        for (const [x, y] of loop) feed(x!, y!, zl);
+        lap(zl);
       }
       rapid(x0, y0, safeZ);
       return out;

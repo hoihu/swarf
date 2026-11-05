@@ -51,18 +51,21 @@ the access key from `~/.swarf/server.json`.
 ## Run it on the machine
 
 The **Machine** tab streams the program to a grblHAL controller over USB (Web Serial: Chrome or
-Edge on a computer). It uses grbl's character-counting protocol, learns the receive buffer size
+Edge on a computer) or over the network (the board's WebSocket server, `$307`, usually port 81). It uses grbl's character-counting protocol, learns the receive buffer size
 from `$I`, polls status for the DRO and the tool marker in the preview, and offers hold, resume,
 soft reset, feed override, unlock, home and a command line. The program pauses at every tool
 change (M0); Resume continues. It refuses to start while the job has errors or the controller is
 not idle. The protocol logic lives in `packages/grbl` and is tested against a pretend controller.
 
-## What works (tier 1)
+After every assistant turn the chat shows what changed (operations added, changed, removed) with
+**Keep** and **Revert this turn**.
+
+## What works
 
 | | |
 |---|---|
 | Lathe | face, turn a diameter (roughing + finishing pass, shoulder), profile (a whole outline with steps, tapers, chamfers and radii: roughing, semi-finish and a nose-radius-compensated finish), 45° chamfer, groove, boring, external and internal threads (G33 passes, flank or radial infeed, spring passes), part off, drill on centre with pecking |
-| Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside, drill hole patterns with pecking |
+| Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside with holding tabs, drill hole patterns with pecking |
 | Speeds and feeds | from the tool table (cutting speed, chip load or feed per rev), clamped to the machine |
 | Entry and finish | ramped entry for pockets and contours, helical entry for circular pockets; lathe chamfers compensated for the insert's nose radius |
 | Time | estimated like grbl's planner: acceleration and junction deviation, forward and backward pass |

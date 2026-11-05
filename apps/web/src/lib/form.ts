@@ -56,6 +56,9 @@ const LABELS: Record<string, [string, string?]> = {
   springPasses: ['Spring passes'],
   infeed: ['Infeed'],
   internal: ['Internal tool'],
+  tabs: ['Tabs'],
+  tabWidth: ['Tab width', 'mm'],
+  tabHeight: ['Tab height', 'mm'],
   // machine
   kind: ['Machine'],
   minRpm: ['Spindle min', 'rpm'],

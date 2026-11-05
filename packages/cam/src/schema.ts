@@ -257,6 +257,9 @@ export const MillContourRect = z.object({
   side: z.enum(['outside', 'inside']).default('outside').describe('Which side of the line the tool runs'),
   entry: z.enum(['ramp', 'plunge']).default('ramp').describe('How the tool gets down to each level'),
   rampAngle,
+  tabs: z.number().int().min(0).max(16).default(0).describe('Holding tabs left standing so a cut-out part stays in place'),
+  tabWidth: pos.default(4).describe('Tab width along the edge'),
+  tabHeight: pos.default(1).describe('Tab height above the bottom'),
 });
 
 export const MillDrill = z.object({
