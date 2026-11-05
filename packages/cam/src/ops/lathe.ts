@@ -7,6 +7,7 @@
 import { CamError, levels, v, type Move } from '../program.ts';
 import type { Job, Operation } from '../schema.ts';
 import { latheSafe, type OpContext } from './context.ts';
+import { buildProfile, tipPath, zAtRadius, type P2 } from './profile.ts';
 
 type LatheOp = Extract<Operation, { type: `lathe_${string}` }>;
 
@@ -78,6 +79,48 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       out.push(f(Math.max(prev, fromR), op.zEnd));
       out.push(f(fromR + 0.5, op.zEnd + 0.5));
       retract(op.zEnd + 0.5);
+      return out;
+    }
+
+    case 'lathe_profile': {
+      const fromR = (op.fromDiameter ?? safe.r * 2) / 2;
+      const outline = buildProfile(op.points);
+      if (Math.max(...outline.map((p) => p.x)) > fromR + 1e-9) throw new CamError(`the profile is larger than the material Ø${fromR * 2}`);
+      const rn = ctx.tool.noseRadius ?? 0;
+      const zs = outline[0]!.z + ctx.c;
+      // lead in from the front, and end on the shoulder up to the material, so the offsets
+      // (nose radius, allowance) are right at both ends
+      const last0 = outline.at(-1)!;
+      const profile = [{ x: outline[0]!.x, z: zs }, ...outline, ...(last0.x < fromR - 1e-9 ? [{ x: fromR, z: last0.z }] : [])];
+      const rough = tipPath(profile, rn, op.finish);
+      const finish = tipPath(profile, rn, 0);
+      const doc = op.doc ?? ctx.tool.maxDoc ?? 1;
+      const minX = Math.min(...rough.map((p) => p.x));
+      const zLast = last0.z;
+      // roughing: axial passes, each stopping where the allowance-offset profile is reached
+      let did = false;
+      if (minX < fromR - 1e-9) {
+        for (const rp of levels(fromR, Math.max(minX, 0), doc)) {
+          const zEnd = zAtRadius(rough, rp) ?? zLast;
+          if (zEnd >= zs - ctx.c - 1e-6) continue; // nothing to cut at this radius
+          out.push(rapid(safe.x, zs), rapid(rp, zs));
+          out.push(f(rp, zEnd));
+          out.push(f(rp + 0.5, zEnd + 0.5));
+          out.push(rapid(rp + 0.5, zs));
+          did = true;
+        }
+      }
+      const follow = (path: P2[]) => {
+        const first = path[0]!;
+        out.push(rapid(safe.x, Math.max(first.z, zs)), rapid(Math.max(first.x, 0), Math.max(first.z, zs)));
+        for (const p of path.slice(1)) out.push(f(Math.max(p.x, 0), p.z));
+        // clear of the material at the end of the shoulder
+        const last = path.at(-1)!;
+        if (last.x < fromR + 0.5) out.push(f(fromR + 0.5, last.z));
+        retract(last.z);
+      };
+      if (did && op.finish > 0) follow(rough); // semi-finish: takes the roughing steps off evenly
+      follow(finish);
       return out;
     }
 

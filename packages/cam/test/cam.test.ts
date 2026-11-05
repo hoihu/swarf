@@ -9,6 +9,9 @@ import {
   levels,
   parseGcode,
   walk,
+  buildProfile,
+  tipPath,
+  zAtRadius,
   plannedSeconds,
   estimateSeconds,
   type Program,
@@ -113,6 +116,60 @@ describe('nose radius', () => {
     expect(feeds[1]!.z).toBeCloseTo(-1 - e, 6);
     const sharp = Job.parse({ ...job, tools: job.tools.map((t) => (t.id === 1 ? { ...t, noseRadius: 0 } : t)) });
     expect([...walk(analyze(sharp).program)].filter((w) => w.move.type === 'feed')[0]!.move.to.x).toBeCloseTo(9, 6);
+  });
+});
+
+describe('profile turning', () => {
+  const shaft = (extra: Partial<OperationInput> = {}) =>
+    withOps('lathe', [
+      {
+        type: 'lathe_profile',
+        tool: 1,
+        points: [{ d: 0, z: 0 }, { d: 10, z: 0, c: 0.5 }, { d: 10, z: -12 }, { d: 16, z: -12, r: 1 }, { d: 16, z: -30 }],
+        ...extra,
+      } as OperationInput,
+    ]);
+
+  it('turns a stepped shaft with chamfer and radius in one operation', () => {
+    const a = analyze(shaft());
+    expect(a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    const m = a.material as LatheMaterial;
+    const r = (z: number) => m.r[Math.floor((z - m.z0) / m.dz)]!;
+    expect(r(0.5)).toBe(0); // faced
+    expect(r(-6)).toBeCloseTo(5, 1);
+    expect(r(-20)).toBeCloseTo(8, 1);
+    expect(r(-40)).toBeCloseTo(12.5, 2); // untouched behind the profile
+  });
+
+  it('offsets a 45° chamfer like the textbook nose radius compensation', () => {
+    const profile = buildProfile([{ d: 18, z: 0 }, { d: 20, z: -1 }, { d: 20, z: -5 }]);
+    const tip = tipPath(profile, 0.4);
+    const e = 0.4 * (2 - Math.SQRT2);
+    // the straight part of the tip path along the chamfer: x + z = 9 − rn·(2 − √2)
+    for (const p of tip.slice(0, 2)) expect(p.x + p.z).toBeCloseTo(9 - e, 6);
+    // and the tip comes back onto the diameter
+    expect(tip.at(-1)!.x).toBeCloseTo(10, 9);
+  });
+
+  it('rounds corners with the given radius', () => {
+    const p = buildProfile([{ d: 0, z: 0 }, { d: 10, z: 0, r: 2 }, { d: 10, z: -10 }]);
+    // every arc point lies 2 mm from the fillet centre (x 3, z −2)
+    const arc = p.filter((q) => q.x > 3 + 1e-6 && q.z < -1e-6 && q.z > -2 + 1e-6);
+    expect(arc.length).toBeGreaterThan(3);
+    for (const q of arc) expect(Math.hypot(q.x - 3, q.z + 2)).toBeCloseTo(2, 6);
+  });
+
+  it('refuses undercuts and backwards points', () => {
+    expect(codes(withOps('lathe', [{ type: 'lathe_profile', tool: 1, points: [{ d: 16, z: 0 }, { d: 10, z: -10 }] }]))).toContain('OP_INVALID');
+    expect(codes(withOps('lathe', [{ type: 'lathe_profile', tool: 1, points: [{ d: 10, z: -10 }, { d: 12, z: 0 }] }]))).toContain('OP_INVALID');
+  });
+
+  it('roughs, semi-finishes and finishes', () => {
+    const feeds = [...walk(analyze(shaft()).program)].filter((w) => w.move.type === 'feed');
+    // the finish pass reaches the inside corner of the last shoulder exactly, the semi-finish stays 0.2 mm off it
+    const at = (x: number, z: number) => feeds.some((w) => Math.abs(w.move.to.x - x) < 1e-6 && Math.abs(w.move.to.z - z) < 1e-6);
+    expect(at(8, -30)).toBe(true);
+    expect(at(8.2, -29.8)).toBe(true);
   });
 });
 

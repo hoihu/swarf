@@ -35,12 +35,19 @@
     return Number.isFinite(n) ? (integer ? Math.round(n) : n) : undefined;
   }
 
-  type Pt = { x: number; y: number };
-  const points = (key: string) => ((value[key] as Pt[] | undefined) ?? []);
-  function setPoint(key: string, i: number, axis: 'x' | 'y', n: number | undefined): void {
-    const pts = points(key).map((p) => ({ ...p }));
-    pts[i]![axis] = n ?? 0;
-    set(key, pts);
+  type Row = Record<string, number | undefined>;
+  const rows = (key: string) => ((value[key] as Row[] | undefined) ?? []);
+  function setCell(key: string, i: number, col: string, n: number | undefined): void {
+    const next = rows(key).map((r) => ({ ...r }));
+    if (n === undefined) delete next[i]![col];
+    else next[i]![col] = n;
+    set(key, next);
+  }
+  function addRow(f: Field): void {
+    const last = rows(f.key).at(-1);
+    const blank: Row = {};
+    for (const c of f.columns ?? []) if (c.required) blank[c.key] = last?.[c.key] ?? 0;
+    set(f.key, [...rows(f.key), blank]);
   }
 </script>
 
@@ -68,16 +75,18 @@
         placeholder={f.default !== undefined ? String(f.default) : f.required ? '' : 'auto'}
         onchange={(e) => set(f.key, num(e, f.kind === 'integer'))}
       />
-    {:else if f.kind === 'points'}
-      <div class="pts">
-        {#each points(f.key) as p, i (i)}
+    {:else if f.kind === 'rows'}
+      <div class="pts" style="--cols: {f.columns?.length ?? 2}">
+        <div class="pt head">{#each f.columns ?? [] as c (c.key)}<span>{c.label}</span>{/each}<span></span></div>
+        {#each rows(f.key) as row, i (i)}
           <div class="pt">
-            <input type="text" inputmode="decimal" aria-label="Hole {i + 1} X" value={p.x} onchange={(e) => setPoint(f.key, i, 'x', num(e))} />
-            <input type="text" inputmode="decimal" aria-label="Hole {i + 1} Y" value={p.y} onchange={(e) => setPoint(f.key, i, 'y', num(e))} />
-            <button type="button" class="x" aria-label="Remove hole {i + 1}" onclick={() => set(f.key, points(f.key).filter((_, k) => k !== i))}>×</button>
+            {#each f.columns ?? [] as c (c.key)}
+              <input type="text" inputmode="decimal" aria-label="Row {i + 1} {c.label}" value={row[c.key] ?? ''} placeholder={c.required ? '' : '–'} onchange={(e) => setCell(f.key, i, c.key, num(e))} />
+            {/each}
+            <button type="button" class="x" aria-label="Remove row {i + 1}" onclick={() => set(f.key, rows(f.key).filter((_, k) => k !== i))}>×</button>
           </div>
         {/each}
-        <button type="button" class="btn" onclick={() => set(f.key, [...points(f.key), { ...(points(f.key).at(-1) ?? { x: 0, y: 0 }) }])}>Add hole</button>
+        <button type="button" class="btn" onclick={() => addRow(f)}>Add row</button>
       </div>
     {:else}
       <input id="f-{f.key}" type="text" value={(value[f.key] as string) ?? ''} onchange={(e) => set(f.key, (e.currentTarget as HTMLInputElement).value)} />
@@ -109,7 +118,8 @@
   .err { color: var(--err); }
   .f.bad input, .f.bad select { border-color: var(--err); }
   .pts { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; }
-  .pt { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; }
+  .pt { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)) 26px; gap: 6px; }
+  .pt.head span { font-size: 11.5px; color: var(--ink-3); text-align: right; padding-right: 7px; }
   .pt input { border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 7px; background: var(--panel); text-align: right; min-width: 0; }
   .x { border: 0; background: none; color: var(--ink-3); font-size: 18px; padding: 0 6px; }
   .x:hover { color: var(--err); }

@@ -152,6 +152,22 @@ export const LathePartoff = z.object({
   peck: pos.optional(),
 });
 
+export const ProfilePoint = z.object({
+  d: z.number().min(0).describe('Diameter'),
+  z: mm.describe('Z'),
+  c: pos.optional().describe('Chamfer at this corner (leg length)'),
+  r: pos.optional().describe('Radius at this corner'),
+});
+
+export const LatheProfile = z.object({
+  type: z.literal('lathe_profile'),
+  ...common,
+  points: z.array(ProfilePoint).min(2).describe('The outline from the face towards the chuck; diameters never get smaller going towards the chuck. Start at d 0, z 0 to face as well.'),
+  fromDiameter: pos.optional().describe('Diameter of the material now (default: stock diameter)'),
+  doc: pos.optional().describe('Radial depth per roughing pass (default: tool maxDoc)'),
+  finish: z.number().min(0).default(0.2).describe('Allowance left by roughing for the finishing pass'),
+});
+
 export const LatheThread = z.object({
   type: z.literal('lathe_thread'),
   ...common,
@@ -241,6 +257,7 @@ export const MillDrill = z.object({
 export const Operation = z.discriminatedUnion('type', [
   LatheFace,
   LatheTurn,
+  LatheProfile,
   LatheChamfer,
   LatheGroove,
   LathePartoff,
@@ -259,6 +276,7 @@ export type OpType = Operation['type'];
 export const OP_MACHINE: Record<OpType, MachineKind> = {
   lathe_face: 'lathe',
   lathe_turn: 'lathe',
+  lathe_profile: 'lathe',
   lathe_chamfer: 'lathe',
   lathe_groove: 'lathe',
   lathe_partoff: 'lathe',
@@ -275,6 +293,7 @@ export const OP_MACHINE: Record<OpType, MachineKind> = {
 export const OP_TOOLS: Record<OpType, ToolType[]> = {
   lathe_face: ['turning'],
   lathe_turn: ['turning'],
+  lathe_profile: ['turning'],
   lathe_chamfer: ['turning'],
   lathe_groove: ['grooving'],
   lathe_partoff: ['grooving'],

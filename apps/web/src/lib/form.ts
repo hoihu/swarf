@@ -8,7 +8,9 @@ import { Machine, Operation, Tool, type MachineKind, type OpType } from '@swarf/
 export interface Field {
   key: string;
   label: string;
-  kind: 'number' | 'integer' | 'text' | 'select' | 'checkbox' | 'points' | 'tool';
+  kind: 'number' | 'integer' | 'text' | 'select' | 'checkbox' | 'rows' | 'tool';
+  /** rows: the number columns of each row, and which must be filled. */
+  columns?: { key: string; label: string; required: boolean }[];
   required: boolean;
   options?: string[];
   unit?: string;
@@ -47,7 +49,7 @@ const LABELS: Record<string, [string, string?]> = {
   zBottom: ['Bottom Z', 'mm'],
   zTop: ['Top Z', 'mm'],
   side: ['Side'],
-  points: ['Holes'],
+  points: ['Points'],
   entry: ['Entry'],
   pitch: ['Pitch', 'mm'],
   firstCut: ['First pass depth', 'mm'],
@@ -81,6 +83,8 @@ const LABELS: Record<string, [string, string?]> = {
   maxDoc: ['Max depth per pass', 'mm'],
 };
 
+const COLUMN_LABELS: Record<string, string> = { d: 'Ø', z: 'Z', x: 'X', y: 'Y', c: 'Chamfer', r: 'Radius' };
+
 function fields(schema: Json, skip: string[]): Field[] {
   const props = (schema.properties ?? {}) as Record<string, Json>;
   const required = new Set((schema.required as string[] | undefined) ?? []);
@@ -91,7 +95,12 @@ function fields(schema: Json, skip: string[]): Field[] {
     const base = { key, label, required: required.has(key), ...(unit ? { unit } : {}), ...(typeof p.description === 'string' ? { help: p.description } : {}), ...('default' in p ? { default: p.default } : {}) };
     if (key === 'tool') out.push({ ...base, kind: 'tool' });
     else if (Array.isArray(p.enum)) out.push({ ...base, kind: 'select', options: p.enum as string[] });
-    else if (p.type === 'array') out.push({ ...base, kind: 'points' });
+    else if (p.type === 'array') {
+      const items = (p.items ?? {}) as Json;
+      const req = new Set((items.required as string[] | undefined) ?? []);
+      const columns = Object.keys((items.properties ?? {}) as Json).map((k) => ({ key: k, label: COLUMN_LABELS[k] ?? k.toUpperCase(), required: req.has(k) }));
+      out.push({ ...base, kind: 'rows', columns });
+    }
     else if (p.type === 'boolean') out.push({ ...base, kind: 'checkbox' });
     else if (p.type === 'integer') out.push({ ...base, kind: 'integer' });
     else if (p.type === 'number') out.push({ ...base, kind: 'number' });

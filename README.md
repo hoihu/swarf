@@ -61,7 +61,7 @@ not idle. The protocol logic lives in `packages/grbl` and is tested against a pr
 
 | | |
 |---|---|
-| Lathe | face, turn a diameter (roughing + finishing pass, shoulder), 45° chamfer, groove, external threads (G33 passes, flank or radial infeed, spring passes), part off, drill on centre with pecking |
+| Lathe | face, turn a diameter (roughing + finishing pass, shoulder), profile (a whole outline with steps, tapers, chamfers and radii: roughing, semi-finish and a nose-radius-compensated finish), 45° chamfer, groove, external threads (G33 passes, flank or radial infeed, spring passes), part off, drill on centre with pecking |
 | Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside, drill hole patterns with pecking |
 | Speeds and feeds | from the tool table (cutting speed, chip load or feed per rev), clamped to the machine |
 | Entry and finish | ramped entry for pockets and contours, helical entry for circular pockets; lathe chamfers compensated for the insert's nose radius |
