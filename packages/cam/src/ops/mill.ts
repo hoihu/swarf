@@ -290,7 +290,8 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       // closed loops: offset the region by the tool radius and orient for climb milling;
       // open paths (and side "on"): the tool centre follows the lines as drawn
       let loops: Loop[] = [];
-      let lines: Pt[][] = g.open;
+      // open paths are only followed with side "on"; for outside/inside they are not an outline
+      let lines: Pt[][] = [];
       if (op.side === 'on') lines = [...g.open, ...g.closed.map((l) => [...l, l[0]!])];
       else if (g.closed.length) {
         const grown = offsetRegion(g.closed, op.side === 'outside' ? r : -r);

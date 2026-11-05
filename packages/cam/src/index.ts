@@ -10,3 +10,7 @@ export { LATHE, MILL, LATHE_TOOLS, MILL_TOOLS, EXAMPLES, emptyJob } from './pres
 export { plannedSeconds, type PlannerSettings } from './planner.ts';
 export { buildProfile, offsetProfile, tipPath, zAtRadius, type P2 } from './ops/profile.ts';
 export { diffJobs, isEmptyDiff, type JobDiff } from './diff.ts';
+export { importDxf, type Imported } from './importers/dxf.ts';
+export { importSvg, parsePathData, parseTransform } from './importers/svg.ts';
+export { offsetRegion, orient, normalize, area, bbox, pointInLoop, type Loop, type Pt } from './geom2d.ts';
+export { importDrawing } from './importers/index.ts';
