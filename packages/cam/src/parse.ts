@@ -20,7 +20,7 @@ export interface Parsed {
   warnings: { line: number; message: string }[];
 }
 
-const SUPPORTED_G = new Set(['0', '1', '2', '3', '4', '7', '8', '17', '18', '20', '21', '54', '90', '91', '94', '90.1', '91.1']);
+const SUPPORTED_G = new Set(['0', '1', '2', '3', '4', '7', '8', '33', '17', '18', '20', '21', '54', '90', '91', '94', '90.1', '91.1']);
 const SUPPORTED_M = new Set(['0', '1', '2', '3', '4', '5', '6', '8', '9', '30']);
 
 /**
@@ -57,6 +57,7 @@ export function parseGcode(text: string, kind: MachineKind): Parsed {
           case '1':
           case '2':
           case '3':
+          case '33':
             motionHere = Number(g);
             break;
           case '4':
@@ -111,6 +112,13 @@ export function parseGcode(text: string, kind: MachineKind): Parsed {
       continue;
     }
     let move: Move;
+    if (motion === 33) {
+      const pitch = (val.K ?? 0) * scale;
+      if (!pitch) warnings.push({ line: ln, message: 'G33 without K (pitch)' });
+      moves.push({ move: { type: 'thread', to, pitch, f: 0 }, line: ln, tool });
+      Object.assign(pos, to);
+      continue;
+    }
     if (motion === 0) move = { type: 'rapid', to };
     else if (motion === 1) move = { type: 'feed', to, f: feed };
     else {

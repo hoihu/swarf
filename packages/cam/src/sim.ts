@@ -72,6 +72,7 @@ export class LatheMaterial {
   /** The Z span the tool occupies behind its tip (relative to the tip Z). */
   static footprint(tool: Tool): [number, number] {
     if (tool.type === 'grooving') return [-(tool.width ?? 2), 0];
+    if (tool.type === 'threading') return [-(tool.edgeLength ?? 1.5) / 2, (tool.edgeLength ?? 1.5) / 2];
     if (tool.type === 'drill') return [0, tool.fluteLength ?? 30];
     return [0, tool.edgeLength ?? 3];
   }

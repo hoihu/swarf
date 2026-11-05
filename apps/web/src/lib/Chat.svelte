@@ -4,6 +4,7 @@
   import type { Job } from '@swarf/cam';
   import { store } from './store.svelte.ts';
   import { bridge } from './bridge.svelte.ts';
+  import { miniMarkdown } from './markdown.ts';
 
   let { onSettings }: { onSettings: () => void } = $props();
 
@@ -262,7 +263,7 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
             </ul>
           {/if}
           {#each it.notes as n, k (k)}<p class="note">{n}</p>{/each}
-          {#if it.text}<p class="text">{it.text}</p>{:else if busy && i === items.length - 1}<p class="thinking">Working…</p>{/if}
+          {#if it.text}<div class="text">{@html miniMarkdown(it.text)}</div>{:else if busy && i === items.length - 1}<p class="thinking">Working…</p>{/if}
           {#if it.question}
             <p class="text">{it.question.question}</p>
             <div class="options">
@@ -303,7 +304,10 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
   .msg { max-width: 92%; }
   .msg.user { align-self: flex-end; background: var(--iron); color: var(--on-iron); padding: 8px 12px; border-radius: 12px 12px 3px 12px; white-space: pre-wrap; }
   .msg.bot { align-self: flex-start; }
-  .text { margin: 4px 0; white-space: pre-wrap; line-height: 1.5; }
+  .text { margin: 4px 0; line-height: 1.5; }
+  .text :global(p) { margin: 0 0 8px; }
+  .text :global(ul) { margin: 0 0 8px; padding-left: 18px; }
+  .text :global(code) { font-family: var(--mono); font-size: 12px; }
   .thinking { margin: 4px 0; color: var(--ink-3); }
   .activity { list-style: none; margin: 0 0 6px; padding: 6px 10px; border-left: 2px solid var(--line-2); display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--ink-2); }
   .activity .mark { display: inline-block; width: 16px; color: var(--ok); }

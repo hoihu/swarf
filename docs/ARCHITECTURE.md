@@ -41,8 +41,8 @@ Tier 1 (this): parametric 2-axis lathe and 2.5D mill operations, checks, preview
 
 Tier 2, toward everyday use (done: forms, MCP for Claude Code, the app chat answered by Claude
 Code headless, streaming over Web Serial, planner time estimate, ramp/helix entry, nose radius on
-chamfers):
-- Threading as a sequence of G33 passes (grblHAL with spindle sync).
+chamfers, external threading as G33 passes):
+- Internal threads, multi-start threads, a thread pull-out (G33 with X moving).
 - Profiles: turn an arbitrary 2D profile (polyline with arcs) on the lathe; DXF/SVG import for
   mill contours and pockets, offsets via clipper2.
 - Tabs for contours; climb/conventional choice.

@@ -37,6 +37,7 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
     diagnostics.push(d);
   };
   const step = lathe ? 0.1 : Math.max(0.1, (material as MillMaterial).cell * 0.5);
+  let prevType: string | null = null;
 
   for (const { seg, index, from, move } of walk(program)) {
     if (index >= upTo) break;
@@ -60,6 +61,10 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
     }
 
     if (move.type === 'rapid') {
+      // pulling out of the thread groove just cut: the model has no helix to know it is clear
+      const fromThread = prevType === 'thread';
+      prevType = move.type;
+      if (fromThread) continue;
       for (const p of pts) {
         const h = material.hit(p, tool);
         if (h) {
@@ -69,6 +74,10 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
       }
       continue;
     }
+
+    prevType = move.type;
+    // a thread is a groove too shallow to change the stock outline the model keeps
+    if (move.type === 'thread') continue;
 
     if (material instanceof LatheMaterial) {
       let prev = from;

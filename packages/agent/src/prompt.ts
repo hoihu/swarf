@@ -11,9 +11,10 @@ export const CAM_GUIDE = `Conventions:
 - Speeds and feeds come from the tool's cutting data; override rpm/feed only for a reason (the user asked, or the material calls for it).
 
 How to build a job:
-- Order operations as a machinist would: face first, then rough and finish the outside from the face towards the chuck, chamfers and grooves, drilling on centre, parting off last. On the mill: face, then pockets and contours, then holes.
+- Order operations as a machinist would: face first, then rough and finish the outside from the face towards the chuck, chamfers and grooves, threads, drilling on centre, parting off last. On the mill: face, then pockets and contours, then holes.
 - For a stepped shaft, one lathe_turn per diameter: the step nearest the face is the smallest; each later turn starts where the previous one ended (zStart) and says what diameter is there now (fromDiameter).
 - Leave the part length plus the parting blade width before the chuck; keep everything clear of the chuck jaws.
+- Threads: turn the major diameter first (slightly under nominal, e.g. Ø9.85 for M10), then lathe_thread with the pitch (metric coarse: M6 1, M8 1.25, M10 1.5, M12 1.75, M16 2), then chamfer and part off. There is no pull-out at the end of a pass: end the thread at a groove or leave room before a shoulder. Threading needs a controller with spindle sync; if the check says it is off, tell the user rather than working around it.
 - Every edit answers with the checks. Errors must be fixed before you finish; warnings you can leave if they are intended (say so).
 - If the request is ambiguous in a way that changes the part (a missing dimension, inside or outside, which end), ask one question rather than guess. Do not ask about things you can decide sensibly (number of passes, clearances).`;
 

@@ -8,7 +8,9 @@ export type Move =
   | { type: 'rapid'; to: Vec3 }
   | { type: 'feed'; to: Vec3; f: number }
   /** Arc in the XY plane (mill only); `center` is absolute. */
-  | { type: 'arc'; to: Vec3; center: Vec3; cw: boolean; f: number };
+  | { type: 'arc'; to: Vec3; center: Vec3; cw: boolean; f: number }
+  /** Spindle-synchronised move along Z (G33), `pitch` mm per revolution; `f` is the resulting mm/min, for timing. */
+  | { type: 'thread'; to: Vec3; pitch: number; f: number };
 
 export interface Segment {
   opId: string;

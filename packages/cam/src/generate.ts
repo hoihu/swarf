@@ -57,6 +57,8 @@ export function opLabel(op: Operation): string {
       return `Groove Ø${op.diameter} × ${op.width} at Z${op.z}`;
     case 'lathe_partoff':
       return `Part off at Z${op.z}`;
+    case 'lathe_thread':
+      return `Thread Ø${op.diameter}×${op.pitch} to Z${op.zEnd}`;
     case 'lathe_drill':
       return `Drill ${op.depth} deep on centre`;
     case 'mill_face':
@@ -101,6 +103,18 @@ export function generate(job: Job): Generated {
     }
     const speedD = kind === 'lathe' ? latheSpeedDiameter(op as never, job, tool.diameter) : (tool.diameter ?? 6);
     const cut = cutting(tool, job.machine, speedD, { rpm: op.rpm, feed: op.feed });
+    if (op.type === 'lathe_thread') {
+      if (!job.machine.spindleSync) {
+        err('THREAD_SYNC', 'Threading needs spindle-synchronised moves (G33): grblHAL in lathe mode with an index + pulse encoder. If your controller has that, turn on "spindle sync" in the machine settings.');
+        continue;
+      }
+      // the carriage must keep up: pitch × rpm within the machine's feed, with margin
+      const most = Math.floor((job.machine.maxFeed * 0.8) / op.pitch);
+      if (cut.rpm > most) {
+        cut.notes.push(`spindle ${cut.rpm} rpm lowered to ${most} rpm so Z can follow the ${op.pitch} mm pitch`);
+        cut.rpm = Math.max(job.machine.minRpm, most);
+      }
+    }
     for (const n of cut.notes) diagnostics.push({ severity: 'warning', code: 'SPEED_LIMIT', message: n, opId });
     try {
       const ctx = { job, tool, cut, from: at, c: job.machine.clearance };

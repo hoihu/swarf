@@ -28,6 +28,8 @@ export const Machine = z.object({
   rapidRate: pos,
   /** Lathe: how X is written in the G-code (G7 diameter / G8 radius). */
   xMode: z.enum(['diameter', 'radius']).default('diameter'),
+  /** Lathe: the controller can do spindle-synchronised moves (grblHAL lathe mode with an index + pulse encoder: $32=2, $38, PID tuned). Needed for threading (G33). */
+  spindleSync: z.boolean().default(false),
   /** Lathe: chuck jaw outer diameter, used for the chuck collision check. */
   chuckDiameter: pos.optional(),
   /** Clearance kept above / beside the stock for rapids, mm. */
@@ -39,7 +41,7 @@ export const Machine = z.object({
 });
 export type Machine = z.infer<typeof Machine>;
 
-export const ToolType = z.enum(['turning', 'grooving', 'drill', 'endmill']);
+export const ToolType = z.enum(['turning', 'grooving', 'threading', 'drill', 'endmill']);
 export type ToolType = z.infer<typeof ToolType>;
 
 export const Tool = z.object({
@@ -150,6 +152,19 @@ export const LathePartoff = z.object({
   peck: pos.optional(),
 });
 
+export const LatheThread = z.object({
+  type: z.literal('lathe_thread'),
+  ...common,
+  diameter: pos.describe('Major (outside) diameter of the thread, already turned'),
+  pitch: pos.describe('Pitch, mm (e.g. 1.5 for M10)'),
+  zEnd: mm.describe('Z where the thread ends (towards the chuck); leave room, there is no pull-out'),
+  zStart: mm.default(0).describe('Z where the thread starts (usually the face)'),
+  depth: pos.optional().describe('Radial thread depth (default ISO metric external: 0.6134 × pitch)'),
+  firstCut: pos.default(0.25).describe('Radial depth of the first pass; later passes get shallower (constant chip area)'),
+  springPasses: z.number().int().min(0).max(5).default(1).describe('Extra passes at full depth'),
+  infeed: z.enum(['flank', 'radial']).default('flank').describe('flank: along the 29.5° flank like a compound slide; radial: straight in'),
+});
+
 export const LatheDrill = z.object({
   type: z.literal('lathe_drill'),
   ...common,
@@ -229,6 +244,7 @@ export const Operation = z.discriminatedUnion('type', [
   LatheChamfer,
   LatheGroove,
   LathePartoff,
+  LatheThread,
   LatheDrill,
   MillFace,
   MillPocketRect,
@@ -246,6 +262,7 @@ export const OP_MACHINE: Record<OpType, MachineKind> = {
   lathe_chamfer: 'lathe',
   lathe_groove: 'lathe',
   lathe_partoff: 'lathe',
+  lathe_thread: 'lathe',
   lathe_drill: 'lathe',
   mill_face: 'mill',
   mill_pocket_rect: 'mill',
@@ -261,6 +278,7 @@ export const OP_TOOLS: Record<OpType, ToolType[]> = {
   lathe_chamfer: ['turning'],
   lathe_groove: ['grooving'],
   lathe_partoff: ['grooving'],
+  lathe_thread: ['threading'],
   lathe_drill: ['drill'],
   mill_face: ['endmill'],
   mill_pocket_rect: ['endmill'],

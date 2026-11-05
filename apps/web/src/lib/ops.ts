@@ -7,6 +7,7 @@ export const OP_TEMPLATES: Record<MachineKind, { type: OpType; name: string; mak
     { type: 'lathe_turn', name: 'Turn diameter', make: () => ({ type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -20 }) },
     { type: 'lathe_chamfer', name: 'Chamfer', make: () => ({ type: 'lathe_chamfer', tool: 1, diameter: 20, z: 0, size: 0.5 }) },
     { type: 'lathe_groove', name: 'Groove', make: () => ({ type: 'lathe_groove', tool: 2, diameter: 16, z: -10, width: 3 }) },
+    { type: 'lathe_thread', name: 'Thread (G33)', make: () => ({ type: 'lathe_thread', tool: 4, diameter: 12, pitch: 1.75, zEnd: -15 }) },
     { type: 'lathe_drill', name: 'Drill on centre', make: () => ({ type: 'lathe_drill', tool: 3, depth: 10, peck: 3 }) },
     { type: 'lathe_partoff', name: 'Part off', make: () => ({ type: 'lathe_partoff', tool: 2, z: -30 }) },
   ],

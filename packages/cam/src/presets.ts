@@ -14,6 +14,7 @@ export const LATHE: Machine = {
   maxFeed: 1500,
   rapidRate: 3000,
   xMode: 'diameter',
+  spindleSync: false,
   chuckDiameter: 100,
   clearance: 2,
   accel: 200,
@@ -29,6 +30,7 @@ export const MILL: Machine = {
   maxFeed: 2000,
   rapidRate: 3000,
   xMode: 'diameter',
+  spindleSync: false,
   clearance: 2,
   accel: 300,
   junctionDeviation: 0.01,
@@ -38,6 +40,7 @@ export const LATHE_TOOLS: Tool[] = [
   { id: 1, name: 'Turning, CCMT 09 R0.4 carbide', type: 'turning', vc: 120, feedPerRev: 0.1, maxDoc: 1, edgeLength: 3, noseRadius: 0.4 },
   { id: 2, name: 'Parting blade 2 mm', type: 'grooving', width: 2, vc: 60, feedPerRev: 0.04 },
   { id: 3, name: 'Drill Ø6 HSS', type: 'drill', diameter: 6, vc: 20, feedPerRev: 0.08, fluteLength: 50 },
+  { id: 4, name: 'Threading insert 60°, 16ER', type: 'threading', vc: 60, edgeLength: 1.5 },
 ];
 
 export const MILL_TOOLS: Tool[] = [

@@ -3,7 +3,7 @@
  * of fields. Labels and units live here; validation stays with zod.
  */
 import { z } from 'zod';
-import { Operation, Tool, type OpType } from '@swarf/cam';
+import { Machine, Operation, Tool, type MachineKind, type OpType } from '@swarf/cam';
 
 export interface Field {
   key: string;
@@ -49,6 +49,22 @@ const LABELS: Record<string, [string, string?]> = {
   side: ['Side'],
   points: ['Holes'],
   entry: ['Entry'],
+  pitch: ['Pitch', 'mm'],
+  firstCut: ['First pass depth', 'mm'],
+  springPasses: ['Spring passes'],
+  infeed: ['Infeed'],
+  // machine
+  kind: ['Machine'],
+  minRpm: ['Spindle min', 'rpm'],
+  maxRpm: ['Spindle max', 'rpm'],
+  maxFeed: ['Max feed', 'mm/min'],
+  rapidRate: ['Rapid rate', 'mm/min'],
+  xMode: ['X in G-code as'],
+  spindleSync: ['Spindle sync (G33 threading)'],
+  chuckDiameter: ['Chuck Ø', 'mm'],
+  clearance: ['Clearance', 'mm'],
+  accel: ['Acceleration', 'mm/s²'],
+  junctionDeviation: ['Junction deviation', 'mm'],
   rampAngle: ['Ramp angle', '°'],
   noseRadius: ['Nose radius', 'mm'],
   // tools
@@ -103,4 +119,12 @@ export function issuesByField(e: z.ZodError): Record<string, string> {
     out[k] ??= i.message;
   }
   return out;
+}
+
+const machineSchema = z.toJSONSchema(Machine, { io: 'input', unrepresentable: 'any' }) as Json;
+
+/** Machine settings (the travel envelope stays out of the form for now). */
+export function machineFields(kind: MachineKind): Field[] {
+  const latheOnly = ['xMode', 'spindleSync', 'chuckDiameter'];
+  return fields(machineSchema, ['kind', 'envelope', ...(kind === 'mill' ? latheOnly : [])]).map((f) => ({ ...f, required: true }));
 }

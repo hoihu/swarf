@@ -1,6 +1,7 @@
 /**
  * Program → G-code in a deliberately "boring" subset that grblHAL, LinuxCNC and most other
- * controllers run the same way: G0/G1/G2/G3 (arcs only on the mill, XY plane), G17/G18, G21,
+ * controllers run the same way: G0/G1/G2/G3 (arcs only on the mill, XY plane), G33 Z K for
+ * threading (spindle sync), G17/G18, G21,
  * G90, G94, G54, G4, G7/G8 (lathe diameter/radius mode), S/M3/M5, M0 for manual tool changes,
  * M30. No cutter compensation, canned cycles, macros or tool length offsets: the generator does
  * all of that, so the preview shows exactly what the machine will do.
@@ -92,11 +93,21 @@ export function emit(job: Job, program: Program): Emitted {
       }
       if (s.rpm !== rpm) {
         lines.push(`S${s.rpm} M3`);
-        if (rpm === null) lines.push('G4 P2');
+        // let the spindle get to speed (threading starts on the index pulse at speed)
+        lines.push(rpm === null ? 'G4 P2' : 'G4 P1');
         rpm = s.rpm;
       }
     }
     const w: string[] = [];
+    if (move.type === 'thread') {
+      // G33 is written whole every time: Z and the pitch per revolution (K)
+      w.push('G33', `Z${num(move.to.z)}`, `K${num(move.pitch)}`);
+      axes(move.to.x, move.to.y, move.to.z);
+      motion = 'G33';
+      lineOfMove.push(lines.length);
+      lines.push(w.join(' '));
+      continue;
+    }
     const code = move.type === 'rapid' ? 'G0' : move.type === 'feed' ? 'G1' : move.cw ? 'G2' : 'G3';
     if (move.type === 'arc') {
       const sx = px ?? 0;

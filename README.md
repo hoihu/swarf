@@ -61,7 +61,7 @@ not idle. The protocol logic lives in `packages/grbl` and is tested against a pr
 
 | | |
 |---|---|
-| Lathe | face, turn a diameter (roughing + finishing pass, shoulder), 45° chamfer, groove, part off, drill on centre with pecking |
+| Lathe | face, turn a diameter (roughing + finishing pass, shoulder), 45° chamfer, groove, external threads (G33 passes, flank or radial infeed, spring passes), part off, drill on centre with pecking |
 | Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside, drill hole patterns with pecking |
 | Speeds and feeds | from the tool table (cutting speed, chip load or feed per rev), clamped to the machine |
 | Entry and finish | ramped entry for pockets and contours, helical entry for circular pockets; lathe chamfers compensated for the insert's nose radius |
@@ -71,7 +71,12 @@ not idle. The protocol logic lives in `packages/grbl` and is tested against a pr
 | Preview | three.js: toolpath (feeds blue, rapids orange), the part as it is cut, timeline scrubber, tool marker |
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
 
-Not yet: threading (G33/G76 need spindle sync) and arbitrary profiles from DXF. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Threading needs grblHAL in lathe mode with an index + pulse encoder ($32=2, $38, PID tuned), and
+"Spindle sync" switched on under Stock → Machine settings. Passes start far enough out for Z to
+reach speed, since grblHAL does not correct the sync while accelerating. There is no pull-out at
+the end of a pass: end at a groove, or the thread runs out on the shank.
+
+Not yet: internal threads, arbitrary profiles from DXF. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Safety
 

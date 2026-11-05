@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { EXAMPLES, Job, OP_TOOLS, Operation, Tool, emptyJob, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
+  import { EXAMPLES, Job, Machine, OP_TOOLS, Operation, Tool, emptyJob, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
   import SchemaForm from './SchemaForm.svelte';
   import MachinePanel from './MachinePanel.svelte';
   import { machine } from './machine.svelte.ts';
-  import { issuesByField, opFields, toolFields } from './form.ts';
+  import { issuesByField, machineFields, opFields, toolFields } from './form.ts';
   import { store } from './store.svelte.ts';
   import { OP_TEMPLATES } from './ops.ts';
 
@@ -67,6 +67,18 @@
   function start(kind: 'lathe' | 'mill', example: boolean): void {
     store.replace(example ? EXAMPLES[kind]() : emptyJob(kind));
     draft = null;
+  }
+
+  // ---- machine settings
+  let machineDraft = $state<{ value: Record<string, unknown>; errors: Record<string, string> } | null>(null);
+  function editMachine(value: Record<string, unknown>): void {
+    const m = Machine.safeParse({ ...value, kind: job.machine.kind, envelope: job.machine.envelope });
+    if (!m.success) {
+      machineDraft = { value, errors: issuesByField(m.error) };
+      return;
+    }
+    machineDraft = null;
+    store.set({ ...job, machine: m.data });
   }
 
   // ---- tools: the same forms
@@ -183,6 +195,10 @@
     {:else if tab === 'stock'}
       <h3>Machine</h3>
       <p class="muted">{job.machine.name}: {job.machine.kind}, {job.machine.minRpm}–{job.machine.maxRpm} rpm, feed up to {job.machine.maxFeed} mm/min.</p>
+      <details class="add">
+        <summary>Machine settings</summary>
+        <SchemaForm fields={machineFields(job.machine.kind)} value={machineDraft?.value ?? (job.machine as Record<string, unknown>)} errors={machineDraft?.errors ?? {}} onchange={editMachine} />
+      </details>
       <div class="grid">
         <button class="btn" onclick={() => start('lathe', true)}>Lathe example</button>
         <button class="btn" onclick={() => start('mill', true)}>Mill example</button>

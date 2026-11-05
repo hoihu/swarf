@@ -11,6 +11,7 @@ import { latheSafe, type OpContext } from './context.ts';
 type LatheOp = Extract<Operation, { type: `lathe_${string}` }>;
 
 const rapid = (x: number, z: number): Move => ({ type: 'rapid', to: v(x, 0, z) });
+const v3 = (x: number, z: number) => v(x, 0, z);
 
 /** The workpiece diameter that sets the spindle speed (largest one the operation cuts). */
 export function latheSpeedDiameter(op: LatheOp, job: Job, toolDiameter?: number): number {
@@ -19,6 +20,7 @@ export function latheSpeedDiameter(op: LatheOp, job: Job, toolDiameter?: number)
     case 'lathe_drill':
       return toolDiameter ?? 5;
     case 'lathe_chamfer':
+    case 'lathe_thread':
       return op.diameter;
     default:
       return op.fromDiameter ?? stockD;
@@ -121,6 +123,32 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
         out.push(rapid(start, zr));
       }
       retract(refs.at(-1)!);
+      return out;
+    }
+
+    case 'lathe_thread': {
+      // External thread as G33 passes. Depths follow constant chip area (d·√(i/n)), so the
+      // first pass is `firstCut` deep and later ones shallower; spring passes repeat full depth.
+      const R = op.diameter / 2;
+      const depth = op.depth ?? 0.61343 * op.pitch;
+      if (op.zEnd >= op.zStart) throw new CamError('zEnd must be towards the chuck from zStart (more negative)');
+      if (depth >= R) throw new CamError(`thread depth ${depth.toFixed(2)} mm is more than the radius`);
+      const n = Math.min(30, Math.max(3, Math.ceil((depth / op.firstCut) ** 2)));
+      const depths = Array.from({ length: n }, (_, i) => depth * Math.sqrt((i + 1) / n));
+      for (let k = 0; k < op.springPasses; k++) depths.push(depth);
+      // grblHAL does not correct the sync while Z accelerates: start far enough out to be at speed
+      const v = (op.pitch * ctx.cut.rpm) / 60;
+      const accelDist = (v * v) / (2 * ctx.job.machine.accel);
+      const leadIn = Math.max(3 * op.pitch, 1.5 * accelDist + 1);
+      const flank = op.infeed === 'flank' ? Math.tan((29.5 * Math.PI) / 180) : 0;
+      const rOut = R + ctx.c / 2;
+      for (const d of depths) {
+        const zs = op.zStart + leadIn - d * flank;
+        out.push(rapid(safe.x, zs), rapid(rOut, zs), rapid(R - d, zs));
+        out.push({ type: 'thread', to: v3(R - d, op.zEnd), pitch: op.pitch, f: op.pitch * ctx.cut.rpm });
+        out.push(rapid(rOut, op.zEnd), rapid(rOut, zs));
+      }
+      retract(op.zStart + leadIn);
       return out;
     }
 

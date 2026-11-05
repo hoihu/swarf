@@ -116,6 +116,73 @@ describe('nose radius', () => {
   });
 });
 
+describe('threading', () => {
+  const threadJob = (op: Partial<OperationInput> = {}, sync = true) => {
+    const base = EXAMPLES.lathe();
+    return withOps('lathe', [{ type: 'lathe_turn', tool: 1, diameter: 12, zEnd: -20 }, { type: 'lathe_thread', tool: 4, diameter: 12, pitch: 1.75, zEnd: -15, ...op } as OperationInput], {
+      machine: { ...base.machine, spindleSync: sync },
+    });
+  };
+  const passes = (job: Job) => [...walk(analyze(job).program)].filter((w) => w.move.type === 'thread');
+
+  it('needs a controller with spindle sync', () => {
+    expect(codes(threadJob({}, false))).toContain('THREAD_SYNC');
+    expect(analyze(threadJob()).diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+  });
+
+  it('cuts to the ISO depth in passes of decreasing depth, plus a spring pass', () => {
+    const p = passes(threadJob({ infeed: 'radial' }));
+    const depths = p.map((w) => 6 - w.move.to.x);
+    const full = 0.61343 * 1.75;
+    expect(depths[0]).toBeCloseTo(0.25, 1);
+    expect(depths.at(-1)).toBeCloseTo(full, 6);
+    expect(depths.at(-2)).toBeCloseTo(full, 6); // spring pass
+    const steps = depths.slice(1, -1).map((d, i) => d - depths[i]!);
+    for (let i = 1; i < steps.length; i++) expect(steps[i]!).toBeLessThanOrEqual(steps[i - 1]! + 1e-9);
+    for (const w of p) {
+      expect(w.move.to.z).toBe(-15);
+      expect(w.from.x).toBeCloseTo(w.move.to.x, 9); // along Z only
+    }
+  });
+
+  it('flank infeed moves each start along the 29.5° flank', () => {
+    const p = passes(threadJob());
+    const [a, b] = [p[0]!, p[3]!];
+    const dz = b.from.z - a.from.z;
+    const dx = a.move.to.x - b.move.to.x;
+    expect(dz / dx).toBeCloseTo(-Math.tan((29.5 * Math.PI) / 180), 6);
+  });
+
+  it('starts far enough out for Z to reach speed', () => {
+    const job = threadJob({ infeed: 'radial' });
+    const a = analyze(job);
+    const seg = a.program.segments.find((s) => s.opId === 'op2')!;
+    const v = (1.75 * seg.rpm) / 60;
+    const start = passes(job)[0]!.from.z;
+    expect(start).toBeGreaterThanOrEqual((v * v) / (2 * job.machine.accel));
+    expect(start).toBeGreaterThanOrEqual(3 * 1.75);
+  });
+
+  it('keeps pitch × rpm within the machine feed', () => {
+    const job = threadJob({ rpm: 2000 });
+    const seg = analyze(job).program.segments.find((s) => s.opId === 'op2')!;
+    expect(seg.rpm * 1.75).toBeLessThanOrEqual(job.machine.maxFeed * 0.8);
+    expect(codes(job)).toContain('SPEED_LIMIT');
+  });
+
+  it('writes G33 Z K and reads it back', () => {
+    const job = threadJob();
+    const a = analyze(job);
+    const { text } = emit(job, a.program);
+    const g33 = text.split('\n').filter((l) => l.startsWith('G33'));
+    expect(g33.length).toBe(passes(job).length);
+    expect(g33[0]).toBe('G33 Z-15 K1.75');
+    const parsed = parseGcode(text, 'lathe').moves.filter((m) => m.move.type === 'thread');
+    expect(parsed).toHaveLength(g33.length);
+    expect((parsed[0]!.move as { pitch: number }).pitch).toBe(1.75);
+  });
+});
+
 describe('entry', () => {
   it('ramps into a pocket at the ramp angle', () => {
     const job = withOps('mill', [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 30, h: 20, zBottom: -3, zTop: 0, stepDown: 3, rampAngle: 5 }]);
