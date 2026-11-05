@@ -1,0 +1,86 @@
+/* Machine-tool palette: hammertone grey-green panels, cast-iron viewport, one handwheel-yellow accent. */
+:root {
+  --ground: #e7eae4;
+  --panel: #f4f5f1;
+  --panel-2: #eceee8;
+  --line: #d6dbd2;
+  --line-2: #bfc6bc;
+  --ink: #1c221f;
+  --ink-2: #48524c;
+  --ink-3: #6f7a73;
+  --iron: #232a27;
+  --iron-2: #34403b;
+  --on-iron: #e9eee9;
+  --on-iron-2: #a9b6ae;
+  --accent: #e0a400;
+  --on-accent: #1c1a10;
+  --link: #2f6a8f;
+  --ok: #2f7d43;
+  --warn: #8a5b00;
+  --warn-soft: #f6ecd2;
+  --err: #b4302a;
+  --err-soft: #f7e0dd;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ground: #141917;
+    --panel: #1a201d;
+    --panel-2: #212825;
+    --line: #2d3632;
+    --line-2: #3c4842;
+    --ink: #e4eae5;
+    --ink-2: #b3beb7;
+    --ink-3: #85918a;
+    --iron: #101412;
+    --iron-2: #27302c;
+    --link: #8cc2e4;
+    --ok: #7fcf92;
+    --warn: #f0c76a;
+    --warn-soft: #3a3020;
+    --err: #ff8f86;
+    --err-soft: #3d2220;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --ground: #141917;
+  --panel: #1a201d;
+  --panel-2: #212825;
+  --line: #2d3632;
+  --line-2: #3c4842;
+  --ink: #e4eae5;
+  --ink-2: #b3beb7;
+  --ink-3: #85918a;
+  --iron: #101412;
+  --iron-2: #27302c;
+  --link: #8cc2e4;
+  --ok: #7fcf92;
+  --warn: #f0c76a;
+  --warn-soft: #3a3020;
+  --err: #ff8f86;
+  --err-soft: #3d2220;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font: 14px/1.45 Barlow, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: 0.5; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn { border: 1px solid var(--line-2); background: var(--panel); border-radius: 6px; padding: 5px 12px; font-weight: 600; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--panel-2); }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.pri:hover:not(:disabled) { background: #f0b416; }
+.btn.danger { color: var(--err); }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }

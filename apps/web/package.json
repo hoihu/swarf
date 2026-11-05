@@ -1,0 +1,25 @@
+{
+  "name": "@swarf/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings"
+  },
+  "dependencies": {
+    "@swarf/agent": "0.1.0",
+    "@swarf/cam": "0.1.0",
+    "three": "^0.181.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@types/three": "^0.181.0",
+    "svelte": "^5.57.1",
+    "svelte-check": "^4.7.6",
+    "vite": "^8.3.5"
+  }
+}
