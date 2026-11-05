@@ -4,6 +4,7 @@
  * still generates, so the user and the agent see all issues at once.
  */
 import { cutting } from './feeds.ts';
+import { fitArcs } from './arcfit.ts';
 import { generateLathe, latheSpeedDiameter } from './ops/lathe.ts';
 import { generateMill } from './ops/mill.ts';
 import { latheSafe, millSafeZ } from './ops/context.ts';
@@ -129,7 +130,8 @@ export function generate(job: Job): Generated {
     for (const n of cut.notes) diagnostics.push({ severity: 'warning', code: 'SPEED_LIMIT', message: n, opId });
     try {
       const ctx = { job, tool, cut, from: at, c: job.machine.clearance };
-      const moves = kind === 'lathe' ? generateLathe(op as never, ctx) : generateMill(op as never, ctx);
+      let moves = kind === 'lathe' ? generateLathe(op as never, ctx) : generateMill(op as never, ctx);
+      if (kind === 'mill' && job.machine.arcTolerance > 0) moves = fitArcs(moves, at, job.machine.arcTolerance);
       const seg: Segment = { opId, label: opLabel(op), tool: tool.id, rpm: cut.rpm, moves };
       program.segments.push(seg);
       if (moves.length) at = moves.at(-1)!.to;

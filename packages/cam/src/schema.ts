@@ -38,6 +38,8 @@ export const Machine = z.object({
   accel: pos.default(250),
   /** Junction deviation, mm (grbl $11), for the time estimate. */
   junctionDeviation: pos.default(0.01),
+  /** Mill: runs of short lines that lie on a circle within this (mm) are written as G2/G3 arcs; 0 = never. */
+  arcTolerance: z.number().min(0).max(0.1).default(0.005),
 });
 export type Machine = z.infer<typeof Machine>;
 

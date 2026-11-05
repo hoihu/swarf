@@ -9,6 +9,7 @@ import {
   levels,
   parseGcode,
   walk,
+  fitArcs,
   diffJobs,
   isEmptyDiff,
   buildProfile,
@@ -300,6 +301,53 @@ describe('threading', () => {
     const parsed = parseGcode(text, 'lathe').moves.filter((m) => m.move.type === 'thread');
     expect(parsed).toHaveLength(g33.length);
     expect((parsed[0]!.move as { pitch: number }).pitch).toBe(1.75);
+  });
+});
+
+describe('arc fitting', () => {
+  const at = { x: 10, y: 0, z: 0 };
+  const along = (n: number, sweep: number, dz = 0) =>
+    Array.from({ length: n }, (_, i) => {
+      const a = (sweep * (i + 1)) / n;
+      return { type: 'feed' as const, to: { x: 10 * Math.cos(a), y: 10 * Math.sin(a), z: (dz * (i + 1)) / n }, f: 500 };
+    });
+
+  it('turns a run of chords on a circle into one arc', () => {
+    const out = fitArcs(along(90, Math.PI), at);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ type: 'arc', cw: false, f: 500 });
+    const a = out[0] as Extract<(typeof out)[0], { type: 'arc' }>;
+    expect(a.center.x).toBeCloseTo(0, 6);
+    expect(a.to.x).toBeCloseTo(-10, 6);
+  });
+
+  it('fits helices, keeps corners and straight runs as lines', () => {
+    expect(fitArcs(along(60, Math.PI / 2, -1), at)).toHaveLength(1);
+    const square = [
+      { type: 'feed' as const, to: { x: 10, y: 10, z: 0 }, f: 500 },
+      { type: 'feed' as const, to: { x: 0, y: 10, z: 0 }, f: 500 },
+      { type: 'feed' as const, to: { x: 0, y: 0, z: 0 }, f: 500 },
+    ];
+    expect(fitArcs(square, at).map((m) => m.type)).toEqual(['feed', 'feed', 'feed']);
+  });
+
+  it('shortens a real program a lot without changing what it cuts', () => {
+    const circle = (r: number, n = 200): [number, number][] => Array.from({ length: n }, (_, i) => [40 + r * Math.cos((2 * Math.PI * i) / n), 25 + r * Math.sin((2 * Math.PI * i) / n)]);
+    const shapes = [{ id: 's1', name: 'ring', at: { x: 0, y: 0 }, paths: [{ closed: true, pts: circle(18) }, { closed: true, pts: circle(6) }] }];
+    const run = (tol: number) => {
+      const base = EXAMPLES.mill();
+      const j = Job.parse({ ...base, machine: { ...base.machine, arcTolerance: tol }, shapes, operations: [{ type: 'mill_pocket', tool: 1, shape: 's1', zBottom: -2, zTop: 0.5 }] });
+      return { a: analyze(j), lines: emit(j, analyze(j).program).text.split('\n').length };
+    };
+    const lines = run(0);
+    const arcs = run(0.005);
+    expect(arcs.lines).toBeLessThan(lines.lines / 5);
+    expect(arcs.a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    const [m0, m1] = [lines.a.material as MillMaterial, arcs.a.material as MillMaterial];
+    // the same cells cut, but for knife-edge cells on the wall (arcs are true circles, chords sit inside them)
+    let differ = 0;
+    for (let k = 0; k < m0.h.length; k++) if (Math.abs(m0.h[k]! - m1.h[k]!) > 0.05) differ++;
+    expect(differ / m0.h.length).toBeLessThan(0.001);
   });
 });
 

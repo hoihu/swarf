@@ -72,6 +72,7 @@ const LABELS: Record<string, [string, string?]> = {
   clearance: ['Clearance', 'mm'],
   accel: ['Acceleration', 'mm/s²'],
   junctionDeviation: ['Junction deviation', 'mm'],
+  arcTolerance: ['Arc fitting tolerance (0 = lines only)', 'mm'],
   rampAngle: ['Ramp angle', '°'],
   noseRadius: ['Nose radius', 'mm'],
   // tools

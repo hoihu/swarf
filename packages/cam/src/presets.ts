@@ -19,6 +19,7 @@ export const LATHE: Machine = {
   clearance: 2,
   accel: 200,
   junctionDeviation: 0.01,
+  arcTolerance: 0.005,
 };
 
 export const MILL: Machine = {
@@ -34,6 +35,7 @@ export const MILL: Machine = {
   clearance: 2,
   accel: 300,
   junctionDeviation: 0.01,
+  arcTolerance: 0.005,
 };
 
 export const LATHE_TOOLS: Tool[] = [
