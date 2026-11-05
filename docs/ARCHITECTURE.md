@@ -41,9 +41,9 @@ Tier 1 (this): parametric 2-axis lathe and 2.5D mill operations, checks, preview
 
 Tier 2, toward everyday use (done: forms, MCP for Claude Code, the app chat answered by Claude
 Code headless, streaming over Web Serial, planner time estimate, ramp/helix entry, nose radius on
-chamfers, external and internal threading as G33 passes, boring, lathe profiles, contour tabs, WebSocket streaming, a review card per assistant turn):
+chamfers, external and internal threading as G33 passes, boring, lathe profiles, contour tabs, WebSocket streaming, a review card per assistant turn, DXF/SVG import with contours and pockets of any outline):
 - Multi-start threads, a thread pull-out (G33 with X moving), internal profiles.
-- DXF/SVG import for mill contours and pockets, offsets via clipper2 (lathe profiles: done).
+- DXF for lathe profiles (the outline of a turned part from a drawing); arcs kept as G2/G3 instead of short lines.
 - Climb/conventional choice.
 - Other headless agents for the chat (Copilot CLI, Codex, OpenCode), as 4k7 has.
 

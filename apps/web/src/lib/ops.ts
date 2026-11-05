@@ -1,7 +1,7 @@
-import type { MachineKind, OperationInput, OpType } from '@swarf/cam';
+import type { Job, MachineKind, OperationInput, OpType } from '@swarf/cam';
 
 /** Names and starting values for adding an operation by hand. */
-export const OP_TEMPLATES: Record<MachineKind, { type: OpType; name: string; make: () => OperationInput }[]> = {
+export const OP_TEMPLATES: Record<MachineKind, { type: OpType; name: string; make: (job: Job) => OperationInput; needsShape?: boolean }[]> = {
   lathe: [
     { type: 'lathe_face', name: 'Face', make: () => ({ type: 'lathe_face', tool: 1, z: 0 }) },
     { type: 'lathe_turn', name: 'Turn diameter', make: () => ({ type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -20 }) },
@@ -22,6 +22,8 @@ export const OP_TEMPLATES: Record<MachineKind, { type: OpType; name: string; mak
     { type: 'mill_pocket_rect', name: 'Rectangular pocket', make: () => ({ type: 'mill_pocket_rect', tool: 1, x: 10, y: 10, w: 30, h: 20, zBottom: -3 }) },
     { type: 'mill_pocket_circle', name: 'Circular pocket', make: () => ({ type: 'mill_pocket_circle', tool: 1, cx: 20, cy: 20, diameter: 16, zBottom: -3 }) },
     { type: 'mill_contour_rect', name: 'Rectangular contour', make: () => ({ type: 'mill_contour_rect', tool: 1, x: 5, y: 5, w: 40, h: 30, zBottom: -2, side: 'outside' }) },
+    { type: 'mill_contour', name: 'Contour a drawing', needsShape: true, make: (job) => ({ type: 'mill_contour', tool: 1, shape: job.shapes[0]?.id ?? '', side: 'outside', zBottom: -3 }) },
+    { type: 'mill_pocket', name: 'Pocket a drawing', needsShape: true, make: (job) => ({ type: 'mill_pocket', tool: 1, shape: job.shapes[0]?.id ?? '', zBottom: -3 }) },
     { type: 'mill_drill', name: 'Drill holes', make: () => ({ type: 'mill_drill', tool: 3, points: [{ x: 10, y: 10 }], zBottom: -5 }) },
   ],
 };

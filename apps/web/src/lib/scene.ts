@@ -4,7 +4,7 @@
  * axis along scene X.
  */
 import * as THREE from 'three';
-import { LatheMaterial, MillMaterial, arcPoints, walk, type Program, type Vec3 } from '@swarf/cam';
+import { LatheMaterial, MillMaterial, arcPoints, walk, type Job, type Program, type Vec3 } from '@swarf/cam';
 
 export const COLORS = {
   feed: new THREE.Color('#6fb2e8'),
@@ -14,7 +14,27 @@ export const COLORS = {
   stock: new THREE.Color('#8d9a94'),
   chuck: new THREE.Color('#3a423e'),
   tool: new THREE.Color('#e0a400'),
+  drawing: new THREE.Color('#d9e6a8'),
 };
+
+/** Imported drawings as thin lines just above the stock top (mill). */
+export function drawingLines(job: Job): THREE.LineSegments | null {
+  if (job.stock.kind !== 'block' || !job.shapes.length) return null;
+  const z = job.stock.top + 0.05;
+  const pos: number[] = [];
+  for (const sh of job.shapes)
+    for (const p of sh.paths) {
+      const pts = p.closed ? [...p.pts, p.pts[0]!] : p.pts;
+      for (let i = 1; i < pts.length; i++) {
+        const [ax, ay] = pts[i - 1]!;
+        const [bx, by] = pts[i]!;
+        pos.push(ax + sh.at.x, z, -(ay + sh.at.y), bx + sh.at.x, z, -(by + sh.at.y));
+      }
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  return new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: COLORS.drawing, transparent: true, opacity: 0.85 }));
+}
 
 export function toScene(p: Vec3, lathe: boolean): THREE.Vector3 {
   return lathe ? new THREE.Vector3(p.z, p.x, 0) : new THREE.Vector3(p.x, p.z, -p.y);

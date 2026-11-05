@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES, analyze, emptyJob, type Job } from '@swarf/cam';
-import { Agent, CAM_TOOLS, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, runCamTool, type AgentEvent, type Block, type JobPort, type Script } from '../src/index.ts';
+import { Agent, CAM_TOOLS, formatJobContext, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, runCamTool, type AgentEvent, type Block, type JobPort, type Script } from '../src/index.ts';
 
 function port(job: Job): JobPort & { job: Job } {
   const p = { job, get: () => p.job, set: (j: Job) => (p.job = j) };
@@ -43,6 +43,20 @@ describe('tools', () => {
 
     const g = runCamTool(p, 'get_gcode', { opId: 'op2' })!;
     expect(g.content).toMatch(/G18 G7/);
+  });
+});
+
+describe('drawings', () => {
+  it('summarises drawings for the model and moves them with place_shape', () => {
+    const shape = { id: 's1', name: 'plate.dxf', at: { x: 0, y: 0 }, paths: [{ closed: true, pts: [[0, 0], [40, 0], [40, 30], [0, 30]] as [number, number][] }, { closed: false, pts: [[5, 5], [10, 5]] as [number, number][] }] };
+    const p = port({ ...EXAMPLES.mill(), shapes: [shape] });
+    const ctx = formatJobContext(p.job);
+    expect(ctx).toMatch(/s1 plate\.dxf: 40\.0 × 30\.0 mm, on the stock at X0\.0–40\.0 Y0\.0–30\.0; 1 closed outline\(s\) \(largest 1200 mm²\), 1 open path/);
+    const r = runCamTool(p, 'place_shape', { id: 's1', x: 10, y: 5 })!;
+    expect(r.isError).toBe(false);
+    expect(p.job.shapes[0]!.at).toEqual({ x: 10, y: 5 });
+    const got = JSON.parse(runCamTool(p, 'get_job', {})!.content);
+    expect(got.job.shapes[0].paths).toEqual([{ closed: true, points: 4 }, { closed: false, points: 2 }]);
   });
 });
 

@@ -54,6 +54,7 @@ export function diffJobs(before: Job, after: Job): JobDiff {
     }
   }
   if (!same(before.machine, after.machine)) d.other.push('machine settings');
+  if (!same(before.shapes, after.shapes)) d.other.push('drawings');
   if (before.material !== after.material) d.other.push('material');
   if (before.name !== after.name) d.other.push('name');
   return d;

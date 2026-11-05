@@ -3,7 +3,7 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { LatheMaterial, MillMaterial, simulate, walk, type Job, type Program, type Vec3 } from '@swarf/cam';
-  import { chuckMesh, latheMesh, millMesh, pathGeometry, toScene, toolMesh, type PathGeometry } from './scene.ts';
+  import { chuckMesh, drawingLines, latheMesh, millMesh, pathGeometry, toScene, toolMesh, type PathGeometry } from './scene.ts';
 
   let { job, program, selected = null, live = null }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null } = $props();
 
@@ -74,7 +74,10 @@
   function buildFixture(): void {
     dispose(fixture);
     fixture = null;
-    if (job.stock.kind === 'bar') {
+    if (job.stock.kind === 'block') {
+      fixture = drawingLines(job);
+      if (fixture) world.add(fixture);
+    } else if (job.stock.kind === 'bar') {
       fixture = chuckMesh(job.stock.front - job.stock.stickout, job.machine.chuckDiameter ?? job.stock.diameter * 2.5);
       world.add(fixture);
     }

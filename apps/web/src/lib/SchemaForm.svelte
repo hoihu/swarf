@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Tool } from '@swarf/cam';
+  import type { Shape, Tool } from '@swarf/cam';
   import type { Field } from './form.ts';
 
   let {
@@ -7,6 +7,7 @@
     value,
     errors = {},
     tools = [],
+    shapes = [],
     onchange,
   }: {
     fields: Field[];
@@ -14,6 +15,8 @@
     errors?: Record<string, string>;
     /** Tools offered for a `tool` field (already filtered to the ones that fit). */
     tools?: Tool[];
+    /** Drawings offered for a `shape` field. */
+    shapes?: Shape[];
     onchange: (next: Record<string, unknown>) => void;
   } = $props();
 
@@ -54,7 +57,12 @@
 {#snippet field(f: Field)}
   <div class="f" class:bad={errors[f.key]}>
     <label for="f-{f.key}">{f.label}{#if f.unit}<span class="unit">{f.unit}</span>{/if}</label>
-    {#if f.kind === 'tool'}
+    {#if f.kind === 'shape'}
+      <select id="f-{f.key}" value={value[f.key] as string} onchange={(e) => set(f.key, (e.currentTarget as HTMLSelectElement).value)}>
+        {#each shapes as sh (sh.id)}<option value={sh.id}>{sh.id} · {sh.name}</option>{/each}
+        {#if !shapes.some((sh) => sh.id === value[f.key])}<option value={value[f.key] as string}>{value[f.key] || 'none'} (missing)</option>{/if}
+      </select>
+    {:else if f.kind === 'tool'}
       <select id="f-{f.key}" value={value[f.key] as number} onchange={(e) => set(f.key, Number((e.currentTarget as HTMLSelectElement).value))}>
         {#each tools as t (t.id)}<option value={t.id}>T{t.id} · {t.name}</option>{/each}
         {#if !tools.some((t) => t.id === value[f.key])}<option value={value[f.key] as number}>T{value[f.key]} (does not fit)</option>{/if}

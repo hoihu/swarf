@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { EXAMPLES, Job, Machine, OP_TOOLS, Operation, Tool, emptyJob, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
+  import { EXAMPLES, Job, Machine, OP_TOOLS, Operation, Tool, bbox, emptyJob, importDrawing, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
   import SchemaForm from './SchemaForm.svelte';
   import MachinePanel from './MachinePanel.svelte';
   import { machine } from './machine.svelte.ts';
@@ -32,8 +32,8 @@
 
   const toolsFor = (type: OpType) => job.tools.filter((t) => OP_TOOLS[type].includes(t.type));
 
-  function addOp(make: () => unknown): void {
-    const op = Operation.parse(make());
+  function addOp(make: (job: Job) => unknown): void {
+    const op = Operation.parse(make(job));
     const ops = withIds([...job.operations, op]);
     store.set({ ...job, operations: ops });
     const id = ops.at(-1)!.id!;
@@ -55,6 +55,40 @@
     if (store.selected === id) store.selected = null;
     draft = null;
   }
+
+  // ---- drawings (mill)
+  let importNotes = $state<string[]>([]);
+  let importError = $state('');
+  async function importFile(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    importError = '';
+    try {
+      const { shape, notes } = importDrawing(file.name, await file.text(), job);
+      store.set({ ...job, shapes: [...job.shapes, shape] });
+      importNotes = [`${shape.id}: ${file.name}`, ...notes];
+    } catch (err) {
+      importError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  const sizeOf = (sh: (typeof job.shapes)[number]) => {
+    const b = bbox(sh.paths.map((p) => p.pts))!;
+    return { w: b.maxX - b.minX, h: b.maxY - b.minY, x: b.minX + sh.at.x, y: b.minY + sh.at.y };
+  };
+  function moveShape(id: string, axis: 'x' | 'y', e: Event): void {
+    const v = Number((e.currentTarget as HTMLInputElement).value.replace(',', '.'));
+    if (!Number.isFinite(v)) return;
+    const shapes = job.shapes.map((sh) => {
+      if (sh.id !== id) return sh;
+      // the field shows where the drawing's lower-left corner sits; move by the difference
+      const s0 = sizeOf(sh);
+      return { ...sh, at: { ...sh.at, [axis]: sh.at[axis] + v - s0[axis] } };
+    });
+    store.set({ ...job, shapes });
+  }
+  const shapeUsed = (id: string) => job.operations.some((o) => 'shape' in o && o.shape === id);
 
   // ---- stock
   function setStock(patch: Partial<Record<string, number>>): void {
@@ -151,6 +185,22 @@
           <p class="muted">Describe the part in the chat, or add an operation below.</p>
         </div>
       {/if}
+      {#if job.machine.kind === 'mill'}
+        <div class="drawings">
+          {#each job.shapes as sh (sh.id)}
+            {@const z = sizeOf(sh)}
+            <div class="drawing">
+              <span class="what"><span class="label">{sh.id} · {sh.name}</span><span class="sub">{z.w.toFixed(1)} × {z.h.toFixed(1)} mm, {sh.paths.length} path{sh.paths.length === 1 ? '' : 's'}</span></span>
+              <label class="at">X <input value={z.x.toFixed(2)} onchange={(e) => moveShape(sh.id, 'x', e)} aria-label="{sh.id} left edge X" /></label>
+              <label class="at">Y <input value={z.y.toFixed(2)} onchange={(e) => moveShape(sh.id, 'y', e)} aria-label="{sh.id} bottom edge Y" /></label>
+              <button class="ib" aria-label="Remove {sh.id}" disabled={shapeUsed(sh.id)} title={shapeUsed(sh.id) ? 'Operations use this drawing' : 'Remove'} onclick={() => store.set({ ...job, shapes: job.shapes.filter((x) => x.id !== sh.id) })}>×</button>
+            </div>
+          {/each}
+          <label class="btn import">Import DXF or SVG<input type="file" accept=".dxf,.svg,image/svg+xml" onchange={importFile} hidden /></label>
+          {#if importError}<p class="diag error">{importError}</p>{/if}
+          {#each importNotes as n, k (k)}<p class="muted small">{n}</p>{/each}
+        </div>
+      {/if}
       <ol class="ops">
         {#each job.operations as op, i (op.id)}
           {@const ds = errorsByOp.get(op.id!) ?? []}
@@ -172,6 +222,7 @@
                   value={draft?.id === op.id ? draft.value : (op as Record<string, unknown>)}
                   errors={draft?.id === op.id ? draft.errors : {}}
                   tools={toolsFor(op.type)}
+                  shapes={job.shapes}
                   onchange={(v) => editOp(op.id!, v)}
                 />
                 <div class="row">
@@ -188,7 +239,7 @@
         <summary>Add an operation</summary>
         <div class="grid">
           {#each OP_TEMPLATES[job.machine.kind] as t (t.type)}
-            <button class="btn" onclick={() => addOp(t.make)}>{t.name}</button>
+            <button class="btn" onclick={() => addOp(t.make)} disabled={t.needsShape && !job.shapes.length} title={t.needsShape && !job.shapes.length ? 'Import a DXF or SVG first' : ''}>{t.name}</button>
           {/each}
         </div>
       </details>
@@ -296,6 +347,15 @@
   .diag.error { background: var(--err-soft); color: var(--err); }
   .diag.warning { background: var(--warn-soft); color: var(--warn); }
   .add { margin-top: 12px; }
+  .drawings { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .drawing { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; border: 1px dashed var(--line-2); border-radius: 8px; padding: 6px 8px; }
+  .drawing .what { flex: 1 1 100%; }
+  .drawing .at { display: inline-flex; grid-template-columns: none; gap: 4px; margin: 0; font-size: 12px; color: var(--ink-3); }
+  .drawing .at input { width: 62px; padding: 3px 5px; }
+  .import { align-self: flex-start; display: inline-block; }
+  .ib { border: 0; background: none; color: var(--ink-3); font-size: 18px; padding: 0 4px; }
+  .ib:hover:not(:disabled) { color: var(--err); }
+  .small { font-size: 12px; margin: 0; }
   .add summary { cursor: pointer; color: var(--ink-2); font-weight: 600; padding: 4px 0; }
   label { display: grid; grid-template-columns: 1fr 110px auto; align-items: center; gap: 8px; margin: 6px 0; color: var(--ink-2); }
   label.wide { grid-template-columns: 1fr 2fr; margin-top: 14px; }

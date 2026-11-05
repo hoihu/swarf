@@ -8,7 +8,7 @@ import { Machine, Operation, Tool, type MachineKind, type OpType } from '@swarf/
 export interface Field {
   key: string;
   label: string;
-  kind: 'number' | 'integer' | 'text' | 'select' | 'checkbox' | 'rows' | 'tool';
+  kind: 'number' | 'integer' | 'text' | 'select' | 'checkbox' | 'rows' | 'tool' | 'shape';
   /** rows: the number columns of each row, and which must be filled. */
   columns?: { key: string; label: string; required: boolean }[];
   required: boolean;
@@ -57,6 +57,7 @@ const LABELS: Record<string, [string, string?]> = {
   infeed: ['Infeed'],
   internal: ['Internal tool'],
   tabs: ['Tabs'],
+  shape: ['Drawing'],
   tabWidth: ['Tab width', 'mm'],
   tabHeight: ['Tab height', 'mm'],
   // machine
@@ -98,6 +99,7 @@ function fields(schema: Json, skip: string[]): Field[] {
     const [label, unit] = LABELS[key] ?? [key];
     const base = { key, label, required: required.has(key), ...(unit ? { unit } : {}), ...(typeof p.description === 'string' ? { help: p.description } : {}), ...('default' in p ? { default: p.default } : {}) };
     if (key === 'tool') out.push({ ...base, kind: 'tool' });
+    else if (key === 'shape') out.push({ ...base, kind: 'shape' });
     else if (Array.isArray(p.enum)) out.push({ ...base, kind: 'select', options: p.enum as string[] });
     else if (p.type === 'array') {
       const items = (p.items ?? {}) as Json;

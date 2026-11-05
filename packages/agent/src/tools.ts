@@ -10,6 +10,7 @@ import {
   Stock,
   Tool,
   analyze,
+  bbox,
   emit,
   opLabel,
   withIds,
@@ -41,6 +42,7 @@ export const TOOL_NAMES = {
   moveOp: 'move_operation',
   setTool: 'set_tool',
   gcode: 'get_gcode',
+  placeShape: 'place_shape',
   ask: 'ask_user',
 } as const;
 
@@ -60,6 +62,11 @@ const UpdateOpInput = z.object({
 });
 const RemoveOpInput = z.object({ id: z.string() });
 const MoveOpInput = z.object({ id: z.string(), before: z.string().optional().describe('Move before this id (default: to the end)') });
+const PlaceShapeInput = z.object({
+  id: z.string(),
+  x: z.number().describe('X of the drawing\'s left edge on the stock'),
+  y: z.number().describe('Y of the drawing\'s bottom edge on the stock'),
+});
 const SetToolInput = z.object({ tool: Tool.describe('Adds the tool, or replaces the one with the same number') });
 const GcodeInput = z.object({ opId: z.string().optional().describe('Only this operation'), maxLines: z.number().int().positive().max(400).default(120) });
 
@@ -84,7 +91,7 @@ export const CAM_TOOLS: ToolDefinition[] = [
     name: TOOL_NAMES.addOp,
     description:
       'Add an operation. Lathe: lathe_face, lathe_turn, lathe_profile (a whole outline with chamfers and radii, roughed and finished with nose radius compensation), lathe_chamfer, lathe_groove, lathe_bore (boring bar, in a drilled hole), lathe_thread (G33 passes, external or internal), lathe_partoff, lathe_drill (all sizes are diameters, Z0 = finished face, negative Z towards the chuck). ' +
-      'Mill: mill_face, mill_pocket_rect, mill_pocket_circle, mill_contour_rect, mill_drill (X0 Y0 = stock front-left corner, Z0 = top after facing). ' +
+      'Mill: mill_face, mill_pocket_rect, mill_pocket_circle, mill_contour_rect, mill_contour and mill_pocket (an imported drawing, by shape id), mill_drill (X0 Y0 = stock front-left corner, Z0 = top after facing). ' +
       'Speeds and feeds come from the tool table unless you override rpm/feed. Answers with the check results.',
     input_schema: schemaOf(AddOpInput),
   },
@@ -99,6 +106,11 @@ export const CAM_TOOLS: ToolDefinition[] = [
     name: TOOL_NAMES.setTool,
     description: 'Add a tool to the tool table or replace one. Only when the user describes a tool they have; never invent tools silently.',
     input_schema: schemaOf(SetToolInput),
+  },
+  {
+    name: TOOL_NAMES.placeShape,
+    description: 'Move an imported drawing on the stock: its extents\' lower-left corner goes to (x, y).',
+    input_schema: schemaOf(PlaceShapeInput),
   },
   { name: TOOL_NAMES.gcode, description: 'The generated G-code (one operation, or the start of the program).', input_schema: schemaOf(GcodeInput) },
   {
@@ -138,7 +150,12 @@ export function runCamTool(port: JobPort, name: string, input: unknown): ToolOut
     case TOOL_NAMES.getJob: {
       const a = analyze(job);
       return {
-        content: JSON.stringify({ job, checks: a.diagnostics, seconds: Math.round(a.seconds) }),
+        // drawings as a summary: their points would swamp the answer
+        content: JSON.stringify({
+          job: { ...job, shapes: job.shapes.map((sh) => ({ id: sh.id, name: sh.name, at: sh.at, paths: sh.paths.map((p) => ({ closed: p.closed, points: p.pts.length })) })) },
+          checks: a.diagnostics,
+          seconds: Math.round(a.seconds),
+        }),
         isError: false,
         label: 'read job',
         detail: `${job.operations.length} operation(s)`,
@@ -206,6 +223,15 @@ export function runCamTool(port: JobPort, name: string, input: unknown): ToolOut
       const t = p.data.tool;
       const tools = [...job.tools.filter((x) => x.id !== t.id), t].sort((a, b) => a.id - b.id);
       return commit(`tool · T${t.id}`, { ...job, tools }, `T${t.id}: ${t.name}`);
+    }
+    case TOOL_NAMES.placeShape: {
+      const p = PlaceShapeInput.safeParse(input);
+      if (!p.success) return fail('place drawing', `Invalid input: ${zodMessage(p.error)}`);
+      const sh = job.shapes.find((x) => x.id === p.data.id);
+      if (!sh) return fail('place drawing', `No drawing ${p.data.id}.`);
+      const b = bbox(sh.paths.map((q) => q.pts))!;
+      const at = { x: p.data.x - b.minX, y: p.data.y - b.minY };
+      return commit(`place · ${sh.id}`, { ...job, shapes: job.shapes.map((x) => (x.id === sh.id ? { ...x, at } : x)) }, `${sh.id} now at X${p.data.x} Y${p.data.y}`);
     }
     case TOOL_NAMES.gcode: {
       const p = GcodeInput.safeParse(input ?? {});

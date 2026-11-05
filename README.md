@@ -65,7 +65,8 @@ After every assistant turn the chat shows what changed (operations added, change
 | | |
 |---|---|
 | Lathe | face, turn a diameter (roughing + finishing pass, shoulder), profile (a whole outline with steps, tapers, chamfers and radii: roughing, semi-finish and a nose-radius-compensated finish), 45° chamfer, groove, boring, external and internal threads (G33 passes, flank or radial infeed, spring passes), part off, drill on centre with pecking |
-| Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside with holding tabs, drill hole patterns with pecking |
+| Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside with holding tabs, drill hole patterns with pecking; and any imported outline: cut it out (holes included, with tabs), run inside it, follow its lines (engraving), or pocket it around islands |
+| Drawings | DXF (lines, arcs, circles, polylines with bulges, ellipses, splines, blocks; units from the file) and SVG (paths, shapes, transforms, mm sizes); placed on the stock and shown in the preview |
 | Speeds and feeds | from the tool table (cutting speed, chip load or feed per rev), clamped to the machine |
 | Entry and finish | ramped entry for pockets and contours, helical entry for circular pockets; lathe chamfers compensated for the insert's nose radius |
 | Time | estimated like grbl's planner: acceleration and junction deviation, forward and backward pass |

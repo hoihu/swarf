@@ -1,7 +1,7 @@
 /**
  * System prompt (static, cacheable) and the per-turn job state that travels with each user message.
  */
-import { analyze, opLabel, type Job } from '@swarf/cam';
+import { analyze, area, bbox, opLabel, type Job } from '@swarf/cam';
 import { formatDiagnostics } from './tools.ts';
 
 /** How to build jobs: shared by the in-app agent and the MCP instructions for Claude Code. */
@@ -15,6 +15,7 @@ How to build a job:
 - For an outside shape with several diameters, tapers, chamfers or radii, prefer one lathe_profile: list the corners from the face towards the chuck (start at d 0, z 0 to face too), with c (chamfer) or r (radius) on the corners that have them. Diameters must not get smaller towards the chuck; necks and undercuts are grooves. lathe_turn is for a single plain diameter.
 - Leave the part length plus the parting blade width before the chuck; keep everything clear of the chuck jaws.
 - Threads: turn the major diameter first (slightly under nominal, e.g. Ø9.85 for M10), then lathe_thread with the pitch (metric coarse: M6 1, M8 1.25, M10 1.5, M12 1.75, M16 2), then chamfer and part off. There is no pull-out at the end of a pass: end the thread at a groove or leave room before a shoulder. Threading needs a controller with spindle sync; if the check says it is off, tell the user rather than working around it.
+- Drawings (mill): an imported DXF/SVG is a shape. mill_contour side outside cuts the part out along its outline and cuts its holes too (add tabs when it goes through the stock); side inside runs inside an outline; side on follows the lines (engraving, open paths). mill_pocket clears inside the closed outlines and leaves the outlines inside them standing as islands. Move a drawing on the stock with place_shape. You cannot see the drawing itself, only its summary: if what the user asks does not match it (sizes, number of holes), say so.
 - Holes: lathe_drill on centre, then lathe_bore with the boring bar (it needs a hole at least as big as its minimum bore, and reaches only so deep). Internal thread: drill, bore to the minor diameter (D − 1.0825 × pitch, e.g. Ø8.38 for M10), then lathe_thread with side internal and the internal threading bar.
 - Every edit answers with the checks. Errors must be fixed before you finish; warnings you can leave if they are intended (say so).
 - If the request is ambiguous in a way that changes the part (a missing dimension, inside or outside, which end), ask one question rather than guess. Do not ask about things you can decide sensibly (number of passes, clearances).`;
@@ -47,6 +48,20 @@ export function formatJobContext(job: Job): string {
   for (const t of job.tools) {
     const size = t.diameter ? ` Ø${t.diameter}` : t.width ? ` ${t.width} mm wide` : '';
     lines.push(`  T${t.id} ${t.type}${size}: ${t.name}${t.maxDoc ? `, max ${t.maxDoc} mm/pass` : ''}${t.fluteLength ? `, flutes ${t.fluteLength} mm` : ''}`);
+  }
+  if (job.shapes.length) {
+    lines.push('drawings (imported; refer to them by id in mill_contour / mill_pocket):');
+    for (const sh of job.shapes) {
+      const b = bbox(sh.paths.map((p) => p.pts.map(([x, y]) => [x + sh.at.x, y + sh.at.y] as [number, number])))!;
+      const closed = sh.paths.filter((p) => p.closed);
+      const open = sh.paths.length - closed.length;
+      const areas = closed.map((p) => Math.abs(area(p.pts))).sort((a, b) => b - a);
+      lines.push(
+        `  ${sh.id} ${sh.name}: ${(b.maxX - b.minX).toFixed(1)} × ${(b.maxY - b.minY).toFixed(1)} mm, on the stock at X${b.minX.toFixed(1)}–${b.maxX.toFixed(1)} Y${b.minY.toFixed(1)}–${b.maxY.toFixed(1)}; ` +
+          `${closed.length} closed outline(s)${areas.length ? ` (largest ${areas[0]!.toFixed(0)} mm²${areas.length > 1 ? `, others ${areas.slice(1, 6).map((a) => a.toFixed(0)).join(', ')} mm²` : ''})` : ''}` +
+          (open ? `, ${open} open path(s)` : ''),
+      );
+    }
   }
   if (job.operations.length) {
     lines.push('operations:');
