@@ -1,0 +1,23 @@
+{
+  "name": "swarf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI-assisted CAM for hobby CNC (grblHAL): describe the part, get checked G-code and a 3D preview",
+  "license": "MIT",
+  "author": "Martin Fischer",
+  "engines": { "node": ">=22.18" },
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "npm run dev -w @swarf/web",
+    "build": "npm run build -w @swarf/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm run check -w @swarf/web"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

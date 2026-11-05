@@ -1,0 +1,109 @@
+import { describe, expect, it } from 'vitest';
+import { EXAMPLES, analyze, emptyJob, type Job } from '@swarf/cam';
+import { Agent, CAM_TOOLS, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, runCamTool, type AgentEvent, type Block, type JobPort, type Script } from '../src/index.ts';
+
+function port(job: Job): JobPort & { job: Job } {
+  const p = { job, get: () => p.job, set: (j: Job) => (p.job = j) };
+  return p;
+}
+
+async function turn(agent: Agent, text: string): Promise<AgentEvent[]> {
+  const events: AgentEvent[] = [];
+  await agent.run(text, (e) => events.push(e));
+  return events;
+}
+
+const use = (name: string, input: unknown): Block => ({ type: 'tool_use', id: '', name, input });
+
+describe('tools', () => {
+  it('have plain object schemas', () => {
+    for (const t of CAM_TOOLS) expect(t.input_schema.type).toBe('object');
+  });
+
+  it('validate edits and answer with the checks', () => {
+    const p = port(emptyJob('lathe'));
+    const bad = runCamTool(p, 'add_operation', { operation: { type: 'lathe_turn', tool: 1, diameter: -3, zEnd: -10 } })!;
+    expect(bad.isError).toBe(true);
+    expect(p.job.operations).toHaveLength(0);
+
+    const ok = runCamTool(p, 'add_operation', { operation: { type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -10 } })!;
+    expect(ok.isError).toBe(false);
+    expect(ok.content).toMatch(/checks: clean/);
+    expect(p.job.operations[0]!.id).toBe('op1');
+
+    const upd = runCamTool(p, 'update_operation', { id: 'op1', changes: { zEnd: -80 } })!;
+    expect(upd.content).toMatch(/CHUCK/);
+
+    runCamTool(p, 'add_operation', { operation: { type: 'lathe_face', tool: 1 }, before: 'op1' });
+    expect(p.job.operations.map((o) => o.id)).toEqual(['op2', 'op1']);
+    runCamTool(p, 'move_operation', { id: 'op2' });
+    expect(p.job.operations.map((o) => o.id)).toEqual(['op1', 'op2']);
+    runCamTool(p, 'remove_operation', { id: 'op1' });
+    expect(p.job.operations.map((o) => o.id)).toEqual(['op2']);
+
+    const g = runCamTool(p, 'get_gcode', { opId: 'op2' })!;
+    expect(g.content).toMatch(/G18 G7/);
+  });
+});
+
+describe('agent loop', () => {
+  it('runs the offline pin demo to a clean job', async () => {
+    const p = port(emptyJob('lathe'));
+    const agent = new Agent({ provider: new ScriptedProvider(DEMO_SCRIPTS, { fallback: DEMO_FALLBACK }), job: p });
+    const events = await turn(agent, 'turn a pin Ø12 x 30');
+    expect(events.at(-1)).toEqual({ type: 'done', reason: 'complete' });
+    expect(events.filter((e) => e.type === 'tool')).toHaveLength(4);
+    expect(p.job.operations.map((o) => o.type)).toEqual(['lathe_face', 'lathe_turn', 'lathe_chamfer', 'lathe_partoff']);
+    expect(analyze(p.job).diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+  });
+
+  it('runs the pocket demo on the mill', async () => {
+    const p = port(EXAMPLES.mill());
+    const agent = new Agent({ provider: new ScriptedProvider(DEMO_SCRIPTS), job: p });
+    await turn(agent, 'pocket 30 x 20 x 4');
+    const last = p.job.operations.at(-1)!;
+    expect(last).toMatchObject({ type: 'mill_pocket_rect', w: 30, h: 20, zBottom: -4, x: 25, y: 15 });
+  });
+
+  it('does not finish while the job has errors', async () => {
+    const script: Script = {
+      name: 'chuck',
+      match: /long/,
+      steps: [
+        [use('add_operation', { operation: { id: 'op1', type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -80 } })],
+        [{ type: 'text', text: 'Done.' }],
+        [use('update_operation', { id: 'op1', changes: { zEnd: -40 } })],
+        [{ type: 'text', text: 'Shortened it to stay clear of the chuck.' }],
+      ],
+    };
+    const p = port(emptyJob('lathe'));
+    const agent = new Agent({ provider: new ScriptedProvider([script]), job: p });
+    const events = await turn(agent, 'a long shaft');
+    const verify = events.filter((e) => e.type === 'verify');
+    expect(verify).toHaveLength(1);
+    expect((verify[0] as Extract<AgentEvent, { type: 'verify' }>).message).toMatch(/CHUCK/);
+    expect(events.at(-1)).toEqual({ type: 'done', reason: 'complete' });
+    expect(p.job.operations[0]).toMatchObject({ zEnd: -40 });
+  });
+
+  it('asks the user and continues with the answer', async () => {
+    const script: Script = {
+      name: 'ask',
+      match: /chamfer/,
+      steps: [
+        [use('ask_user', { question: 'Which edge?', options: ['front', 'shoulder'] })],
+        ({ messages }) => {
+          const answer = JSON.stringify(messages.at(-1));
+          return [{ type: 'text', text: answer.includes('The user answered: front') ? 'Front it is.' : 'no answer' }];
+        },
+      ],
+    };
+    const agent = new Agent({ provider: new ScriptedProvider([script]), job: port(emptyJob('lathe')) });
+    const first = await turn(agent, 'add a chamfer');
+    expect(first).toContainEqual({ type: 'question', question: 'Which edge?', options: ['front', 'shoulder'] });
+    expect(first.at(-1)).toEqual({ type: 'done', reason: 'question' });
+    const second = await turn(agent, 'front');
+    const text = second.filter((e) => e.type === 'text').map((e) => (e as { delta: string }).delta).join('');
+    expect(text).toBe('Front it is.');
+  });
+});
