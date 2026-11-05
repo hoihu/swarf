@@ -5,7 +5,7 @@
   import { LatheMaterial, MillMaterial, simulate, walk, type Job, type Program, type Vec3 } from '@swarf/cam';
   import { chuckMesh, latheMesh, millMesh, pathGeometry, toScene, toolMesh, type PathGeometry } from './scene.ts';
 
-  let { job, program, selected = null }: { job: Job; program: Program; selected?: string | null } = $props();
+  let { job, program, selected = null, live = null }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null } = $props();
 
   let host: HTMLDivElement;
   let renderer: THREE.WebGLRenderer | null = null;
@@ -93,7 +93,7 @@
       world.add(tool);
       toolKey = key;
     }
-    tool!.position.copy(toScene(p, lathe));
+    tool!.position.copy(toScene(live ?? p, lathe));
   }
 
   function updateRange(): void {
@@ -226,6 +226,16 @@
       placeTool();
       buildPart();
       fit();
+    });
+  });
+
+  // follow the machine
+  $effect(() => {
+    void live;
+    if (!mounted) return;
+    untrack(() => {
+      placeTool();
+      dirty = true;
     });
   });
 

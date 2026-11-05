@@ -6,6 +6,7 @@
   import { store } from './lib/store.svelte.ts';
   import { minutes } from './lib/ops.ts';
   import { bridge } from './lib/bridge.svelte.ts';
+  import { machine } from './lib/machine.svelte.ts';
   import { onMount } from 'svelte';
 
   onMount(() => bridge.start());
@@ -16,6 +17,13 @@
 
   const errors = $derived(store.analysis.diagnostics.filter((d) => d.severity === 'error').length);
   const warnings = $derived(store.analysis.diagnostics.filter((d) => d.severity === 'warning').length);
+  /** The controller's work position for the preview. grblHAL in lathe diameter mode (G7) reports X as a diameter. */
+  const live = $derived.by(() => {
+    const p = machine.status?.wpos;
+    if (!p) return null;
+    const lathe = store.job.machine.kind === 'lathe';
+    return lathe ? { x: store.job.machine.xMode === 'diameter' ? p[0] / 2 : p[0], y: 0, z: p[2] } : { x: p[0], y: p[1], z: p[2] };
+  });
   const tools = $derived(new Set(store.analysis.program.segments.map((s) => s.tool)).size);
 </script>
 
@@ -47,7 +55,7 @@
 
   <main class="panes" data-pane={pane}>
     <div class="pane-job"><JobPanel /></div>
-    <div class="pane-view"><Viewer job={store.job} program={store.analysis.program} selected={store.selected} /></div>
+    <div class="pane-view"><Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} /></div>
     <div class="pane-chat"><Chat onSettings={() => (settings = true)} /></div>
   </main>
 

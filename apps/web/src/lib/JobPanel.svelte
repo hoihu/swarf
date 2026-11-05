@@ -1,11 +1,13 @@
 <script lang="ts">
   import { EXAMPLES, Job, OP_TOOLS, Operation, Tool, emptyJob, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
   import SchemaForm from './SchemaForm.svelte';
+  import MachinePanel from './MachinePanel.svelte';
+  import { machine } from './machine.svelte.ts';
   import { issuesByField, opFields, toolFields } from './form.ts';
   import { store } from './store.svelte.ts';
   import { OP_TEMPLATES } from './ops.ts';
 
-  type Tab = 'ops' | 'stock' | 'tools' | 'gcode';
+  type Tab = 'ops' | 'stock' | 'tools' | 'gcode' | 'machine';
   let tab = $state<Tab>('ops');
 
   const job = $derived(store.job);
@@ -117,10 +119,11 @@
 
 <section class="panel">
   <div class="tabs" role="tablist">
-    {#each [['ops', 'Operations'], ['stock', 'Stock'], ['tools', 'Tools'], ['gcode', 'G-code']] as [id, name] (id)}
+    {#each [['ops', 'Operations'], ['stock', 'Stock'], ['tools', 'Tools'], ['gcode', 'G-code'], ['machine', 'Machine']] as [id, name] (id)}
       <button role="tab" aria-selected={tab === id} class:on={tab === id} onclick={() => (tab = id as Tab)}>
         {name}
         {#if id === 'ops' && diags.some((d) => d.severity === 'error')}<span class="dot err" title="Has errors"></span>{/if}
+        {#if id === 'machine' && machine.connected}<span class="dot on" title="Controller connected"></span>{/if}
       </button>
     {/each}
   </div>
@@ -228,7 +231,7 @@
         {/each}
       </ol>
       <div class="row"><button class="btn" onclick={addTool}>Add a tool</button></div>
-    {:else}
+    {:else if tab === 'gcode'}
       <div class="row">
         <button class="btn pri" onclick={download} disabled={store.analysis.diagnostics.some((d) => d.severity === 'error')} title="Fix errors before downloading">Download .nc</button>
         <span class="muted">{gcodeLines.length} lines</span>
@@ -238,18 +241,21 @@
       {/if}
       <pre class="gcode">{#each gcodeLines as line, i (i)}<span class="ln">{i + 1}</span><span class:cm={line.startsWith('(')}>{line}</span>
 {/each}</pre>
+    {:else}
+      <MachinePanel />
     {/if}
   </div>
 </section>
 
 <style>
   .panel { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--panel); }
-  .tabs { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--line); flex: none; }
-  .tabs button { border: 0; background: none; padding: 8px 10px; font-weight: 600; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; }
+  .tabs { display: flex; gap: 0; padding: 8px 6px 0; overflow-x: auto; border-bottom: 1px solid var(--line); flex: none; }
+  .tabs button { border: 0; background: none; padding: 8px 8px; white-space: nowrap; font-weight: 600; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; }
   .tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
   .tabs button:hover { color: var(--ink); }
   .dot { width: 7px; height: 7px; border-radius: 50%; }
   .dot.err { background: var(--err); }
+  .dot.on { background: var(--ok); }
   .body { flex: 1; overflow: auto; padding: 12px 14px 20px; }
   h3 { font-size: 13px; font-weight: 700; margin: 16px 0 6px; }
   h3:first-child { margin-top: 0; }

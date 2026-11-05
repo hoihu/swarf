@@ -38,6 +38,15 @@ writes the .nc file next to your project (refused while the job has errors).
 The server listens on 127.0.0.1 only, accepts the tab only from localhost pages, and only with
 the access key from `~/.swarf/server.json`.
 
+## Run it on the machine
+
+The **Machine** tab streams the program to a grblHAL controller over USB (Web Serial: Chrome or
+Edge on a computer). It uses grbl's character-counting protocol, learns the receive buffer size
+from `$I`, polls status for the DRO and the tool marker in the preview, and offers hold, resume,
+soft reset, feed override, unlock, home and a command line. The program pauses at every tool
+change (M0); Resume continues. It refuses to start while the job has errors or the controller is
+not idle. The protocol logic lives in `packages/grbl` and is tested against a pretend controller.
+
 ## What works (tier 1)
 
 | | |
@@ -50,8 +59,7 @@ the access key from `~/.swarf/server.json`.
 | Preview | three.js: toolpath (feeds blue, rapids orange), the part as it is cut, timeline scrubber, tool marker |
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
 
-Not yet: tool nose radius compensation, ramp/helical entry, threading (G33/G76 need spindle sync),
-arbitrary profiles from DXF, streaming to the machine. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Not yet: threading (G33/G76 need spindle sync) and arbitrary profiles from DXF. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Safety
 
