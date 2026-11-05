@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { Agent, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, apiProblem, apiProvider, formatDiagnostics, formatJobContext, type AgentEvent, type ChatEvent, type Provider } from '@swarf/agent';
-  import type { Job } from '@swarf/cam';
+  import { diffJobs, isEmptyDiff, type Job, type JobDiff } from '@swarf/cam';
   import { store } from './store.svelte.ts';
   import { bridge } from './bridge.svelte.ts';
   import { miniMarkdown } from './markdown.ts';
@@ -20,6 +20,24 @@
     notes: string[];
     question?: { question: string; options: string[] };
     error?: string;
+    /** What the turn changed, to keep or revert. */
+    review?: { before: Job; after: Job; diff: JobDiff; state: 'open' | 'kept' | 'reverted' };
+  }
+
+  /** After a turn: show what changed. Earlier open reviews count as kept. */
+  function review(cur: Item, before: Job): void {
+    if (store.epoch !== epoch) return;
+    const after = $state.snapshot(store.job) as Job;
+    const diff = diffJobs(before, after);
+    if (isEmptyDiff(diff)) return;
+    for (const it of items) if (it.review?.state === 'open') it.review.state = 'kept';
+    cur.review = { before, after, diff, state: 'open' };
+  }
+
+  function revert(it: Item): void {
+    if (!it.review || JSON.stringify(store.job) !== JSON.stringify(it.review.after)) return;
+    store.set(it.review.before);
+    it.review.state = 'reverted';
   }
 
   let items = $state<Item[]>([]);
@@ -86,6 +104,7 @@
     void scroll();
 
     const before = JSON.stringify(store.job);
+    const beforeJob = $state.snapshot(store.job) as Job;
     epoch = store.epoch;
     store.checkpoint();
     if (useClaude) {
@@ -94,6 +113,7 @@
       } finally {
         busy = false;
         if (store.epoch === epoch && JSON.stringify(store.job) === before) store.history = store.history.slice(0, -1);
+        review(cur, beforeJob);
         void scroll();
       }
       return;
@@ -135,6 +155,7 @@
       controller = null;
       // nothing changed: no undo point needed
       if (store.epoch === epoch && JSON.stringify(store.job) === before) store.history = store.history.slice(0, -1);
+      review(cur, beforeJob);
       void scroll();
     }
   }
@@ -273,6 +294,26 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
             </div>
           {/if}
           {#if it.error}<p class="error">{it.error}</p>{/if}
+          {#if it.review}
+            {@const r = it.review}
+            {@const current = JSON.stringify(store.job) === JSON.stringify(r.after)}
+            <div class="review" class:done={r.state !== 'open'}>
+              <p class="rh">{r.state === 'reverted' ? 'Reverted' : 'Changes'}</p>
+              <ul>
+                {#each r.diff.added as a (a.id)}<li class="add">Added {a.label}</li>{/each}
+                {#each r.diff.changed as c (c.id)}<li class="chg">Changed {c.label}<span>{c.fields.join(', ')}</span></li>{/each}
+                {#each r.diff.removed as a (a.id)}<li class="del">Removed {a.label}</li>{/each}
+                {#if r.diff.reordered}<li class="chg">Reordered the operations</li>{/if}
+                {#each r.diff.other as o (o)}<li class="chg">Changed {o}</li>{/each}
+              </ul>
+              {#if r.state === 'open'}
+                <div class="options">
+                  <button class="btn" onclick={() => (r.state = 'kept')}>Keep</button>
+                  <button class="btn danger" disabled={!current || busy} title={current ? '' : 'The job has changed since; use Undo instead'} onclick={() => revert(it)}>Revert this turn</button>
+                </div>
+              {/if}
+            </div>
+          {/if}
         </div>
       {/if}
     {/each}
@@ -316,6 +357,15 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
   .note { margin: 4px 0; font-size: 12.5px; color: var(--warn); }
   .error { margin: 6px 0; padding: 6px 9px; border-radius: 6px; background: var(--err-soft); color: var(--err); }
   .options { display: flex; flex-wrap: wrap; gap: 6px; }
+  .review { margin-top: 8px; border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 10px; background: var(--panel-2); }
+  .review.done { opacity: 0.7; }
+  .review .rh { margin: 0 0 4px; font-weight: 700; font-size: 12.5px; }
+  .review ul { list-style: none; margin: 0 0 6px; padding: 0; font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; }
+  .review li::before { display: inline-block; width: 14px; font-weight: 700; }
+  .review li.add::before { content: '+'; color: var(--ok); }
+  .review li.del::before { content: '−'; color: var(--err); }
+  .review li.chg::before { content: '~'; color: var(--warn); }
+  .review li span { display: block; padding-left: 14px; color: var(--ink-3); }
   .compose { display: flex; gap: 8px; align-items: flex-end; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); flex: none; }
   .compose textarea { flex: 1; resize: none; border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 10px; background: var(--panel); line-height: 1.4; }
 </style>

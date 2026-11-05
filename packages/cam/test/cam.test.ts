@@ -9,6 +9,8 @@ import {
   levels,
   parseGcode,
   walk,
+  diffJobs,
+  isEmptyDiff,
   buildProfile,
   tipPath,
   zAtRadius,
@@ -22,6 +24,21 @@ import {
 const codes = (job: Job) => analyze(job).diagnostics.map((d) => d.code);
 const withOps = (kind: 'lathe' | 'mill', ops: OperationInput[], patch: Partial<JobInput> = {}): Job =>
   Job.parse({ ...EXAMPLES[kind](), operations: ops, ...patch });
+
+describe('job diff', () => {
+  it('lists added, removed, changed and reordered operations and other changes', () => {
+    const a = EXAMPLES.lathe();
+    const ops = a.operations.filter((o) => o.id !== 'op3').map((o) => (o.id === 'op2' ? { ...o, diameter: 18 } : o));
+    const b = Job.parse({ ...a, material: 'brass', operations: [ops[1]!, ops[0]!, ...ops.slice(2), { id: 'op9', type: 'lathe_face', tool: 1, z: -0.5, fromZ: 0 }] });
+    const d = diffJobs(a, b);
+    expect(d.added.map((x) => x.id)).toEqual(['op9']);
+    expect(d.removed.map((x) => x.id)).toEqual(['op3']);
+    expect(d.changed).toEqual([{ id: 'op2', label: 'Turn Ø18 to Z-30', fields: ['diameter 20 → 18'] }]);
+    expect(d.reordered).toBe(true);
+    expect(d.other).toEqual(['material']);
+    expect(isEmptyDiff(diffJobs(a, a))).toBe(true);
+  });
+});
 
 describe('levels', () => {
   it('splits a span into equal steps no larger than the step', () => {
