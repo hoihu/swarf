@@ -224,21 +224,26 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       const n = Math.min(30, Math.max(3, Math.ceil((depth / op.firstCut) ** 2)));
       const depths = Array.from({ length: n }, (_, i) => depth * Math.sqrt((i + 1) / n));
       for (let k = 0; k < op.springPasses; k++) depths.push(depth);
+      // several starts: the tool advances the lead per turn, and each start begins one pitch further
+      // out, so it meets the index pulse a 1/starts turn later (every start is cut at each depth in turn)
+      const lead = op.pitch * op.starts;
       // grblHAL does not correct the sync while Z accelerates: start far enough out to be at speed
-      const v = (op.pitch * ctx.cut.rpm) / 60;
+      const v = (lead * ctx.cut.rpm) / 60;
       const accelDist = (v * v) / (2 * ctx.job.machine.accel);
-      const leadIn = Math.max(3 * op.pitch, 1.5 * accelDist + 1);
+      const leadIn = Math.max(3 * lead, 1.5 * accelDist + 1);
       const flank = op.infeed === 'flank' ? Math.tan((29.5 * Math.PI) / 180) : 0;
       // where the tool waits between passes: outside the thread, or near the axis for an internal one
       const rOut = internal ? Math.max(rMinor - ctx.c / 2, 0) : R + ctx.c / 2;
       for (const d of depths) {
-        const zs = op.zStart + leadIn - d * flank;
-        const x = internal ? rMinor + d : R - d;
-        out.push(rapid(safe.x, zs), rapid(rOut, zs), rapid(x, zs));
-        out.push({ type: 'thread', to: v3(x, op.zEnd), pitch: op.pitch, f: op.pitch * ctx.cut.rpm });
-        out.push(rapid(rOut, op.zEnd), rapid(rOut, zs));
+        for (let s = 0; s < op.starts; s++) {
+          const zs = op.zStart + leadIn + s * op.pitch - d * flank;
+          const x = internal ? rMinor + d : R - d;
+          out.push(rapid(safe.x, zs), rapid(rOut, zs), rapid(x, zs));
+          out.push({ type: 'thread', to: v3(x, op.zEnd), pitch: lead, f: lead * ctx.cut.rpm });
+          out.push(rapid(rOut, op.zEnd), rapid(rOut, zs));
+        }
       }
-      retract(op.zStart + leadIn);
+      retract(op.zStart + leadIn + (op.starts - 1) * op.pitch);
       return out;
     }
 

@@ -17,6 +17,7 @@ import {
   zAtRadius,
   plannedSeconds,
   cuttingData,
+  samplePath,
   MATERIALS,
   estimateSeconds,
   type Program,
@@ -247,6 +248,25 @@ describe('threading', () => {
     });
   };
   const passes = (job: Job) => [...walk(analyze(job).program)].filter((w) => w.move.type === 'thread');
+
+  it('multi-start: each start one pitch further out at every depth, G33 K is the lead', () => {
+    const job = threadJob({ pitch: 1.5, starts: 2, infeed: 'radial', springPasses: 0 });
+    expect(analyze(job).diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    const p = passes(job);
+    const single = passes(threadJob({ pitch: 1.5, infeed: 'radial', springPasses: 0 }));
+    expect(p.length).toBe(single.length * 2);
+    for (const w of p) expect((w.move as { pitch: number }).pitch).toBe(3);
+    // the two starts of a depth: same X, starting Z one pitch apart
+    for (let i = 0; i < p.length; i += 2) {
+      expect(p[i]!.move.to.x).toBeCloseTo(p[i + 1]!.move.to.x, 9);
+      expect(p[i + 1]!.from.z - p[i]!.from.z).toBeCloseTo(1.5, 9);
+    }
+    // depth from the pitch (the profile), not from the lead
+    expect(6 - Math.min(...p.map((w) => w.move.to.x))).toBeCloseTo(0.61343 * 1.5, 4);
+    const text = emit(job, analyze(job).program).text;
+    expect(text).toMatch(/^G33 Z-15 K3$/m);
+    expect(text).toContain('M12×Ph3P1.5, 2 starts to Z-15');
+  });
 
   it('needs a controller with spindle sync', () => {
     expect(codes(threadJob({}, false))).toContain('THREAD_SYNC');
@@ -585,5 +605,73 @@ describe('materials', () => {
   it('old jobs without a material read as aluminium', () => {
     const j = Job.parse({ ...EXAMPLES.lathe(), workMaterial: undefined });
     expect(j.workMaterial).toBe('aluminium');
+  });
+});
+
+describe('lathe arcs (G18)', () => {
+  const profile: OperationInput = {
+    id: 'op1',
+    type: 'lathe_profile',
+    tool: 1,
+    points: [{ d: 0, z: 0 }, { d: 14, z: 0, r: 2 }, { d: 14, z: -10, r: 1.5 }, { d: 20, z: -10, c: 0.5 }, { d: 20, z: -25 }],
+  };
+  const job = (tol: number) => withOps('lathe', [profile], { machine: { ...EXAMPLES.lathe().machine, arcTolerance: tol } });
+  /** Points every 0.05 mm along a program's feeds and arcs. */
+  const dense = (p: Program) => {
+    const pts: { x: number; z: number }[] = [];
+    for (const { from, move } of walk(p)) if (move.type !== 'rapid') for (const q of samplePath(from, move, 0.05)) pts.push({ x: q.x, z: q.z });
+    return pts;
+  };
+  /** How far the points of `a` get from the path through the points of `b` (point to segment). */
+  const farthest = (a: { x: number; z: number }[], b: { x: number; z: number }[]) => {
+    const seg = (p: { x: number; z: number }, s: { x: number; z: number }, e: { x: number; z: number }) => {
+      const dx = e.x - s.x;
+      const dz = e.z - s.z;
+      const t = Math.max(0, Math.min(1, ((p.x - s.x) * dx + (p.z - s.z) * dz) / (dx * dx + dz * dz || 1)));
+      return Math.hypot(p.x - s.x - t * dx, p.z - s.z - t * dz);
+    };
+    return Math.max(...a.map((p) => Math.min(...b.slice(1).map((q, i) => seg(p, b[i]!, q)))));
+  };
+
+  it('writes the radii as G2/G3 arcs that follow the same path', () => {
+    const lines = analyze(job(0)).program;
+    const arcs = analyze(job(0.005)).program;
+    const n = arcs.segments[0]!.moves.filter((m) => m.type === 'arc').length;
+    expect(n).toBeGreaterThan(0);
+    expect(arcs.segments[0]!.moves.every((m) => m.type !== 'arc' || m.plane === 'zx')).toBe(true);
+    expect(farthest(dense(arcs), dense(lines))).toBeLessThan(0.01);
+    expect(farthest(dense(lines), dense(arcs))).toBeLessThan(0.01);
+  });
+
+  it('G-code read back gives the same path: X as diameter, I as radius, K', () => {
+    const j = job(0.005);
+    const a = analyze(j);
+    const text = emit(j, a.program).text;
+    expect(text).toMatch(/^G18 G7$/m);
+    expect(text).toMatch(/^G[23] X[\d.]+ Z-?[\d.]+ I-?[\d.]+ K-?[\d.]+/m);
+    const parsed = parseGcode(text, 'lathe');
+    expect(parsed.warnings).toEqual([]);
+    const back: Program = { kind: 'lathe', home: parsed.start, segments: [{ opId: 'x', label: '', tool: 1, rpm: 1, moves: parsed.moves.map((m) => m.move) }] };
+    const orig = dense(a.program);
+    const read = dense(back);
+    expect(farthest(read, orig)).toBeLessThan(0.002);
+    expect(farthest(orig, read)).toBeLessThan(0.002);
+  });
+
+  it('convex corners are G3 and the concave fillet G2, as on any lathe turning towards the chuck', () => {
+    const a = analyze(job(0.005));
+    let convex = 0;
+    let concave = 0;
+    for (const { from, move } of walk(a.program)) {
+      if (move.type !== 'arc') continue;
+      // the chord's middle is on the arc's side of the centre (whichever way the arc runs): above it on
+      // a convex corner (centre inside the part), below it on a fillet (centre outside)
+      const outside = (from.x + move.to.x) / 2 < move.center.x;
+      if (outside) concave++;
+      else convex++;
+      expect(move.cw).toBe(outside);
+    }
+    expect(convex).toBeGreaterThan(0);
+    expect(concave).toBeGreaterThan(0);
   });
 });

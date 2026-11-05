@@ -64,7 +64,7 @@ export function opLabel(op: Operation): string {
     case 'lathe_partoff':
       return `Part off at Z${op.z}`;
     case 'lathe_thread':
-      return `${op.side === 'internal' ? 'Internal thread' : 'Thread'} M${op.diameter}×${op.pitch} to Z${op.zEnd}`;
+      return `${op.side === 'internal' ? 'Internal thread' : 'Thread'} M${op.diameter}×${op.starts > 1 ? `Ph${op.pitch * op.starts}P${op.pitch}, ${op.starts} starts` : op.pitch} to Z${op.zEnd}`;
     case 'lathe_bore':
       return `Bore Ø${op.diameter} to Z${op.zEnd}`;
     case 'lathe_drill':
@@ -120,10 +120,11 @@ export function generate(job: Job): Generated {
         err('THREAD_SYNC', 'Threading needs spindle-synchronised moves (G33): grblHAL in lathe mode with an index + pulse encoder. If your controller has that, turn on "spindle sync" in the machine settings.');
         continue;
       }
-      // the carriage must keep up: pitch × rpm within the machine's feed, with margin
-      const most = Math.floor((job.machine.maxFeed * 0.8) / op.pitch);
+      // the carriage must keep up: lead × rpm within the machine's feed, with margin
+      const lead = op.pitch * op.starts;
+      const most = Math.floor((job.machine.maxFeed * 0.8) / lead);
       if (cut.rpm > most) {
-        cut.notes.push(`spindle ${cut.rpm} rpm lowered to ${most} rpm so Z can follow the ${op.pitch} mm pitch`);
+        cut.notes.push(`spindle ${cut.rpm} rpm lowered to ${most} rpm so Z can follow the ${lead} mm lead`);
         cut.rpm = Math.max(job.machine.minRpm, most);
       }
     }
@@ -131,7 +132,7 @@ export function generate(job: Job): Generated {
     try {
       const ctx = { job, tool, cut, from: at, c: job.machine.clearance };
       let moves = kind === 'lathe' ? generateLathe(op as never, ctx) : generateMill(op as never, ctx);
-      if (kind === 'mill' && job.machine.arcTolerance > 0) moves = fitArcs(moves, at, job.machine.arcTolerance);
+      if (job.machine.arcTolerance > 0) moves = fitArcs(moves, at, job.machine.arcTolerance, 2000, kind === 'lathe' ? 'zx' : 'xy');
       const seg: Segment = { opId, label: opLabel(op), tool: tool.id, rpm: cut.rpm, moves };
       program.segments.push(seg);
       if (moves.length) at = moves.at(-1)!.to;

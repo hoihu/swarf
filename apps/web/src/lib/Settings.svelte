@@ -63,7 +63,7 @@
       </p>
       <label>
         <span>Model</span>
-        <input type="text" value={models[harness] ?? ''} oninput={(e) => (models = { ...models, [harness]: (e.currentTarget as HTMLInputElement).value })} placeholder={harness === 'claude' ? "Claude Code's default (e.g. sonnet, opus)" : `${HARNESSES[harness]}'s default`} />
+        <input type="text" value={models[harness] ?? ''} oninput={(e) => (models = { ...models, [harness]: (e.currentTarget as HTMLInputElement).value })} placeholder={harness === 'claude' ? "Claude Code's default (e.g. sonnet, opus)" : harness === 'opencode' ? "OpenCode's default (provider/model)" : `${HARNESSES[harness]}'s default`} />
       </label>
     {/if}
 

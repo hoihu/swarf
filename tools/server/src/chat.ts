@@ -125,7 +125,11 @@ export class ChatRunner {
       });
       child.on('close', async (code, signal) => {
         await stdoutDone;
-        inv.close?.(code);
+        try {
+          await inv.close?.(code);
+        } catch (e) {
+          this.#o.log?.(`chat ${id}: ${(e as Error).message}`);
+        }
         outcome ??= {
           kind: 'done',
           ok: false,

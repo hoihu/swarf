@@ -6,11 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { SERVER_PROTOCOL, runTabTool, type ChatEvent, type HarnessId, type ServerToTab, type TabToServer } from '@swarf/agent';
 import { emptyJob, type Job } from '@swarf/cam';
-import { ChatRunner, ClaudeHarness, CodexHarness, CopilotHarness, LocalServer, mcpHttpHandler, streamReader, type Harness } from '../src/index.ts';
+import { ChatRunner, ClaudeHarness, CodexHarness, CopilotHarness, OpenCodeHarness, LocalServer, mcpHttpHandler, streamReader, type Harness } from '../src/index.ts';
 
 const FAKE = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
 const FAKE_COPILOT = fileURLToPath(new URL('./fake-copilot.mjs', import.meta.url));
 const FAKE_CODEX = fileURLToPath(new URL('./fake-codex.mjs', import.meta.url));
+const FAKE_OPENCODE = fileURLToPath(new URL('./fake-opencode.mjs', import.meta.url));
 const KEY = 'chat-test-key-0123456789';
 let cleanup: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
@@ -21,7 +22,7 @@ afterEach(async () => {
 async function setup() {
   const server = new LocalServer({ accessKey: KEY, ports: [0], devPorts: [5173] });
   const workDir = mkdtempSync(join(tmpdir(), 'swarf-cc-'));
-  const harnesses: Harness[] = [new ClaudeHarness(FAKE), new CopilotHarness(FAKE_COPILOT, workDir), new CodexHarness(FAKE_CODEX, workDir)];
+  const harnesses: Harness[] = [new ClaudeHarness(FAKE), new CopilotHarness(FAKE_COPILOT, workDir), new CodexHarness(FAKE_CODEX, workDir), new OpenCodeHarness(FAKE_OPENCODE, workDir)];
   const chat = new ChatRunner({ server, harnesses, workDir });
   server.setChatHandler(chat.handle, chat.detect());
   server.setHttpHandler(mcpHttpHandler(server, chat.validToken));
@@ -73,6 +74,7 @@ describe('chat via Claude Code', () => {
         { id: 'claude', available: true },
         { id: 'copilot', name: 'GitHub Copilot CLI', available: true, version: 'GitHub Copilot CLI 9.9.9 (fake)' },
         { id: 'codex', available: true, version: 'codex-cli 0.166.0' },
+        { id: 'opencode', name: 'OpenCode', available: true, version: '9.9.9' },
       ],
     });
   });
@@ -199,5 +201,31 @@ describe('chat via Codex CLI', () => {
     const s = await setup();
     const ev = await s.send('x5', 'hi', null, 'gemini' as HarnessId);
     expect(ev.at(-1)).toMatchObject({ kind: 'done', ok: false, error: expect.stringContaining('gemini') });
+  });
+});
+
+describe('chat via OpenCode', () => {
+  it('runs opencode with its own agent: only swarf tools, the user\'s servers off, the rules as prompt', async () => {
+    const s = await setup();
+    const ev = await s.send('o1', 'what can you do', null, 'opencode');
+    expect(ev[0]).toEqual({ kind: 'session', session: 'ses_fake1' });
+    const t = textOf(ev);
+    expect(t).toContain('agent tools: {"*":false,"swarf_*":true}; bash: deny; theirs: {"enabled":false}; rules ok: true; project config off: 1; resumed: false');
+    expect(t).toContain('add_operation');
+    expect(ev.at(-1)).toMatchObject({ kind: 'done', ok: true, session: 'ses_fake1' });
+    expect(textOf(await s.send('o2', 'more', 'ses_fake1', 'opencode'))).toContain('resumed: true');
+  });
+
+  it('its edits reach the tab, and what the stream left out comes from the export', async () => {
+    const s = await setup();
+    const ev = await s.send('o3', 'turn a pin', null, 'opencode');
+    expect(textOf(ev)).toBe('Adding the pin.\n\nExported tail.');
+    expect(s.job().operations).toMatchObject([{ type: 'lathe_turn', diameter: 15 }]);
+  });
+
+  it('reports its error', async () => {
+    const s = await setup();
+    const ev = await s.send('o4', 'fail please', null, 'opencode');
+    expect(ev.at(-1)).toMatchObject({ kind: 'done', ok: false, error: 'model not found' });
   });
 });

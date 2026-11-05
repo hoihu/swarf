@@ -1,6 +1,6 @@
 /**
  * Program → G-code in a deliberately "boring" subset that grblHAL, LinuxCNC and most other
- * controllers run the same way: G0/G1/G2/G3 (arcs only on the mill, XY plane), G33 Z K for
+ * controllers run the same way: G0/G1/G2/G3 (XY arcs on the mill, ZX arcs on the lathe), G33 Z K for
  * threading (spindle sync), G17/G18, G21,
  * G90, G94, G54, G4, G7/G8 (lathe diameter/radius mode), S/M3/M5, M0 for manual tool changes,
  * M30. No cutter compensation, canned cycles, macros or tool length offsets: the generator does
@@ -112,9 +112,12 @@ export function emit(job: Job, program: Program): Emitted {
     if (move.type === 'arc') {
       const sx = px ?? 0;
       const sy = py ?? 0;
+      const pz0 = pz;
       w.push(code);
       w.push(...axes(move.to.x, move.to.y, move.to.z, true));
-      w.push(`I${num(move.center.x - sx)}`, `J${num(move.center.y - sy)}`);
+      // the lathe's ZX arcs: I is a radius even in diameter mode (grblHAL halves only the X target)
+      if (move.plane === 'zx') w.push(`I${num(move.center.x - sx)}`, `K${num(move.center.z - (pz0 ?? 0))}`);
+      else w.push(`I${num(move.center.x - sx)}`, `J${num(move.center.y - sy)}`);
     } else {
       const a = axes(move.to.x, move.to.y, move.to.z);
       if (!a.length) {

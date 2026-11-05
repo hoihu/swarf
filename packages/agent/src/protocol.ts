@@ -5,7 +5,7 @@
  * its job and answers. The tab stays the single source of truth, so the preview updates live.
  *
  * The other direction: a message typed into the app's chat can be answered by a coding agent's CLI on
- * this computer (Claude Code, GitHub Copilot CLI or Codex CLI, with the user's own login). The tab
+ * this computer (Claude Code, GitHub Copilot CLI, Codex CLI or OpenCode, with the user's own login). The tab
  * sends `chat`, the server runs the CLI headlessly with swarf as its only MCP server, and streams
  * `chat_event`s back; the tool calls of that run arrive as `call`s like any other.
  */
@@ -21,7 +21,7 @@ export type TabToServer =
   | { type: 'chat_cancel'; id: string };
 
 /** The coding agents' CLIs the server can run for the chat. */
-export const HARNESSES = { claude: 'Claude Code', copilot: 'GitHub Copilot CLI', codex: 'Codex CLI' } as const;
+export const HARNESSES = { claude: 'Claude Code', copilot: 'GitHub Copilot CLI', codex: 'Codex CLI', opencode: 'OpenCode' } as const;
 export type HarnessId = keyof typeof HARNESSES;
 export const isHarnessId = (v: unknown): v is HarnessId => typeof v === 'string' && v in HARNESSES;
 

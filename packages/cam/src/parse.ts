@@ -122,12 +122,16 @@ export function parseGcode(text: string, kind: MachineKind): Parsed {
     if (motion === 0) move = { type: 'rapid', to };
     else if (motion === 1) move = { type: 'feed', to, f: feed };
     else {
-      if (plane !== 17) {
-        warnings.push({ line: ln, message: 'arcs are only read in the XY plane (G17); drawn as a line' });
+      if (plane !== 17 && plane !== 18) {
+        warnings.push({ line: ln, message: 'arcs are only read in the XY (G17) and ZX (G18) planes; drawn as a line' });
         move = { type: 'feed', to, f: feed };
       } else if (val.R !== undefined) {
         warnings.push({ line: ln, message: 'R-format arcs are not supported; drawn as a line' });
         move = { type: 'feed', to, f: feed };
+      } else if (plane === 18) {
+        // I stays a radius in diameter mode
+        const center: Vec3 = { x: pos.x + (val.I ?? 0) * scale, y: to.y, z: pos.z + (val.K ?? 0) * scale };
+        move = { type: 'arc', to, center, cw: motion === 2, f: feed, plane: 'zx' };
       } else {
         const center: Vec3 = { x: pos.x + (val.I ?? 0) * scale, y: pos.y + (val.J ?? 0) * scale, z: to.z };
         move = { type: 'arc', to, center, cw: motion === 2, f: feed };

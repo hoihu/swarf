@@ -23,7 +23,8 @@
     "server": "node tools/server/src/main.ts --serve",
     "mcp": "node tools/server/src/main.ts",
     "check:codex": "node scripts/check-codex.mjs",
-    "check:copilot": "node scripts/check-copilot.mjs"
+    "check:copilot": "node scripts/check-copilot.mjs",
+    "check:opencode": "node scripts/check-opencode.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

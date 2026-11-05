@@ -7,10 +7,32 @@ import type { MachineKind, Vec3 } from './schema.ts';
 export type Move =
   | { type: 'rapid'; to: Vec3 }
   | { type: 'feed'; to: Vec3; f: number }
-  /** Arc in the XY plane (mill only); `center` is absolute. */
-  | { type: 'arc'; to: Vec3; center: Vec3; cw: boolean; f: number }
+  /**
+   * Arc in the XY plane (G17, mill) or the ZX plane (G18, lathe); `center` is absolute. `cw` is
+   * G2: clockwise in the plane's own axes (X→Y for XY, Z→X for ZX, as G-code defines them).
+   */
+  | { type: 'arc'; to: Vec3; center: Vec3; cw: boolean; f: number; plane?: Plane }
   /** Spindle-synchronised move along Z (G33), `pitch` mm per revolution; `f` is the resulting mm/min, for timing. */
   | { type: 'thread'; to: Vec3; pitch: number; f: number };
+
+export type Plane = 'xy' | 'zx';
+
+/** The plane's first and second axis and the one along it (G17: X Y, Z; G18: Z X, Y). */
+export const PLANE_AXES: Record<Plane, [keyof Vec3, keyof Vec3, keyof Vec3]> = { xy: ['x', 'y', 'z'], zx: ['z', 'x', 'y'] };
+
+/** A point in the plane's own frame (x, y = first and second axis, z = the axis along it), and back. */
+export function toPlane(p: Vec3, plane: Plane = 'xy'): Vec3 {
+  const [a, b, c] = PLANE_AXES[plane];
+  return { x: p[a], y: p[b], z: p[c] };
+}
+export function fromPlane(q: Vec3, plane: Plane = 'xy'): Vec3 {
+  const [a, b, c] = PLANE_AXES[plane];
+  const p = { x: 0, y: 0, z: 0 };
+  p[a] = q.x;
+  p[b] = q.y;
+  p[c] = q.z;
+  return p;
+}
 
 export interface Segment {
   opId: string;
@@ -43,7 +65,11 @@ export function levels(from: number, to: number, step: number): number[] {
 }
 
 /** Points along an arc, for preview and sampling (end point included, start excluded). */
-export function arcPoints(from: Vec3, m: Extract<Move, { type: 'arc' }>, maxSeg = 0.5): Vec3[] {
+export function arcPoints(from3: Vec3, m3: Extract<Move, { type: 'arc' }>, maxSeg = 0.5): Vec3[] {
+  const plane = m3.plane ?? 'xy';
+  // worked out in the plane's own frame, where G2 is clockwise
+  const from = toPlane(from3, plane);
+  const m = { ...m3, to: toPlane(m3.to, plane), center: toPlane(m3.center, plane) };
   const r = Math.hypot(from.x - m.center.x, from.y - m.center.y);
   let a0 = Math.atan2(from.y - m.center.y, from.x - m.center.x);
   let a1 = Math.atan2(m.to.y - m.center.y, m.to.x - m.center.x);
@@ -56,10 +82,10 @@ export function arcPoints(from: Vec3, m: Extract<Move, { type: 'arc' }>, maxSeg 
   for (let i = 1; i <= n; i++) {
     const a = a0 + (sweep * i) / n;
     const t = i / n;
-    pts.push({ x: m.center.x + r * Math.cos(a), y: m.center.y + r * Math.sin(a), z: from.z + (m.to.z - from.z) * t });
+    pts.push(fromPlane({ x: m.center.x + r * Math.cos(a), y: m.center.y + r * Math.sin(a), z: from.z + (m.to.z - from.z) * t }, plane));
   }
   // land exactly on the end point
-  pts[pts.length - 1] = { ...m.to };
+  pts[pts.length - 1] = { ...m3.to };
   return pts;
 }
 

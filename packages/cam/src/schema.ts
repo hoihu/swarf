@@ -39,7 +39,7 @@ export const Machine = z.object({
   accel: pos.default(250),
   /** Junction deviation, mm (grbl $11), for the time estimate. */
   junctionDeviation: pos.default(0.01),
-  /** Mill: runs of short lines that lie on a circle within this (mm) are written as G2/G3 arcs; 0 = never. */
+  /** Runs of short lines that lie on a circle within this (mm) are written as G2/G3 arcs (XY on the mill, ZX on the lathe); 0 = never. */
   arcTolerance: z.number().min(0).max(0.1).default(0.005),
 });
 export type Machine = z.infer<typeof Machine>;
@@ -193,7 +193,8 @@ export const LatheThread = z.object({
   ...common,
   side: z.enum(['external', 'internal']).default('external').describe('internal: in a bore already at the minor diameter'),
   diameter: pos.describe('Nominal (major) diameter of the thread, e.g. 10 for M10; external: turned to it first, internal: bored to the minor diameter first'),
-  pitch: pos.describe('Pitch, mm (e.g. 1.5 for M10)'),
+  pitch: pos.describe('Pitch, mm (e.g. 1.5 for M10): crest to crest; with several starts the lead is pitch × starts'),
+  starts: z.number().int().min(1).max(8).default(1).describe('Number of starts (multi-start thread: lead = pitch × starts, each start one pitch further along)'),
   zEnd: mm.describe('Z where the thread ends (towards the chuck); leave room, there is no pull-out'),
   zStart: mm.default(0).describe('Z where the thread starts (usually the face)'),
   depth: pos.optional().describe('Radial thread depth (default ISO metric: external 0.6134 × pitch, internal 0.5413 × pitch)'),

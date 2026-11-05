@@ -264,7 +264,7 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
       <div class="intro">
         <p>Describe the part in your own words: sizes, which faces, what is already done. The assistant builds the operations, the checks verify them, and you review the toolpath before running anything.</p>
         {#if demo}
-          <p class="muted">No model is connected, so only two scripted examples work. Start the swarf server (<code>npm run server</code>) to use Claude Code, GitHub Copilot or Codex on this computer, or <button class="link" onclick={onSettings}>add an API key</button>.</p>
+          <p class="muted">No model is connected, so only two scripted examples work. Start the swarf server (<code>npm run server</code>) to use Claude Code, GitHub Copilot, Codex or OpenCode on this computer, or <button class="link" onclick={onSettings}>add an API key</button>.</p>
         {:else if useLocal}
           <p class="muted">{agentName} on this computer answers, with your own login. It only gets swarf's tools.</p>
         {/if}

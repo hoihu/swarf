@@ -4,7 +4,7 @@
  * lines; as arcs the program is much shorter and grblHAL moves smoothly instead of planning a
  * corner at every point.
  */
-import type { Move } from './program.ts';
+import { fromPlane, toPlane, type Move, type Plane } from './program.ts';
 import type { Vec3 } from './schema.ts';
 
 type Feed = Extract<Move, { type: 'feed' }>;
@@ -59,8 +59,18 @@ function fits(pts: Vec3[], tol: number, maxR: number): { x: number; y: number; r
   return { ...c, cw: dir < 0 };
 }
 
-/** Replace runs of feed moves that lie on arcs. `from` is where the first move starts. */
-export function fitArcs(moves: Move[], from: Vec3, tol = 0.005, maxR = 2000): Move[] {
+/**
+ * Replace runs of feed moves that lie on arcs. `from` is where the first move starts. `plane`:
+ * XY on the mill (G17), ZX on the lathe (G18, x being the radius there).
+ */
+export function fitArcs(moves: Move[], from: Vec3, tol = 0.005, maxR = 2000, plane: Plane = 'xy'): Move[] {
+  if (plane !== 'xy') {
+    // fit in the plane's own frame, where its arcs are XY arcs, and map back
+    const there = moves.map((m) => (m.type === 'arc' ? { ...m, to: toPlane(m.to, plane), center: toPlane(m.center, plane) } : { ...m, to: toPlane(m.to, plane) }));
+    return fitArcs(there, toPlane(from, plane), tol, maxR).map((m) =>
+      m.type === 'arc' ? { ...m, to: fromPlane(m.to, plane), center: fromPlane(m.center, plane), plane } : { ...m, to: fromPlane(m.to, plane) },
+    );
+  }
   const out: Move[] = [];
   let at = from;
   let i = 0;

@@ -10,9 +10,9 @@
  * the app connected to it. `--serve` runs only the relay and app (no MCP), `--open` opens the link.
  *
  * The other direction: the app's own chat can be answered by a coding agent on this computer, with
- * your login and plan and no API key: Claude Code, GitHub Copilot CLI or Codex CLI. The server runs
+ * your login and plan and no API key: Claude Code, GitHub Copilot CLI, Codex CLI or OpenCode. The server runs
  * the CLI headlessly per message with swarf as its only MCP server (SWARF_CLAUDE_BIN,
- * SWARF_COPILOT_BIN, SWARF_CODEX_BIN: where they are, if not on the PATH).
+ * SWARF_COPILOT_BIN, SWARF_CODEX_BIN, SWARF_OPENCODE_BIN: where they are, if not on the PATH).
  *
  * In stdio mode stdout belongs to the MCP protocol; logs go to stderr.
  */
@@ -25,6 +25,7 @@ import { ChatRunner } from './chat.ts';
 import { ClaudeHarness } from './harness/claude.ts';
 import { CodexHarness } from './harness/codex.ts';
 import { CopilotHarness } from './harness/copilot.ts';
+import { OpenCodeHarness } from './harness/opencode.ts';
 import { LocalServer } from './server.ts';
 import { spawn } from 'node:child_process';
 
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
     new ClaudeHarness(process.env.SWARF_CLAUDE_BIN ?? 'claude'),
     new CopilotHarness(process.env.SWARF_COPILOT_BIN ?? 'copilot', workDir),
     new CodexHarness(process.env.SWARF_CODEX_BIN ?? 'codex', workDir),
+    new OpenCodeHarness(process.env.SWARF_OPENCODE_BIN ?? 'opencode', workDir),
   ];
   const chat = new ChatRunner({ server, harnesses, workDir, log });
   const found = chat.detect();

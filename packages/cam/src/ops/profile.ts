@@ -28,8 +28,8 @@ const len = (a: P2) => Math.hypot(a.x, a.z);
 const unit = (a: P2): P2 => mul(a, 1 / len(a));
 const cross = (a: P2, b: P2) => a.x * b.z - a.z * b.x;
 
-/** Check the vertices and expand chamfers and corner radii into a polyline (arcs as short chords). */
-export function buildProfile(points: ProfilePoint[], chord = 0.02): P2[] {
+/** Check the vertices and expand chamfers and corner radii into a polyline (arcs as short chords, within `chord` of the true arc: fine enough for arc fitting to write them back as arcs). */
+export function buildProfile(points: ProfilePoint[], chord = 0.002): P2[] {
   if (points.length < 2) throw new CamError('a profile needs at least two points');
   const v: P2[] = points.map((p) => ({ x: p.d / 2, z: p.z }));
   for (let i = 1; i < v.length; i++) {
@@ -88,7 +88,7 @@ export function buildProfile(points: ProfilePoint[], chord = 0.02): P2[] {
  * Offset the profile by `dist` to the tool side (outwards: larger radius, towards the face).
  * Outer (convex) corners get a round join, inner corners the intersection of the offset sides.
  */
-export function offsetProfile(pts: P2[], dist: number, chord = 0.02): P2[] {
+export function offsetProfile(pts: P2[], dist: number, chord = 0.002): P2[] {
   if (dist <= 0) return pts.map((p) => ({ ...p }));
   const segs: { a: P2; b: P2; d: P2; n: P2 }[] = [];
   for (let i = 1; i < pts.length; i++) {

@@ -40,8 +40,8 @@ export interface Invocation {
   /** Written to the CLI's stdin. */
   stdin: string;
   line(line: string): void;
-  /** After the process exited, before its exit code decides the outcome. */
-  close?(code: number | null): void;
+  /** After the process exited, before its exit code decides the outcome (e.g. to fetch what the stream left out). */
+  close?(code: number | null): void | Promise<void>;
 }
 
 export interface Harness {
