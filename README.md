@@ -17,7 +17,7 @@ npm run typecheck
 ```
 
 Without an API key the chat runs an offline demo (two scripted requests). Add a key under
-**Model**: Anthropic, OpenAI, OpenRouter, Gemini, a local Ollama/LM Studio, or any compatible
+**Assistant**: Anthropic, OpenAI, OpenRouter, Gemini, a local Ollama/LM Studio, or any compatible
 gateway. The key stays in the browser.
 
 ## Claude Code drives the app (MCP)

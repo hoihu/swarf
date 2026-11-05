@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { EXAMPLES, Job, Operation, Tool, emptyJob, opLabel, withIds, type Stock } from '@swarf/cam';
-  import { z } from 'zod';
+  import { EXAMPLES, Job, OP_TOOLS, Operation, Tool, emptyJob, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
+  import SchemaForm from './SchemaForm.svelte';
+  import { issuesByField, opFields, toolFields } from './form.ts';
   import { store } from './store.svelte.ts';
   import { OP_TEMPLATES } from './ops.ts';
 
@@ -12,36 +13,22 @@
   const errorsByOp = $derived(new Map(job.operations.map((o) => [o.id!, diags.filter((d) => d.opId === o.id)])));
   const jobLevel = $derived(diags.filter((d) => !d.opId));
 
-  // ---- operation editing (JSON for now; forms are tier 2)
-  let editing = $state<string | null>(null);
-  let draft = $state('');
-  let draftError = $state('');
+  // ---- operation editing: a form per operation, applied as soon as it is valid
+  /** The selected operation's values while they do not validate yet. */
+  let draft = $state<{ id: string; value: Record<string, unknown>; errors: Record<string, string> } | null>(null);
+  const selectedOp = $derived(job.operations.find((o) => o.id === store.selected) ?? null);
 
-  function edit(id: string): void {
-    const op = job.operations.find((o) => o.id === id);
-    if (!op) return;
-    editing = id;
-    draft = JSON.stringify(op, null, 2);
-    draftError = '';
-  }
-
-  function saveEdit(): void {
-    let value: unknown;
-    try {
-      value = JSON.parse(draft);
-    } catch (e) {
-      draftError = `Not valid JSON: ${(e as Error).message}`;
-      return;
-    }
-    const op = Operation.safeParse(value);
+  function editOp(id: string, value: Record<string, unknown>): void {
+    const op = Operation.safeParse({ ...value, id });
     if (!op.success) {
-      draftError = op.error.issues.map((i) => `${i.path.join('.') || 'operation'}: ${i.message}`).join('\n');
+      draft = { id, value, errors: issuesByField(op.error) };
       return;
     }
-    const ops = job.operations.map((o) => (o.id === editing ? { ...op.data, id: editing } : o));
-    store.set({ ...job, operations: ops });
-    editing = null;
+    draft = null;
+    store.set({ ...job, operations: job.operations.map((o) => (o.id === id ? op.data : o)) });
   }
+
+  const toolsFor = (type: OpType) => job.tools.filter((t) => OP_TOOLS[type].includes(t.type));
 
   function addOp(make: () => unknown): void {
     const op = Operation.parse(make());
@@ -49,7 +36,7 @@
     store.set({ ...job, operations: ops });
     const id = ops.at(-1)!.id!;
     store.selected = id;
-    edit(id);
+    draft = null;
   }
 
   function move(id: string, by: number): void {
@@ -64,7 +51,7 @@
   function remove(id: string): void {
     store.set({ ...job, operations: job.operations.filter((o) => o.id !== id) });
     if (store.selected === id) store.selected = null;
-    if (editing === id) editing = null;
+    draft = null;
   }
 
   // ---- stock
@@ -77,31 +64,43 @@
 
   function start(kind: 'lathe' | 'mill', example: boolean): void {
     store.replace(example ? EXAMPLES[kind]() : emptyJob(kind));
-    editing = null;
+    draft = null;
   }
 
-  // ---- tools (JSON for now)
-  let toolDraft = $state('');
-  let toolError = $state('');
-  let toolEditing = $state(false);
-  function editTools(): void {
-    toolDraft = JSON.stringify(job.tools, null, 2);
-    toolError = '';
-    toolEditing = true;
-  }
-  function saveTools(): void {
-    try {
-      const tools = z.array(Tool).safeParse(JSON.parse(toolDraft));
-      if (!tools.success) {
-        toolError = tools.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n');
-        return;
-      }
-      store.set({ ...job, tools: tools.data });
-      toolEditing = false;
-    } catch (e) {
-      toolError = `Not valid JSON: ${(e as Error).message}`;
+  // ---- tools: the same forms
+  let toolOpen = $state<number | null>(null);
+  let toolDraft = $state<{ id: number; value: Record<string, unknown>; errors: Record<string, string> } | null>(null);
+
+  function editTool(oldId: number, value: Record<string, unknown>): void {
+    const t = Tool.safeParse(value);
+    const clash = t.success && t.data.id !== oldId && job.tools.some((x) => x.id === t.data.id);
+    if (!t.success || clash) {
+      toolDraft = { id: oldId, value, errors: t.success ? { id: `T${t.data.id} is taken` } : issuesByField(t.error) };
+      return;
     }
+    toolDraft = null;
+    const tools = job.tools.map((x) => (x.id === oldId ? t.data : x)).sort((a, b) => a.id - b.id);
+    // operations follow a renumbered tool
+    const operations = t.data.id === oldId ? job.operations : job.operations.map((o) => (o.tool === oldId ? { ...o, tool: t.data.id } : o));
+    store.set({ ...job, tools, operations });
+    toolOpen = t.data.id;
   }
+
+  function addTool(): void {
+    const id = Math.max(0, ...job.tools.map((t) => t.id)) + 1;
+    const t: Tool =
+      job.machine.kind === 'lathe'
+        ? { id, name: 'Turning tool', type: 'turning', vc: 120, feedPerRev: 0.1, maxDoc: 1, edgeLength: 3 }
+        : { id, name: `Endmill Ø6`, type: 'endmill', diameter: 6, flutes: 2, vc: 100, chipload: 0.03, fluteLength: 15, maxDoc: 3, centerCutting: true };
+    store.set({ ...job, tools: [...job.tools, t] });
+    toolOpen = id;
+  }
+
+  function removeTool(id: number): void {
+    store.set({ ...job, tools: job.tools.filter((t) => t.id !== id) });
+    toolOpen = null;
+  }
+  const usedBy = (id: number) => job.operations.filter((o) => o.tool === id).length;
 
   // ---- G-code
   function download(): void {
@@ -153,21 +152,18 @@
             {#if store.selected === op.id}
               <div class="detail">
                 {#each ds as d, k (k)}<p class="diag {d.severity}">{d.message}</p>{/each}
-                {#if editing === op.id}
-                  <textarea class="code" rows="10" bind:value={draft} spellcheck="false"></textarea>
-                  {#if draftError}<pre class="diag error">{draftError}</pre>{/if}
-                  <div class="row">
-                    <button class="btn pri" onclick={saveEdit}>Save</button>
-                    <button class="btn" onclick={() => (editing = null)}>Cancel</button>
-                  </div>
-                {:else}
-                  <div class="row">
-                    <button class="btn" onclick={() => edit(op.id!)}>Edit values</button>
-                    <button class="btn" disabled={i === 0} onclick={() => move(op.id!, -1)} aria-label="Move up">Up</button>
-                    <button class="btn" disabled={i === job.operations.length - 1} onclick={() => move(op.id!, 1)} aria-label="Move down">Down</button>
-                    <button class="btn danger" onclick={() => remove(op.id!)}>Remove</button>
-                  </div>
-                {/if}
+                <SchemaForm
+                  fields={opFields(op.type)}
+                  value={draft?.id === op.id ? draft.value : (op as Record<string, unknown>)}
+                  errors={draft?.id === op.id ? draft.errors : {}}
+                  tools={toolsFor(op.type)}
+                  onchange={(v) => editOp(op.id!, v)}
+                />
+                <div class="row">
+                  <button class="btn" disabled={i === 0} onclick={() => move(op.id!, -1)}>Move up</button>
+                  <button class="btn" disabled={i === job.operations.length - 1} onclick={() => move(op.id!, 1)}>Move down</button>
+                  <button class="btn danger" onclick={() => remove(op.id!)}>Remove</button>
+                </div>
               </div>
             {/if}
           </li>
@@ -205,28 +201,33 @@
       {/if}
       <label class="wide">Material <input type="text" value={job.material ?? ''} placeholder="e.g. aluminium 6082" onchange={(e) => store.set({ ...job, material: (e.currentTarget as HTMLInputElement).value || undefined })} /></label>
     {:else if tab === 'tools'}
-      {#if toolEditing}
-        <textarea class="code" rows="18" bind:value={toolDraft} spellcheck="false"></textarea>
-        {#if toolError}<pre class="diag error">{toolError}</pre>{/if}
-        <div class="row">
-          <button class="btn pri" onclick={saveTools}>Save tools</button>
-          <button class="btn" onclick={() => (toolEditing = false)}>Cancel</button>
-        </div>
-      {:else}
-        <table class="tools">
-          <thead><tr><th>T</th><th>Tool</th><th>Cutting data</th></tr></thead>
-          <tbody>
-            {#each job.tools as t (t.id)}
-              <tr>
-                <td class="t">{t.id}</td>
-                <td>{t.name}<span class="sub">{t.type}{t.diameter ? `, Ø${t.diameter}` : ''}{t.width ? `, ${t.width} mm wide` : ''}</span></td>
-                <td class="data">vc {t.vc} m/min{t.chipload ? `, ${t.chipload} mm/tooth` : ''}{t.feedPerRev ? `, ${t.feedPerRev} mm/rev` : ''}{t.maxDoc ? `, ${t.maxDoc} mm/pass` : ''}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-        <button class="btn" onclick={editTools}>Edit tool table</button>
-      {/if}
+      <ol class="ops">
+        {#each job.tools as t (t.id)}
+          <li class:sel={toolOpen === t.id}>
+            <button class="op" onclick={() => { toolOpen = toolOpen === t.id ? null : t.id; toolDraft = null; }}>
+              <span class="n">{t.id}</span>
+              <span class="what">
+                <span class="label">{t.name}</span>
+                <span class="sub">{t.type}{t.diameter ? `, Ø${t.diameter}` : ''}{t.width ? `, ${t.width} mm wide` : ''} · vc {t.vc} m/min{usedBy(t.id) ? ` · used ${usedBy(t.id)}×` : ''}</span>
+              </span>
+            </button>
+            {#if toolOpen === t.id}
+              <div class="detail">
+                <SchemaForm
+                  fields={toolFields}
+                  value={toolDraft?.id === t.id ? toolDraft.value : (t as Record<string, unknown>)}
+                  errors={toolDraft?.id === t.id ? toolDraft.errors : {}}
+                  onchange={(v) => editTool(t.id, v)}
+                />
+                <div class="row">
+                  <button class="btn danger" disabled={usedBy(t.id) > 0} title={usedBy(t.id) ? 'Operations use this tool' : ''} onclick={() => removeTool(t.id)}>Remove tool</button>
+                </div>
+              </div>
+            {/if}
+          </li>
+        {/each}
+      </ol>
+      <div class="row"><button class="btn" onclick={addTool}>Add a tool</button></div>
     {:else}
       <div class="row">
         <button class="btn pri" onclick={download} disabled={store.analysis.diagnostics.some((d) => d.severity === 'error')} title="Fix errors before downloading">Download .nc</button>
@@ -272,18 +273,12 @@
   .diag { margin: 4px 0; padding: 6px 9px; border-radius: 6px; font-size: 12.5px; white-space: pre-wrap; font-family: inherit; }
   .diag.error { background: var(--err-soft); color: var(--err); }
   .diag.warning { background: var(--warn-soft); color: var(--warn); }
-  textarea.code { width: 100%; font-family: var(--mono); font-size: 12px; border: 1px solid var(--line-2); border-radius: 6px; padding: 8px; background: var(--panel); resize: vertical; }
   .add { margin-top: 12px; }
   .add summary { cursor: pointer; color: var(--ink-2); font-weight: 600; padding: 4px 0; }
   label { display: grid; grid-template-columns: 1fr 110px auto; align-items: center; gap: 8px; margin: 6px 0; color: var(--ink-2); }
   label.wide { grid-template-columns: 1fr 2fr; margin-top: 14px; }
   label input { border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 8px; background: var(--panel); text-align: right; font-variant-numeric: tabular-nums; }
   label.wide input { text-align: left; }
-  .tools { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-  .tools th { text-align: left; font-size: 12px; color: var(--ink-3); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--line); }
-  .tools td { padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  .tools td.t { font-weight: 700; width: 24px; }
-  .tools td.data { color: var(--ink-2); font-size: 12px; }
   .gcode { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.55; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 0; overflow: auto; }
   .gcode .ln { display: inline-block; width: 44px; padding-right: 12px; text-align: right; color: var(--ink-3); user-select: none; }
   .gcode .cm { color: var(--ink-3); }
