@@ -6,7 +6,8 @@
  * centre-cutting endmill).
  */
 import { CamError, levels, v, type Move } from '../program.ts';
-import type { Operation } from '../schema.ts';
+import type { Operation, Shape } from '../schema.ts';
+import { dedupe, offsetRegion, orient, type Loop, type Pt } from '../geom2d.ts';
 import { millSafeZ, type OpContext } from './context.ts';
 
 type MillOp = Extract<Operation, { type: `mill_${string}` }>;
@@ -75,6 +76,100 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
   const stepOf = (o: { stepDown?: number | undefined }) => o.stepDown ?? tool.maxDoc ?? r;
   const checkDepth = (zTop: number, zBottom: number) => {
     if (zBottom >= zTop) throw new CamError(`zBottom ${zBottom} is not below the top ${zTop}`);
+  };
+
+  /**
+   * One closed loop cut down to `zl` from `zFrom`, starting and ending at loop[0]: a ramp along the
+   * path itself (like a helix following the outline) until the level is reached, then one full lap
+   * at the level so the ramp is cleaned up. Over holding tabs the tool stays at the tab top.
+   */
+  const cutLoop = (loop: Loop, zFrom: number, zl: number, o: { ramp: boolean; angle: number; tabs?: [number, number][]; zTab?: number }) => {
+    const pts: Pt[] = [...loop, loop[0]!];
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1]! + Math.hypot(pts[i]![0] - pts[i - 1]![0], pts[i]![1] - pts[i - 1]![1]));
+    const per = cum.at(-1)!;
+    if (per < 1e-6) return;
+    const slope = Math.tan((o.angle * Math.PI) / 180);
+    const rampLen = o.ramp && per > r * 0.5 ? (zFrom - zl) / slope : 0;
+    if (!rampLen) feed(loop[0]![0], loop[0]![1], zl, cut.plunge);
+    // at least one full lap at depth after the ramp, ending back at the start point
+    const total = Math.ceil((rampLen + per) / per - 1e-9) * per;
+    const tabs = o.tabs && o.zTab !== undefined && zl < o.zTab - 1e-9 ? o.tabs : [];
+    const posAt = (s: number): Pt => {
+      const u = ((s % per) + per) % per;
+      let i = 1;
+      while (i < cum.length - 1 && cum[i]! < u) i++;
+      const t = (u - cum[i - 1]!) / Math.max(cum[i]! - cum[i - 1]!, 1e-12);
+      return [pts[i - 1]![0] + (pts[i]![0] - pts[i - 1]![0]) * t, pts[i - 1]![1] + (pts[i]![1] - pts[i - 1]![1]) * t];
+    };
+    const inTab = (s: number) => tabs.some(([a, b]) => {
+      const u = ((s % per) + per) % per;
+      return u > a && u < b;
+    });
+    const zAt = (s: number) => {
+      const z = rampLen ? Math.max(zl, zFrom - s * slope) : zl;
+      return inTab(s) ? Math.max(z, o.zTab!) : z;
+    };
+    // break points: vertices of every lap travelled, the ramp's end, tab edges
+    const marks = new Set<number>([total]);
+    for (let lap = 0; lap * per < total; lap++) {
+      for (const c of cum) if (lap * per + c < total) marks.add(lap * per + c);
+      for (const [a, b] of tabs) for (const e of [a, b]) if (lap * per + e < total) marks.add(lap * per + e);
+    }
+    if (rampLen) marks.add(rampLen);
+    const ss = [...marks].filter((x) => x > 1e-9).sort((a, b) => a - b);
+    let zNow = rampLen ? zFrom : zl;
+    let prev = 0;
+    for (const sv of ss) {
+      // a jump in height (onto or off a tab): straight up or down at the start of the piece
+      const zStart = zAt(prev + 1e-7);
+      if (Math.abs(zStart - zNow) > 1e-5) {
+        const [px, py] = posAt(prev);
+        feed(px, py, zStart, zStart > zNow ? cut.feed : cut.plunge);
+        zNow = zStart;
+      }
+      const [qx, qy] = posAt(sv);
+      const zEnd = zAt(sv - 1e-7);
+      feed(qx, qy, Math.abs(zEnd - zl) < 1e-5 ? zl : zEnd);
+      zNow = zEnd;
+      prev = sv;
+    }
+    if (Math.abs(zNow - zl) > 1e-5) feed(loop[0]![0], loop[0]![1], zl, cut.plunge);
+  };
+
+  /** Tab intervals (along the loop) for `n` tabs of `width`, evenly spaced; the tool centre travels width + d over each. */
+  const tabIntervals = (loop: Loop, n: number, width: number): [number, number][] => {
+    if (!n) return [];
+    let per = 0;
+    for (let i = 0; i < loop.length; i++) per += Math.hypot(loop[(i + 1) % loop.length]![0] - loop[i]![0], loop[(i + 1) % loop.length]![1] - loop[i]![1]);
+    const half = width / 2 + r;
+    if (per / n < 2 * half + d) throw new CamError(`${n} tabs of ${width} mm do not fit around this contour`);
+    return Array.from({ length: n }, (_, k) => {
+      const c = (per * (k + 0.5)) / n;
+      return [c - half, c + half] as [number, number];
+    });
+  };
+
+  /** A shape's paths on the stock (closed loops and open paths), or an error naming what is missing. */
+  const shapeOf = (id: string): { closed: Loop[]; open: Pt[][] } => {
+    const sh = job.shapes.find((x: Shape) => x.id === id);
+    if (!sh) throw new CamError(`there is no shape ${id}${job.shapes.length ? ` (shapes: ${job.shapes.map((x: Shape) => x.id).join(', ')})` : '; import a DXF or SVG first'}`);
+    const moved = sh.paths.map((p) => ({ closed: p.closed, pts: dedupe(p.pts.map(([x, y]) => [x + sh.at.x, y + sh.at.y] as Pt), p.closed) }));
+    return { closed: moved.filter((p) => p.closed && p.pts.length >= 3).map((p) => p.pts), open: moved.filter((p) => !p.closed || p.pts.length < 3).map((p) => p.pts) };
+  };
+
+  /** Start each loop at the vertex nearest to `near` (shorter links, predictable ramps). */
+  const startNear = (l: Loop, near: Pt): Loop => {
+    let best = 0;
+    let bd = Infinity;
+    l.forEach(([x, y], i) => {
+      const dd = Math.hypot(x - near[0], y - near[1]);
+      if (dd < bd) {
+        bd = dd;
+        best = i;
+      }
+    });
+    return [...l.slice(best), ...l.slice(0, best)];
   };
 
   switch (op.type) {
@@ -171,61 +266,101 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       const loop = op.side === 'outside'
         ? [[x0, y1], [x1, y1], [x1, y0], [x0, y0]]
         : [[x1, y0], [x1, y1], [x0, y1], [x0, y0]];
+      const ring: Loop = [[x0, y0], ...(loop as Pt[]).slice(0, -1)];
+      const zTab = op.zBottom + op.tabHeight;
+      if (op.tabs && zTab >= zTop) throw new CamError('the tabs are taller than the cut');
+      const tabs = tabIntervals(ring, op.tabs, op.tabWidth);
       approach(x0, y0, zTop);
       let zPrev = zTop + 0.2;
       feed(x0, y0, zPrev, cut.plunge);
-      const [fx, fy] = loop[0]!;
-      // tabs: intervals along the loop (not on the first side, where the ramp goes down), each the
-      // tab width plus the tool diameter of tool-centre travel
-      const pts: [number, number][] = [[x0, y0], ...(loop as [number, number][])];
-      const cum = [0];
-      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1]! + Math.hypot(pts[i]![0] - pts[i - 1]![0], pts[i]![1] - pts[i - 1]![1]));
-      const perimeter = cum.at(-1)!;
-      const free = cum[1]!;
-      const half = op.tabWidth / 2 + r;
-      const tabs: [number, number][] = [];
-      for (let k = 0; k < op.tabs; k++) {
-        const c = free + ((perimeter - free) * (k + 0.5)) / op.tabs;
-        tabs.push([c - half, c + half]);
-      }
-      if (op.tabs && (perimeter - free) / op.tabs < 2 * half + d) throw new CamError(`${op.tabs} tabs of ${op.tabWidth} mm do not fit around this contour`);
-      const zTab = op.zBottom + op.tabHeight;
-      if (op.tabs && zTab >= zTop) throw new CamError('the tabs are taller than the cut');
-      const lap = (zl: number) => {
-        if (!op.tabs || zl >= zTab - 1e-9) {
-          for (const [x, y] of loop) feed(x!, y!, zl);
-          return;
-        }
-        // split every side at the tab edges; over a tab the tool rides at the tab top
-        let z = zl;
-        for (let i = 1; i < pts.length; i++) {
-          const [ax, ay] = pts[i - 1]!;
-          const [bx, by] = pts[i]!;
-          const s0 = cum[i - 1]!;
-          const s1 = cum[i]!;
-          const cuts = [s0, ...tabs.flat().filter((t) => t > s0 + 1e-9 && t < s1 - 1e-9), s1];
-          for (let k = 1; k < cuts.length; k++) {
-            const mid = (cuts[k - 1]! + cuts[k]!) / 2;
-            const want = tabs.some(([lo, hi]) => mid > lo && mid < hi) ? zTab : zl;
-            const at = (sv: number) => [ax + ((bx - ax) * (sv - s0)) / (s1 - s0), ay + ((by - ay) * (sv - s0)) / (s1 - s0)] as const;
-            const [px, py] = at(cuts[k - 1]!);
-            if (want !== z) {
-              feed(px, py, want, want > z ? cut.feed : cut.plunge);
-              z = want;
-            }
-            const [qx, qy] = at(cuts[k]!);
-            feed(qx, qy, z);
-          }
-        }
-        if (z !== zl) feed(x0, y0, zl, cut.plunge);
-      };
       for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
-        if (op.entry === 'ramp') rampDown(x0, y0, fx!, fy!, zPrev, zl, op.rampAngle);
-        else feed(x0, y0, zl, cut.plunge);
+        cutLoop(ring, zPrev, zl, { ramp: op.entry === 'ramp', angle: op.rampAngle, tabs, zTab });
         zPrev = zl;
-        lap(zl);
       }
       rapid(x0, y0, safeZ);
+      return out;
+    }
+
+    case 'mill_contour': {
+      const zTop = zTopOf(op);
+      checkDepth(zTop, op.zBottom);
+      const g = shapeOf(op.shape);
+      const zTab = op.zBottom + op.tabHeight;
+      if (op.tabs && zTab >= zTop) throw new CamError('the tabs are taller than the cut');
+      // closed loops: offset the region by the tool radius and orient for climb milling;
+      // open paths (and side "on"): the tool centre follows the lines as drawn
+      let loops: Loop[] = [];
+      let lines: Pt[][] = g.open;
+      if (op.side === 'on') lines = [...g.open, ...g.closed.map((l) => [...l, l[0]!])];
+      else if (g.closed.length) {
+        const grown = offsetRegion(g.closed, op.side === 'outside' ? r : -r);
+        if (!grown.length) throw new CamError(`the shape is too small for the Ø${d} tool on the inside`);
+        loops = orient(grown, op.side === 'outside');
+      } else throw new CamError(`shape ${op.shape} has no closed outline to cut ${op.side}; use side "on" for open lines`);
+      const lv = levels(zTop, op.zBottom, stepOf(op));
+      let at: Pt = [ctx.from.x, ctx.from.y];
+      for (const l0 of loops) {
+        const l = startNear(l0, at);
+        const outer = op.side === 'outside' && orient([l], true)[0] === l;
+        const tabs = op.tabs && outer ? tabIntervals(l, op.tabs, op.tabWidth) : [];
+        approach(l[0]![0], l[0]![1], zTop);
+        let zPrev = zTop + 0.2;
+        feed(l[0]![0], l[0]![1], zPrev, cut.plunge);
+        for (const zl of lv) {
+          cutLoop(l, zPrev, zl, { ramp: op.entry === 'ramp', angle: op.rampAngle, tabs, zTab });
+          zPrev = zl;
+        }
+        rapid(l[0]![0], l[0]![1], safeZ);
+        at = l[0]!;
+      }
+      for (const line of lines) {
+        // open path: back and forth along it, one level per direction, ramping in on the way
+        let path = line;
+        approach(path[0]![0], path[0]![1], zTop);
+        let zPrev = zTop + 0.2;
+        feed(path[0]![0], path[0]![1], zPrev, cut.plunge);
+        for (const zl of lv) {
+          feed(path[0]![0], path[0]![1], zl, cut.plunge);
+          for (const [x, y] of path.slice(1)) feed(x, y, zl);
+          path = [...path].reverse();
+          zPrev = zl;
+        }
+        void zPrev;
+        rapid(path[0]![0], path[0]![1], safeZ);
+      }
+      return out;
+    }
+
+    case 'mill_pocket': {
+      const zTop = zTopOf(op);
+      checkDepth(zTop, op.zBottom);
+      const g = shapeOf(op.shape);
+      if (!g.closed.length) throw new CamError(`shape ${op.shape} has no closed outline to pocket`);
+      // rings from the wall inwards, every stepover; cut from the inside out, the wall last
+      const rings: Loop[][] = [];
+      for (let k = 0; ; k++) {
+        const ring = offsetRegion(g.closed, -(r + k * op.stepover * d));
+        if (!ring.length) break;
+        rings.push(orient(ring, false));
+        if (k > 2000) throw new CamError('the pocket needs too many passes; use a bigger tool or stepover');
+      }
+      if (!rings.length) throw new CamError(`the pocket is too small for the Ø${d} tool`);
+      const order = [...rings].reverse().flat();
+      let zPrev = zTop + 0.2;
+      for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
+        let at: Pt = [ctx.from.x, ctx.from.y];
+        for (const l0 of order) {
+          const l = startNear(l0, at);
+          // above everything (islands stand up to the top), down through what is already cleared
+          approach(l[0]![0], l[0]![1], zTop);
+          feed(l[0]![0], l[0]![1], zPrev, cut.plunge);
+          cutLoop(l, zPrev, zl, { ramp: op.entry === 'ramp', angle: op.rampAngle });
+          rapid(l[0]![0], l[0]![1], zTop + 1);
+          at = l[0]!;
+        }
+        zPrev = zl;
+      }
+      rapid(ctx.from.x, ctx.from.y, safeZ);
       return out;
     }
 

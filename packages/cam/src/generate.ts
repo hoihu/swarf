@@ -76,6 +76,10 @@ export function opLabel(op: Operation): string {
       return `Circular pocket Ø${op.diameter} to Z${op.zBottom}`;
     case 'mill_contour_rect':
       return `Contour ${op.side} ${op.w}×${op.h} to Z${op.zBottom}`;
+    case 'mill_contour':
+      return `Contour ${op.side} ${op.shape} to Z${op.zBottom}`;
+    case 'mill_pocket':
+      return `Pocket ${op.shape} to Z${op.zBottom}`;
     case 'mill_drill':
       return `Drill ${op.points.length} hole(s) to Z${op.zBottom}`;
   }

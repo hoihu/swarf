@@ -303,6 +303,52 @@ describe('threading', () => {
   });
 });
 
+describe('shapes', () => {
+  const circle = (cx: number, cy: number, r: number, n = 72): [number, number][] => Array.from({ length: n }, (_, i) => [cx + r * Math.cos((2 * Math.PI * i) / n), cy + r * Math.sin((2 * Math.PI * i) / n)]);
+  // a 40 × 30 plate outline with a Ø12 hole, drawn at its own origin, placed at X20 Y10
+  const plate = { id: 's1', name: 'plate.dxf', at: { x: 20, y: 10 }, paths: [
+    { closed: true, pts: [[0, 0], [40, 0], [40, 30], [0, 30]] as [number, number][] },
+    { closed: true, pts: circle(20, 15, 6) },
+    { closed: false, pts: [[5, 25], [35, 25]] as [number, number][] },
+  ] };
+  const job = (ops: OperationInput[]) => withOps('mill', ops, { shapes: [plate] });
+  const height = (a: ReturnType<typeof analyze>, x: number, y: number) => {
+    const m = a.material as MillMaterial;
+    return m.h[Math.floor(y / m.cell) * m.nx + Math.floor(x / m.cell)]!;
+  };
+
+  it('pockets the outline and leaves the island standing', () => {
+    const a = analyze(job([{ type: 'mill_pocket', tool: 1, shape: 's1', zBottom: -3, zTop: 0.5 }]));
+    expect(a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(height(a, 25, 15)).toBeCloseTo(-3, 3); // floor
+    expect(height(a, 40, 25)).toBeCloseTo(0.5, 3); // island (the circle)
+    expect(height(a, 10, 5)).toBeCloseTo(0.5, 3); // outside the outline
+    expect(height(a, 57, 37)).toBeCloseTo(-3, 1); // into the corner, within the tool radius
+  });
+
+  it('cuts a part out with its hole, climb milling', () => {
+    const a = analyze(job([{ type: 'mill_contour', tool: 1, shape: 's1', side: 'outside', zBottom: -3, zTop: 0.5 }]));
+    expect(a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(height(a, 17, 25)).toBeCloseTo(-3, 3); // around the outside
+    expect(height(a, 40, 29.5)).toBeCloseTo(-3, 3); // inside the hole
+    expect(height(a, 30, 15)).toBeCloseTo(0.5, 3); // the part
+    // outer loop clockwise: going around, x grows on the top edge
+    const feeds = [...walk(a.program)].filter((w) => w.move.type === 'feed' && Math.abs(w.move.to.y - 43) < 1e-6 && Math.abs(w.from.y - 43) < 1e-6);
+    expect(feeds.length).toBeGreaterThan(0);
+    for (const w of feeds) expect(w.move.to.x).toBeGreaterThanOrEqual(w.from.x - 1e-6);
+  });
+
+  it('engraves along the lines with side "on"', () => {
+    const a = analyze(job([{ type: 'mill_contour', tool: 1, shape: 's1', side: 'on', zBottom: -0.5, zTop: 0.5 }]));
+    expect(height(a, 40, 35)).toBeCloseTo(-0.5, 3); // the open line at y 25 + 10
+    expect(height(a, 30, 31.5)).toBeCloseTo(0.5, 3);
+  });
+
+  it('says what is missing', () => {
+    expect(analyze(job([{ type: 'mill_pocket', tool: 1, shape: 'nope', zBottom: -1 }])).diagnostics.map((d) => d.message).join()).toMatch(/no shape nope \(shapes: s1\)/);
+  });
+});
+
 describe('contour tabs', () => {
   it('leaves tabs standing at the tab height', () => {
     const job = withOps('mill', [{ type: 'mill_contour_rect', tool: 1, x: 20, y: 10, w: 40, h: 30, zBottom: -14.5, zTop: 0.5, tabs: 4, tabWidth: 5, tabHeight: 1.5 }]);
@@ -400,7 +446,7 @@ describe('checks', () => {
 
   it('cutting deeper than the flutes', () => {
     const tools = EXAMPLES.mill().tools.map((t) => (t.id === 1 ? { ...t, fluteLength: 8 } : t));
-    const job = withOps('mill', [{ type: 'mill_contour_rect', tool: 1, x: 10, y: 10, w: 30, h: 20, zBottom: -9.5, stepDown: 10 }], { tools });
+    const job = withOps('mill', [{ type: 'mill_contour_rect', tool: 1, x: 10, y: 10, w: 30, h: 20, zBottom: -9.5, stepDown: 10, entry: 'plunge' }], { tools });
     expect(codes(job)).toContain('TOO_DEEP');
   });
 

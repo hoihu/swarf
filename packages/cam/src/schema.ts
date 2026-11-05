@@ -262,6 +262,43 @@ export const MillContourRect = z.object({
   tabHeight: pos.default(1).describe('Tab height above the bottom'),
 });
 
+/** Imported 2D geometry (DXF, SVG) in mm, placed on the stock by `at`. */
+export const Shape = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  /** Polylines (arcs and curves already as short segments), as drawn. */
+  paths: z.array(z.object({ closed: z.boolean(), pts: z.array(z.tuple([mm, mm])).min(2) })).min(1),
+  /** Where the drawing's origin goes on the stock (X0 Y0 = front-left corner). */
+  at: z.object({ x: mm, y: mm }).default({ x: 0, y: 0 }),
+});
+export type Shape = z.infer<typeof Shape>;
+
+const shapeEntry = {
+  entry: z.enum(['ramp', 'plunge']).default('ramp').describe('ramp: down along the path at the ramp angle; plunge: straight down'),
+  rampAngle,
+};
+
+export const MillContour = z.object({
+  type: z.literal('mill_contour'),
+  ...common,
+  shape: z.string().describe('Shape id (an imported drawing)'),
+  side: z.enum(['outside', 'inside', 'on']).default('outside').describe('outside: cut the part out (holes in it are cut too); inside: run inside the outline; on: tool centre on the lines (engraving, open paths)'),
+  ...depthFields,
+  ...shapeEntry,
+  tabs: z.number().int().min(0).max(16).default(0).describe('Holding tabs per outer loop, so a cut-out part stays in place'),
+  tabWidth: pos.default(4),
+  tabHeight: pos.default(1),
+});
+
+export const MillPocket = z.object({
+  type: z.literal('mill_pocket'),
+  ...common,
+  shape: z.string().describe('Shape id: its closed loops are the pocket, loops inside them islands that stay'),
+  ...depthFields,
+  stepover: z.number().gt(0).max(1).default(0.45),
+  ...shapeEntry,
+});
+
 export const MillDrill = z.object({
   type: z.literal('mill_drill'),
   ...common,
@@ -285,6 +322,8 @@ export const Operation = z.discriminatedUnion('type', [
   MillPocketRect,
   MillPocketCircle,
   MillContourRect,
+  MillContour,
+  MillPocket,
   MillDrill,
 ]);
 export type Operation = z.infer<typeof Operation>;
@@ -305,6 +344,8 @@ export const OP_MACHINE: Record<OpType, MachineKind> = {
   mill_pocket_rect: 'mill',
   mill_pocket_circle: 'mill',
   mill_contour_rect: 'mill',
+  mill_contour: 'mill',
+  mill_pocket: 'mill',
   mill_drill: 'mill',
 };
 
@@ -323,6 +364,8 @@ export const OP_TOOLS: Record<OpType, ToolType[]> = {
   mill_pocket_rect: ['endmill'],
   mill_pocket_circle: ['endmill'],
   mill_contour_rect: ['endmill'],
+  mill_contour: ['endmill'],
+  mill_pocket: ['endmill'],
   mill_drill: ['drill', 'endmill'],
 };
 
@@ -332,6 +375,8 @@ export const Job = z.object({
   tools: z.array(Tool),
   stock: Stock,
   operations: z.array(Operation),
+  /** Imported drawings that operations refer to. */
+  shapes: z.array(Shape).default([]),
   /** What the user said about the workpiece material, free text (shown to the agent). */
   material: z.string().optional(),
 });
