@@ -1,7 +1,8 @@
 // Touch probing in a real browser against the simulated mill, whose block is not where the job says:
 // Z on a touch plate, the top at 3 × 3 points, the front-left corner; prints what was found and the truth.
+// The setup on the simulated table: side (default), block, toe, straps, vise.
 //   npm run build && (cd apps/web && npx vite preview --port 4173) &
-//   node scripts/check-probe.cjs [outdir]      (needs Playwright)
+//   node scripts/check-probe.cjs [outdir] [setup]      (needs Playwright)
 const { chromium } = require('playwright');
 const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 1000).toFixed(1), ...a);
 (async () => {
@@ -15,6 +16,9 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   await p.getByRole('tab', { name: 'Machine' }).click();
   await p.getByRole('button', { name: /Connect a simulated/ }).click();
   await p.waitForFunction(() => window.__swarfMachine?.status?.wpos, null, { polling: 200, timeout: 20000 });
+  const setup = process.argv[3] ?? 'side';
+  await p.locator('.simsetup select').selectOption(setup);
+  log('setup', setup);
   const truth = () => p.evaluate(() => {
     const w = window.__swarfSimWorld, m = window.__swarfMachine.status;
     const wco = m.mpos.map((v, i) => v - m.wpos[i]);
@@ -33,7 +37,7 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   log('plate:', JSON.stringify(r), 'wco-origin', JSON.stringify(await truth()), 'expected z', expZ);
   // 2: the top at 3 × 3 points
   r = await run('Check the top (3 × 3)');
-  const surf = await p.evaluate(() => window.__swarfProbe.surface && { hi: window.__swarfProbe.surface.highest, lo: window.__swarfProbe.surface.lowest, sx: window.__swarfProbe.surface.slopeX, sy: window.__swarfProbe.surface.slopeY, flat: window.__swarfProbe.surface.flatness });
+  const surf = await p.evaluate(() => { const s = window.__swarfProbe.surface; return s && { hi: s.highest, lo: s.lowest, sx: s.slopeX, sy: s.slopeY, flat: s.flatness, points: s.points.length, skipped: s.skipped, outliers: s.outliers }; });
   log('surface:', JSON.stringify(r), JSON.stringify(surf));
   // 3: the corner: jog above it first (work coordinates)
   await p.evaluate(() => window.__swarfMachine.request('$J=G90 X1.5 Y-1.5 Z12 F3000'));

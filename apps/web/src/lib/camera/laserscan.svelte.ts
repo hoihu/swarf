@@ -39,18 +39,11 @@ class LaserScan {
     await this.#freshFrame();
   }
 
-  /** A picture taken after now (the stream lags a little behind the machine). */
+  /** A picture of the machine as it is now (the picture lags the machine: wait that out, then for a new one). */
   async #freshFrame(): Promise<Rgba> {
-    if (!machine.simulated) {
-      // a webcam: its picture lags the machine by a frame or few
-      await sleep(350);
-      const img = camera.grab();
-      if (!img) throw new Error('No camera picture.');
-      return img;
-    }
+    await sleep(camera.lag + 30);
     const n0 = camera.newFrame(-1);
-    await sleep(120);
-    for (let i = 0; i < 40 && camera.newFrame(-1) <= n0 + 1; i++) await sleep(30);
+    for (let i = 0; i < 40 && camera.newFrame(-1) <= n0; i++) await sleep(20);
     const img = camera.grab();
     if (!img) throw new Error('No camera picture.');
     return img;

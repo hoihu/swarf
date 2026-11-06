@@ -11,6 +11,7 @@ import { measureBlock, toGrey, type BlockFit } from './setup.ts';
 import type { LaserPlane } from './laser.ts';
 import { machine } from '../machine.svelte.ts';
 import { store } from '../store.svelte.ts';
+import { simWorld } from '../simworld.ts';
 
 const KEY = 'swarf.camera';
 export const SIM_SOURCE = 'sim';
@@ -207,7 +208,14 @@ class Camera {
   }
 
   #simWorld() {
-    return { job: store.job, mpos: this.mpos() ?? [0, 0, 0], wco: this.wco() ?? [0, 0, 0], board: this.capturing, laser: !!machine.status?.acc?.includes('F') } as const;
+    // the mill sees the simulated machine as it really is (the status reports come a little later)
+    const t = machine.simulated && store.job.machine.kind === 'mill' ? simWorld.truth : null;
+    return { job: store.job, mpos: t?.pos() ?? this.mpos() ?? [0, 0, 0], wco: this.wco() ?? [0, 0, 0], board: this.capturing, laser: t ? t.laser() : !!machine.status?.acc?.includes('F') } as const;
+  }
+
+  /** How long after the machine the picture shows it, at most (ms). */
+  get lag(): number {
+    return this.#sim ? this.#sim.lag : 350;
   }
 
   // ---------- setup check ----------

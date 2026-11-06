@@ -35,6 +35,11 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   operation (no G96/G95: the speed is set for the largest diameter the operation cuts).
 - **Checks** (`cam/src/check.ts`): travel, chuck, rapids into material, depth of cut, plunging.
   Errors block the agent from finishing (fix budget 4) and the G-code download.
+- **Simulated workshop** (`apps/web/src/lib/sim/`, `simworld.ts`): the setups on the simulated
+  mill's table as solids (boxes, the block's top sloped, upright cylinders), with heights,
+  contact for a cutter and ray casting. The simulated controller's probe touches them, the
+  simulated camera draws them (its laser with a shadow map and a limited fan, a webcam's lag and
+  noise), and the tests cast the laser's rays at them to scan each setup without a browser.
 - **Agent** (`agent/src/loop.ts`): the 4k7 loop. The model sees a compact job state with every
   user message, edits through tools that answer with fresh checks, may ask one question per turn,
   and is sent back to fix errors when it tries to finish with any.
@@ -48,7 +53,7 @@ Code, Copilot CLI, Codex CLI or OpenCode headless, multi-start threads, lathe ar
 chamfers, external and internal threading as G33 passes, boring, lathe profiles, contour tabs, WebSocket streaming, a review card per assistant turn, DXF/SVG import with contours and pockets of any outline, lathe profiles from drawings, arc fitting):
 - A thread pull-out (G33 with X moving), internal profiles.
 - Camera: bar diameter and stickout on the lathe (silhouette, better with a backlight), the tool after a change.
-- Probing: rotate the toolpath by the measured angle; probe a height map for engraving on uneven stock; bores and bosses as datums.
+- Probing: rotate the toolpath by the measured angle; probe a height map for engraving on uneven stock; bores and bosses as datums; the corner routine to keep clear of known obstacles (it touches the sides 6 mm out, where low edge clamps sit).
 - Climb/conventional choice.
 
 Tier 3 (only by reusing libraries): STEP import (build123d / OpenCascade), adaptive clearing,

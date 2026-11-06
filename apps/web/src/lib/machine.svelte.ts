@@ -59,6 +59,8 @@ class Machine {
         // the simulated reality sits where this work zero was at the start
         simWorld.origin = [...sim.wco] as [number, number, number];
         sim.contact = (p) => simWorld.contact(store.job, p);
+        // what the simulated camera sees: the machine where it really is (not the last status report), the laser as switched
+        simWorld.truth = { pos: () => [...sim.pos] as [number, number, number], laser: () => sim.flood };
         this.simulated = true;
         t = sim;
       } else if (network) {
@@ -114,6 +116,7 @@ class Machine {
     this.#s = null;
     this.connected = false;
     this.simulated = false;
+    simWorld.truth = null;
     this.status = null;
     this.job = 'idle';
   }

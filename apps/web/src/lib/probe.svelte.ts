@@ -9,20 +9,22 @@ import type { V3 } from './camera/geometry.ts';
 import { machine } from './machine.svelte.ts';
 import { simWorld } from './simworld.ts';
 import { store } from './store.svelte.ts';
+import { analyseSurface, type SurfaceResult } from './surface.ts';
+
+export { analyseSurface, type SurfaceResult };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** A guarded move stopped: the probe touched something on the way (at work Z `z`). */
+class Touched extends Error {
+  readonly z: number;
+  constructor(message: string, z: number) {
+    super(message);
+    this.z = z;
+  }
+}
 const n3 = (v: number) => v.toFixed(3);
 
-export interface SurfaceResult {
-  points: { x: number; y: number; z: number }[];
-  highest: number;
-  lowest: number;
-  mean: number;
-  /** Plane fit z = a + bx·x + by·y: slope in mm per 100 mm, and the largest departure from it. */
-  slopeX: number;
-  slopeY: number;
-  flatness: number;
-}
 
 export interface CornerResult {
   /** Front-left corner and top, work coordinates before the new zero was set. */
@@ -87,7 +89,7 @@ class Probe {
     machine.probe = null;
     await this.#do(`G90 G38.3 ${words.join(' ')} F${f}`);
     await this.#settle();
-    if ((machine.probe as { ok: boolean } | null)?.ok) throw new Error(`Touched something on the way to ${words.join(' ')}: stopped there.`);
+    if ((machine.probe as { ok: boolean } | null)?.ok) throw new Touched(`Touched something on the way to ${words.join(' ')}: stopped there.`, this.#wpos()[2]);
   }
 
   /** Touch along one axis (+1 / −1) up to `dist` mm; returns the work coordinate where it triggered (slow second touch). */
@@ -184,7 +186,10 @@ class Probe {
 
   /**
    * The top's evenness: touched at `nx` × `ny` points (stock itself, clip on it), from the current
-   * height (which must be above the top). Z zero is not changed: see setZ.
+   * height (which must be above the top and clear everything on the way). Points under the job's
+   * obstacles are left out; going down to one, a touch on the way (a clamp's nose, a strap) leaves
+   * that point out too. A point far off the others is reported and left out of the figures. Z zero
+   * is not changed: see setZ.
    */
   async checkSurface(toolDiameter: number, nx = 3, ny = 3, inset = 6): Promise<void> {
     await this.#run('Touching the top at several points', async () => {
@@ -193,24 +198,46 @@ class Probe {
         simWorld.toolDiameter = toolDiameter;
         simWorld.plate = null;
       }
+      const r = toolDiameter / 2;
       const safe = this.#wpos()[2];
       if (safe < stock.top + 2) throw new Error(`Start above the top (at least Z${stock.top + 2}).`);
       const pts: SurfaceResult['points'] = [];
+      const skipped: NonNullable<SurfaceResult['skipped']> = [];
       for (let j = 0; j < ny; j++)
         for (let i = 0; i < nx; i++) {
           const x = inset + ((stock.x - 2 * inset) * (j % 2 ? nx - 1 - i : i)) / Math.max(1, nx - 1);
           const y = inset + ((stock.y - 2 * inset) * j) / Math.max(1, ny - 1);
-          this.step = `Point ${pts.length + 1} of ${nx * ny}`;
+          this.step = `Point ${pts.length + skipped.length + 1} of ${nx * ny}`;
+          // under something known to stand there (anything higher than the touch goes down to)
+          const under = store.job.obstacles.find((o) => o.top > stock.top - 4 && Math.hypot(Math.max(o.x0 - x, 0, x - o.x1), Math.max(o.y0 - y, 0, y - o.y1)) < r + 1);
+          if (under) {
+            skipped.push({ x, y, why: 'obstacle' });
+            continue;
+          }
           await this.#moveTo({ z: safe });
           await this.#moveTo({ x, y });
-          await this.#moveTo({ z: stock.top + 2 });
+          try {
+            await this.#moveTo({ z: stock.top + 2 });
+          } catch (e) {
+            if (!(e instanceof Touched)) throw e;
+            // something above the top here: leave the point, back up (unguarded: the input is closed)
+            skipped.push({ x, y, why: 'blocked', z: e.z });
+            await this.#do(`G90 G0 Z${n3(safe)}`);
+            await this.#settle();
+            continue;
+          }
           const z = await this.#touch('Z', -1, 6);
           pts.push({ x, y, z });
         }
       await this.#moveTo({ z: safe });
-      this.surface = analyseSurface(pts);
+      if (pts.length < 3) throw new Error(`Only ${pts.length} point${pts.length === 1 ? '' : 's'} could be touched: too much is in the way.`);
+      this.surface = { ...analyseSurface(pts), skipped };
       const s = this.surface;
-      this.result = `Top from ${s.lowest.toFixed(3)} to ${s.highest.toFixed(3)} (spread ${(s.highest - s.lowest).toFixed(3)} mm); sloping ${s.slopeX.toFixed(3)} mm per 100 mm in X, ${s.slopeY.toFixed(3)} in Y; ${s.flatness.toFixed(3)} mm off flat.`;
+      const notes = [
+        ...s.skipped!.map((p) => (p.why === 'obstacle' ? `X${p.x.toFixed(0)} Y${p.y.toFixed(0)} left out (under an obstacle of the job)` : `X${p.x.toFixed(0)} Y${p.y.toFixed(0)} left out: touched something at Z${p.z!.toFixed(2)} going down`)),
+        ...(s.outliers ?? []).map((p) => `X${p.x.toFixed(0)} Y${p.y.toFixed(0)} is ${p.off.toFixed(2)} mm ${p.off > 0 ? 'above' : 'below'} the others (a chip, a burr?): left out`),
+      ];
+      this.result = `Top from ${s.lowest.toFixed(3)} to ${s.highest.toFixed(3)} (spread ${(s.highest - s.lowest).toFixed(3)} mm); sloping ${s.slopeX.toFixed(3)} mm per 100 mm in X, ${s.slopeY.toFixed(3)} in Y; ${s.flatness.toFixed(3)} mm off flat.${notes.length ? ` ${notes.join('; ')}.` : ''}`;
     });
   }
 
@@ -289,40 +316,6 @@ class Probe {
       this.result = `Work zero on the corner (it was ${(cx).toFixed(3)}, ${(cy).toFixed(3)}, ${(top - stock.top).toFixed(3)} off). The front edge is ${Math.abs(ang) < 0.05 ? 'square to X' : `turned ${ang.toFixed(2)}° against X: square the block, or the cuts will be turned against it by as much`}.`;
     });
   }
-}
-
-/** Highest, lowest, mean, and a plane through the points (least squares) with the largest departure from it. */
-export function analyseSurface(points: SurfaceResult['points']): SurfaceResult {
-  const n = points.length;
-  const zs = points.map((p) => p.z);
-  const mean = zs.reduce((s, z) => s + z, 0) / n;
-  // z = a + b x + c y by normal equations (3 × 3)
-  let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, sz = 0, sxz = 0, syz = 0;
-  for (const p of points) {
-    sx += p.x;
-    sy += p.y;
-    sxx += p.x * p.x;
-    syy += p.y * p.y;
-    sxy += p.x * p.y;
-    sz += p.z;
-    sxz += p.x * p.z;
-    syz += p.y * p.z;
-  }
-  const A = [n, sx, sy, sx, sxx, sxy, sy, sxy, syy];
-  const B = [sz, sxz, syz];
-  const det = (m: number[]) => m[0]! * (m[4]! * m[8]! - m[5]! * m[7]!) - m[1]! * (m[3]! * m[8]! - m[5]! * m[6]!) + m[2]! * (m[3]! * m[7]! - m[4]! * m[6]!);
-  const D = det(A);
-  let a = mean;
-  let b = 0;
-  let c = 0;
-  if (Math.abs(D) > 1e-9) {
-    const col = (i: number) => A.map((v, k) => (k % 3 === i ? B[Math.floor(k / 3)]! : v));
-    a = det(col(0)) / D;
-    b = det(col(1)) / D;
-    c = det(col(2)) / D;
-  }
-  const flatness = Math.max(...points.map((p) => Math.abs(p.z - (a + b * p.x + c * p.y))));
-  return { points, highest: Math.max(...zs), lowest: Math.min(...zs), mean, slopeX: b * 100, slopeY: c * 100, flatness };
 }
 
 export const probe = new Probe();

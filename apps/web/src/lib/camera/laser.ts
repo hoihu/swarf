@@ -271,93 +271,250 @@ export interface Obstacle {
   x1: number;
   y1: number;
   top: number;
+  /** It reaches over the block's top (a strap, a clamp's nose): in the way of facing it. */
+  overTop?: boolean;
 }
 
 export interface ScanResult {
-  /** The top: points within the block's outline (inset). */
-  top: { mean: number; highest: number; lowest: number; slopeX: number; slopeY: number; flatness: number; points: number };
-  /** Anything beside the block reaching higher than `minHeight` above the table: clamps, vise jaws, the vise. */
+  /** The top: points within the block's outline (inset), leaving out what lies on it. */
+  top: { mean: number; highest: number; lowest: number; slopeX: number; slopeY: number; flatness: number; points: number; /** Square millimetres of the top left out: something lies on them. */ covered: number };
+  /** What stands up beside the block, or lies on its top: clamps, straps, bolts, vise jaws. A
+   * thing with steps (a strap with a nut and a bolt on it) is one box per step, each as high as
+   * that step. */
   obstacles: Obstacle[];
 }
 
-/**
- * What the scan says about the setup: the block's top (inside its outline, `inset` mm in) and
- * what stands up next to it. `bottom`: work Z of the table (stock bottom).
- */
-export function analyseScan(points: V3[], block: { x: number; y: number; top: number; bottom: number }, o: { inset?: number; margin?: number; minHeight?: number; cell?: number } = {}): ScanResult {
-  const inset = o.inset ?? 3;
-  const margin = o.margin ?? 1.5;
-  const minHeight = o.minHeight ?? 2;
-  const cell = o.cell ?? 1;
-  const top = points.filter(([x, y]) => x > inset && y > inset && x < block.x - inset && y < block.y - inset);
-  if (top.length < 50) throw new Error(`Only ${top.length} laser points on the block's top: did the line cross it?`);
-  // the top as 2 mm patches, each the average of its points: single points scatter a few tenths
-  const hm = heightMap(top, 2);
+/** A plane z = a + b x + c y, robustly through 2 mm patches of points (each the average of its points: single points scatter a few tenths). */
+function topPlane(points: V3[], keep: (x: number, y: number) => boolean) {
+  const hm = heightMap(points, 2);
   const patches: V3[] = [];
   for (let j = 0; j < hm.ny; j++)
     for (let i = 0; i < hm.nx; i++) {
       const k = j * hm.nx + i;
-      if (hm.count[k]! >= 4) patches.push([hm.x0 + (i + 0.5) * hm.cell, hm.y0 + (j + 0.5) * hm.cell, hm.z[k]!]);
+      const x = hm.x0 + (i + 0.5) * hm.cell;
+      const y = hm.y0 + (j + 0.5) * hm.cell;
+      if (hm.count[k]! >= 4 && keep(x, y)) patches.push([x, y, hm.z[k]!]);
     }
   if (patches.length < 6) throw new Error('Too little of the top was seen to judge it.');
   const f = fitPlaneRobust(patches, 0.3);
-  // as z = a + b x + c y
   const b = -f.n[0] / f.n[2];
   const c = -f.n[1] / f.n[2];
   const a = f.k / f.n[2];
-  const zs = Float64Array.from(patches, (p) => p[2]).sort();
-  let sum = 0;
-  for (const z of zs) sum += z;
-  const off = Float64Array.from(patches, (p) => Math.abs(p[2] - (a + b * p[0] + c * p[1]))).sort();
-  const topRes = { mean: sum / zs.length, highest: zs[zs.length - 1]!, lowest: zs[0]!, slopeX: b * 100, slopeY: c * 100, flatness: off[off.length - 1]!, points: top.length };
+  return { at: (x: number, y: number) => a + b * x + c * y, b, c, patches };
+}
 
-  // beside the block: cells standing up from the table, grouped into connected pieces
-  const outside = points.filter(([x, y]) => x < -margin || y < -margin || x > block.x + margin || y > block.y + margin);
+const pct = (a: number[], q: number) => {
+  const s = [...a].sort((u, v) => u - v);
+  return s[Math.round(q * (s.length - 1))]!;
+};
+
+/**
+ * What the scan says about the setup: the block's top (inside its outline, `inset` mm in, leaving
+ * out whatever lies on it) and what stands up beside it or lies on it. `bottom`: work Z of the
+ * stock's bottom (what holds the block is what rises more than `minHeight` above it; on the top,
+ * more than `onTop` above the top).
+ */
+export function analyseScan(
+  points: V3[],
+  block: { x: number; y: number; top: number; bottom: number },
+  o: { inset?: number; margin?: number; minHeight?: number; onTop?: number; cell?: number } = {},
+): ScanResult {
+  const inset = o.inset ?? 3;
+  const margin = o.margin ?? 1.5;
+  const minHeight = o.minHeight ?? 2;
+  const onTop = o.onTop ?? 1.5;
+  const cell = o.cell ?? 1;
+  const within = (x: number, y: number, m: number) => x > m && y > m && x < block.x - m && y < block.y - m;
+  const top = points.filter(([x, y]) => within(x, y, inset));
+  if (top.length < 50) throw new Error(`Only ${top.length} laser points on the block's top: did the line cross it?`);
+  // a first look at the top (what lies on it is far off the plane and left out by the robust fit)
+  const first = topPlane(top, () => true);
+
+  // everything standing up, in 1 mm cells: beside the block, above the stock's bottom; on the
+  // block, above its top. The band along the block's sides (its side faces, half seen) is left out.
+  const hm = heightMap(points, cell);
+  const N = hm.nx * hm.ny;
+  const up = new Uint8Array(N);
+  const cx = (i: number) => hm.x0 + (i + 0.5) * cell;
+  const cy = (j: number) => hm.y0 + (j + 0.5) * cell;
+  for (let j = 0; j < hm.ny; j++)
+    for (let i = 0; i < hm.nx; i++) {
+      const k = j * hm.nx + i;
+      if (hm.count[k]! < 2) continue;
+      const x = cx(i);
+      const y = cy(j);
+      const z = hm.z[k]!;
+      if (within(x, y, -margin)) {
+        if (within(x, y, margin) && z > first.at(x, y) + onTop) up[k] = 1;
+      } else if (z > block.bottom + minHeight) up[k] = 1;
+    }
+
+  // the top again, without the patches near anything lying on it
+  const near = (x: number, y: number) => {
+    const i0 = Math.floor((x - 3 - hm.x0) / cell);
+    const j0 = Math.floor((y - 3 - hm.y0) / cell);
+    for (let j = Math.max(0, j0); j <= Math.min(hm.ny - 1, j0 + Math.ceil(6 / cell)); j++)
+      for (let i = Math.max(0, i0); i <= Math.min(hm.nx - 1, i0 + Math.ceil(6 / cell)); i++) if (up[j * hm.nx + i]) return true;
+    return false;
+  };
+  const clear = top.filter(([x, y]) => !near(x, y));
+  if (clear.length < 50) throw new Error('Hardly any of the top is free: what lies on it covers nearly all of it.');
+  const plane = topPlane(clear, () => true);
+  const zs = plane.patches.map((p) => p[2]).sort((u, v) => u - v);
+  const off = plane.patches.map((p) => Math.abs(p[2] - plane.at(p[0], p[1]))).sort((u, v) => u - v);
+  const covered = first.patches.filter(([x, y]) => near(x, y)).length * 4;
+  const topRes = {
+    mean: zs.reduce((s, z) => s + z, 0) / zs.length,
+    highest: zs[zs.length - 1]!,
+    lowest: zs[0]!,
+    slopeX: plane.b * 100,
+    slopeY: plane.c * 100,
+    flatness: off[off.length - 1]!,
+    points: clear.length,
+    covered,
+  };
+
+  // the pieces: connected cells standing up (bridging single missing cells), each split by its steps
   const obstacles: Obstacle[] = [];
-  if (outside.length) {
-    const om = heightMap(outside, cell);
-    const hm = om;
-    const up = (k: number) => hm.count[k]! >= 2 && hm.z[k]! > block.bottom + minHeight;
-    const seen = new Uint8Array(hm.nx * hm.ny);
-    for (let k = 0; k < hm.nx * hm.ny; k++) {
-      if (seen[k] || !up(k)) continue;
-      // flood fill (4-neighbours, bridging single missing cells)
+  const seen = new Uint8Array(N);
+  for (let k = 0; k < N; k++) {
+    if (seen[k] || !up[k]) continue;
+    const piece: number[] = [];
+    const stack = [k];
+    seen[k] = 1;
+    while (stack.length) {
+      const cur = stack.pop()!;
+      piece.push(cur);
+      const i = cur % hm.nx;
+      const j = (cur - i) / hm.nx;
+      for (const [di, dj] of NEIGHBOURS_BRIDGING) {
+        const ii = i + di;
+        const jj = j + dj;
+        if (ii < 0 || jj < 0 || ii >= hm.nx || jj >= hm.ny) continue;
+        const kk = jj * hm.nx + ii;
+        if (!seen[kk] && up[kk]) {
+          seen[kk] = 1;
+          stack.push(kk);
+        }
+      }
+    }
+    if (piece.length < 6) continue; // a few stray cells: noise, chips
+    obstacles.push(...steps(hm, piece));
+  }
+  for (const ob of obstacles) {
+    // beside the block and reaching into the band along its side: it reaches the side (a vise jaw, a stop)
+    const overX = ob.x1 > 0 && ob.x0 < block.x;
+    const overY = ob.y1 > 0 && ob.y0 < block.y;
+    const reach = margin + 1.5 * cell;
+    if (overY && ob.x1 <= 0 && ob.x1 > -reach) ob.x1 = 0;
+    if (overY && ob.x0 >= block.x && ob.x0 < block.x + reach) ob.x0 = block.x;
+    if (overX && ob.y1 <= 0 && ob.y1 > -reach) ob.y1 = 0;
+    if (overX && ob.y0 >= block.y && ob.y0 < block.y + reach) ob.y0 = block.y;
+    // over the top by more than its own growth and the block's being a little off
+    if (Math.min(ob.x1, block.x) - Math.max(ob.x0, 0) > 3 && Math.min(ob.y1, block.y) - Math.max(ob.y0, 0) > 3) ob.overTop = true;
+  }
+  return { top: topRes, obstacles };
+}
+
+const NEIGHBOURS_BRIDGING = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]] as const;
+
+/**
+ * A piece of cells as boxes, one per step, peeled from the top: the highest part (a bolt) as high
+ * as it is, then what is left as high as it is (a nut, the strap), up to four steps; the lowest
+ * step is the whole piece. A step is 2.5 mm or more below the one above it. Side faces seen at an
+ * angle smear heights into the cells beside them: the steps' tops are 95th percentiles, and each
+ * step but the lowest is grown by a cell (its edge cells average it and what is below).
+ */
+function steps(hm: HeightMap, piece: number[]): Obstacle[] {
+  const cell = hm.cell;
+  const z = (k: number) => hm.z[k]!;
+  const levels: number[] = [];
+  let rest = piece;
+  while (rest.length >= 3 && levels.length < 4) {
+    const L = pct(rest.map(z), 0.95);
+    levels.push(L);
+    rest = rest.filter((k) => z(k) < L - 2.5);
+  }
+  const box = (cells: number[], grow: number, top: number): Obstacle => {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const k of cells) {
+      const i = k % hm.nx;
+      const j = (k - i) / hm.nx;
+      x0 = Math.min(x0, hm.x0 + i * cell);
+      y0 = Math.min(y0, hm.y0 + j * cell);
+      x1 = Math.max(x1, hm.x0 + (i + 1) * cell);
+      y1 = Math.max(y1, hm.y0 + (j + 1) * cell);
+    }
+    return { x0: x0 - grow, y0: y0 - grow, x1: x1 + grow, y1: y1 + grow, top };
+  };
+  const out: Obstacle[] = [];
+  // under a higher step, or right beside it (its side faces, smeared into the cells around it)
+  const under = (k: number, m = 1.5 * cell) => {
+    const i = k % hm.nx;
+    const j = (k - i) / hm.nx;
+    const x = hm.x0 + (i + 0.5) * cell;
+    const y = hm.y0 + (j + 0.5) * cell;
+    return out.some((o) => x > o.x0 - m && x < o.x1 + m && y > o.y0 - m && y < o.y1 + m);
+  };
+  for (const [s, L] of levels.entries()) {
+    const ceiling = s ? levels[s - 1]! - 2.5 : Infinity;
+    // this step's own cells, for its height: not those of the steps above, nor right beside them
+    const own = (cells: number[]) => cells.filter((k) => z(k) < ceiling && !under(k)).map(z);
+    if (s === levels.length - 1) {
+      // the lowest: the whole piece, unless the steps above cover it already (all but the smear beside them)
+      const h = own(piece);
+      const beyond = piece.filter((k) => z(k) < ceiling && !under(k, 2.5 * cell)).length;
+      if (s === 0 || (h.length >= 3 && beyond >= 3)) out.push(box(piece, 0, h.length ? pct(h, 0.95) : L));
+      break;
+    }
+    // what stands at this height or higher, as connected parts (two bolts are two boxes)
+    const inStep = new Set(piece.filter((k) => z(k) >= L - 1.5));
+    const done = new Set<number>();
+    const parts: { cells: number[]; o: Obstacle }[] = [];
+    for (const k of inStep) {
+      if (done.has(k)) continue;
+      const part: number[] = [];
       const stack = [k];
-      seen[k] = 1;
-      let x0 = Infinity;
-      let y0 = Infinity;
-      let x1 = -Infinity;
-      let y1 = -Infinity;
-      let topZ = -Infinity;
-      let count = 0;
-      const heights: number[] = [];
+      done.add(k);
       while (stack.length) {
         const cur = stack.pop()!;
+        part.push(cur);
         const i = cur % hm.nx;
-        const j = (cur - i) / hm.nx;
-        count++;
-        heights.push(hm.z[cur]!);
-        x0 = Math.min(x0, hm.x0 + i * cell);
-        y0 = Math.min(y0, hm.y0 + j * cell);
-        x1 = Math.max(x1, hm.x0 + (i + 1) * cell);
-        y1 = Math.max(y1, hm.y0 + (j + 1) * cell);
-        topZ = Math.max(topZ, hm.z[cur]!);
-        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]] as const) {
-          const ii = i + di;
-          const jj = j + dj;
-          if (ii < 0 || jj < 0 || ii >= hm.nx || jj >= hm.ny) continue;
-          const kk = jj * hm.nx + ii;
-          if (!seen[kk] && up(kk)) {
-            seen[kk] = 1;
+        for (const [di, dj] of NEIGHBOURS_BRIDGING) {
+          if (i + di < 0 || i + di >= hm.nx) continue;
+          const kk = cur + dj * hm.nx + di;
+          if (inStep.has(kk) && !done.has(kk)) {
+            done.add(kk);
             stack.push(kk);
           }
         }
       }
-      if (count < 6) continue; // a few stray cells: noise, chips
-      // its top: high but not the single highest stray point
-      heights.sort((u, v) => u - v);
-      obstacles.push({ x0, y0, x1, y1, top: heights[Math.round(0.95 * (heights.length - 1))]! });
+      parts.push({ cells: part, o: box(part, cell, 0) });
+    }
+    // parts within 4 mm are one thing seen in pieces (shadows, what the camera cannot see)
+    for (let merged = true; merged; ) {
+      merged = false;
+      for (let a = 0; a < parts.length && !merged; a++)
+        for (let b = a + 1; b < parts.length && !merged; b++) {
+          const p = parts[a]!.o;
+          const q = parts[b]!.o;
+          if (p.x0 - 4 < q.x1 && q.x0 - 4 < p.x1 && p.y0 - 4 < q.y1 && q.y0 - 4 < p.y1) {
+            const cells = [...parts[a]!.cells, ...parts[b]!.cells];
+            parts[a] = { cells, o: box(cells, cell, 0) };
+            parts.splice(b, 1);
+            merged = true;
+          }
+        }
+    }
+    for (const { cells, o } of parts) {
+      // a step that is only the smear beside the one above it is no step
+      if (s > 0 && cells.filter((q) => z(q) < ceiling && !under(q, 2.5 * cell)).length < 3) continue;
+      const h = own(cells);
+      out.push({ ...o, top: h.length ? pct(h, 0.95) : L });
     }
   }
-  return { top: topRes, obstacles };
+  return out;
 }

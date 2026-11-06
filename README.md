@@ -66,7 +66,13 @@ After every assistant turn the chat shows what changed (operations added, change
 **Keep** and **Revert this turn**.
 
 No machine at hand: **Connect a simulated mill/lathe** runs a pretend grblHAL in the browser that
-moves in real time, reports MPos and WCO, jogs and pauses at M0 (`packages/grbl/src/sim.ts`).
+moves in real time, reports MPos and WCO, jogs and pauses at M0 (`packages/grbl/src/sim.ts`). On
+the simulated mill you choose what is on the table: the block alone, two steel blocks beside it,
+low edge clamps against a stop, strap clamps across its ends (step blocks, T-bolts and nuts
+standing 36 mm above the top) or a machine vise. The block itself is never quite where the job
+says (0.8 mm off, turned 0.25°, 0.37 mm low, tilted). The probe touches the same solids the
+simulated camera draws and its laser lights (`apps/web/src/lib/sim/`); the simulated camera's
+picture lags the machine like a webcam's and has sensor noise, and the laser's fan casts shadows.
 
 ## Zero by touching (mill)
 
@@ -76,7 +82,10 @@ thickness; on conductive stock with a clip, **the top at 3 × 3 points** (how fl
 then Z zero on the highest point or the average) and **the front-left corner** (top, left side,
 front side twice: X, Y and Z zero, and how far the block is turned). On the simulator, against a
 block 0.37 mm low, tilted and turned 0.25°: Z to the micrometre, the corner to 0.001 mm, the turn
-to 0.001° (`scripts/check-probe.cjs`).
+to 0.001° (`scripts/check-probe.cjs`). Checking the top leaves out points under the job's
+obstacles; one where the way down is blocked (a strap over the edge) is left out and reported
+with the height it touched at, and a point far off the others (a chip) is reported and left out
+of the figures.
 
 ## A camera on the work area
 
@@ -104,11 +113,17 @@ loaded only here):
    slanting down onto the work. Calibrated once over the probed top (the line at four heights
    gives the sheet's place); then **Scan the setup** sweeps the line across the block and 35 mm
    around it: a point cloud in the 3D preview, how flat the top is, and what stands beside the
-   block (clamps, vise jaws) with its height, which **Add to the job** turns into obstacles. Every
-   move, rapids too, is checked against them (OBSTACLE). On the simulator: the sheet to 0.02 mm,
-   the top's average to 0.001 mm, single points ±0.25 mm, the clamps' height to 0.1 mm and their
-   outline to about 1 mm (`scripts/check-laser.cjs`). With a real camera: keep the exposure low
-   enough that the line does not turn white on bright metal.
+   block or lies on it (clamps, straps, vise jaws), which **Add to the job** turns into obstacles.
+   Something with steps is a box per step (a strap at 10 mm, its nut at 18, the bolt at 36), and
+   whatever lies on the top is left out of the top's figures and flagged as in the way of facing.
+   Every move, rapids too, is checked against them (OBSTACLE). On the simulator: the sheet to
+   0.02 mm, the top's average to 0.001 mm, single points ±0.25 mm, the clamps' height to 0.1 mm
+   and their outline to about 1 mm (`scripts/check-laser.cjs [outdir] [setup]`). With a real
+   camera: keep the exposure low enough that the line does not turn white on bright metal.
+   The tests scan every simulated setup without a browser too, by casting the laser's rays at
+   the same solids (with its shadows and what the camera cannot see), and run the checks on what
+   the scan found: facing over vise jaws passes, a deep contour into them does not, straps are in
+   the way of facing (`apps/web/test/simsetups.test.ts`).
 
 The lens is undone on the GPU for the overlay. A **simulated camera** (a known lens with
 distortion, looking at the simulated machine, holding the board up during the lens step) runs the

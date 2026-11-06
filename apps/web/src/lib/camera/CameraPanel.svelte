@@ -170,13 +170,16 @@
           {#if laserScan.result}
             {@const t = laserScan.result.top}
             <ul class="result">
-              <li>Top from Z{t.lowest.toFixed(2)} to Z{t.highest.toFixed(2)}, {t.flatness.toFixed(2)} mm off flat; sloping {t.slopeX.toFixed(2)} mm per 100 mm in X, {t.slopeY.toFixed(2)} in Y.</li>
+              <li>Top from Z{t.lowest.toFixed(2)} to Z{t.highest.toFixed(2)}, {t.flatness.toFixed(2)} mm off flat; sloping {t.slopeX.toFixed(2)} mm per 100 mm in X, {t.slopeY.toFixed(2)} in Y.{#if t.covered} (About {t.covered} mm² of it left out: something lies on it.){/if}</li>
               {#if laserScan.result.obstacles.length}
+                {@const obs = laserScan.result.obstacles}
+                {@const over = obs.filter((o) => o.overTop)}
                 <li class="warn">
-                  {laserScan.result.obstacles.length} thing{laserScan.result.obstacles.length > 1 ? 's' : ''} beside the block:
-                  {laserScan.result.obstacles.map((o) => `X${o.x0.toFixed(0)}…${o.x1.toFixed(0)} Y${o.y0.toFixed(0)}…${o.y1.toFixed(0)} up to Z${o.top.toFixed(1)}`).join('; ')}.
+                  {obs.length} box{obs.length > 1 ? 'es' : ''} around what holds the block (a thing with steps, like a strap with a nut and bolt, is a box per step):
+                  {obs.map((o) => `X${o.x0.toFixed(0)}…${o.x1.toFixed(0)} Y${o.y0.toFixed(0)}…${o.y1.toFixed(0)} up to Z${o.top.toFixed(1)}`).join('; ')}.
                   <button class="link" onclick={() => laserScan.addObstacles()}>Add to the job</button>
                 </li>
+                {#if over.length}<li class="warn">{over.length === 1 ? 'One of them reaches' : `${over.length} of them reach`} over the top: in the way of facing it.</li>{/if}
               {:else}
                 <li>Nothing standing beside the block.</li>
               {/if}

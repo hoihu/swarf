@@ -2,8 +2,16 @@
   import { tick } from 'svelte';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
+  import { simWorld } from './simworld.ts';
+  import { SETUPS, type SetupName } from './sim/setups.ts';
 
   let mdi = $state('');
+  // what the simulated mill has on its table (the probe touches it, the simulated camera sees it)
+  let simSetup = $state<SetupName>(simWorld.setup);
+  const setSimSetup = (v: SetupName) => {
+    simSetup = v;
+    simWorld.setup = v;
+  };
   let log: HTMLDivElement | undefined = $state();
 
   const errors = $derived(store.analysis.diagnostics.some((d) => d.severity === 'error'));
@@ -60,6 +68,16 @@
     <span class="grow"></span>
     <button class="btn" onclick={() => machine.disconnect()} disabled={busy}>Disconnect</button>
   </div>
+  {#if machine.simulated && !lathe}
+    <div class="simsetup">
+      <label>On the simulated table
+        <select value={simSetup} onchange={(e) => setSimSetup(e.currentTarget.value as SetupName)} disabled={busy}>
+          {#each SETUPS as s (s.name)}<option value={s.name}>{s.label}</option>{/each}
+        </select>
+      </label>
+      <p class="muted small">{SETUPS.find((s) => s.name === simSetup)?.about} The block itself sits a little off from the job, turned and tilted a touch, as a real one would.</p>
+    </div>
+  {/if}
 
   <div class="dro" aria-label="Work position">
     {#each lathe ? [['X', 0], ['Z', 2]] : [['X', 0], ['Y', 1], ['Z', 2]] as [axis, i] (axis)}
@@ -109,6 +127,9 @@
   .muted { color: var(--ink-3); }
   .small { font-size: 12px; }
   .grow { flex: 1; }
+  .simsetup { margin-bottom: 10px; }
+  .simsetup label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .simsetup p { margin: 4px 0 0; }
   .state { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .badge { font-weight: 700; padding: 2px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
   .s-idle { color: var(--ok); }

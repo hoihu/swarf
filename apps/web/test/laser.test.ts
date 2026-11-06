@@ -104,10 +104,11 @@ describe('line laser', () => {
     expect(r.obstacles).toHaveLength(2);
     for (const [i, c] of clamps.entries()) {
       const o = r.obstacles.sort((a, b) => a.x0 - b.x0)[i]!;
-      expect(Math.abs(o.x0 - c.x0)).toBeLessThan(1.5);
-      expect(Math.abs(o.x1 - c.x1)).toBeLessThan(1.5);
-      expect(Math.abs(o.y0 - c.y0)).toBeLessThan(1.5);
-      expect(Math.abs(o.y1 - c.y1)).toBeLessThan(1.5);
+      // to the cell, and a cell more for the cells along its edge (half clamp, half table)
+      expect(Math.abs(o.x0 - c.x0)).toBeLessThan(2.1);
+      expect(Math.abs(o.x1 - c.x1)).toBeLessThan(2.1);
+      expect(Math.abs(o.y0 - c.y0)).toBeLessThan(2.1);
+      expect(Math.abs(o.y1 - c.y1)).toBeLessThan(2.1);
       expect(o.top).toBeCloseTo(8, 1);
     }
   });
