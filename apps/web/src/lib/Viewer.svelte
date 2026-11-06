@@ -3,7 +3,9 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { LatheMaterial, MillMaterial, simulate, walk, type Job, type Program, type Vec3 } from '@swarf/cam';
-  import { chuckMesh, drawingLines, latheMesh, millMesh, pathGeometry, toScene, toolMesh, type PathGeometry } from './scene.ts';
+  import { chuckMesh, drawingLines, latheMesh, millMesh, pathGeometry, sceneToWork, stockOutline, toScene, toolMesh, type PathGeometry } from './scene.ts';
+  import { camera as cam } from './camera/camera.svelte.ts';
+  import { glProjection, glView } from './camera/geometry.ts';
 
   let { job, program, selected = null, live = null }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null } = $props();
 
@@ -37,6 +39,76 @@
   let toolKey = '';
   let tips: { p: Vec3; tool: number }[] = [];
 
+  // ---- the toolpath over the camera picture ----
+  const overlay = $derived(cam.view === 'overlay' && cam.running && cam.ready);
+  const camView = new THREE.PerspectiveCamera();
+  camView.matrixAutoUpdate = false;
+  let outline: THREE.Object3D | null = null;
+  const bg = (() => {
+    // the picture without lens distortion: for each pixel of the ideal image, where the lens put it
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { tex: { value: null as THREE.Texture | null }, size: { value: new THREE.Vector2(1, 1) }, k: { value: new THREE.Vector4(1, 1, 0, 0) }, d: { value: [0, 0, 0, 0, 0] } },
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `
+        varying vec2 vUv; uniform sampler2D tex; uniform vec2 size; uniform vec4 k; uniform float d[5];
+        void main() {
+          vec2 p = vec2(vUv.x * size.x, (1.0 - vUv.y) * size.y);
+          vec2 x = (p - k.zw) / k.xy;
+          float r2 = dot(x, x);
+          float radial = 1.0 + d[0] * r2 + d[1] * r2 * r2 + d[4] * r2 * r2 * r2;
+          vec2 xd = x * radial + vec2(2.0 * d[2] * x.x * x.y + d[3] * (r2 + 2.0 * x.x * x.x), d[2] * (r2 + 2.0 * x.y * x.y) + 2.0 * d[3] * x.x * x.y);
+          vec2 s = xd * k.xy + k.zw;
+          vec4 c = texture2D(tex, vec2(s.x / size.x, 1.0 - s.y / size.y));
+          gl_FragColor = (s.x < 0.0 || s.y < 0.0 || s.x > size.x || s.y > size.y) ? vec4(0.006, 0.006, 0.006, 1.0) : vec4(c.rgb * 0.75, 1.0);
+          #include <colorspace_fragment>
+        }`,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const scene = new THREE.Scene();
+    scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+    return { scene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mat };
+  })();
+
+  let bgTexture: THREE.Texture | null = null;
+  let camFrame = -1;
+  let bgSource: HTMLVideoElement | HTMLCanvasElement | null = null;
+
+  /** Point the overlay camera like the real one; returns the picture's rectangle in the canvas (CSS pixels). */
+  function placeCamView(w: number, h: number): { x: number; y: number; w: number; h: number } | null {
+    const { lens, pose } = cam.calib;
+    const vw = cam.width;
+    const vh = cam.height;
+    const frame = cam.frame;
+    if (!lens || !pose || !vw || !vh || !frame) return null;
+    // the picture as a texture: a video updates itself, a canvas is uploaded each frame
+    if (bgSource !== frame) {
+      bgTexture?.dispose();
+      bgTexture = frame instanceof HTMLVideoElement ? new THREE.VideoTexture(frame) : new THREE.CanvasTexture(frame);
+      bgTexture.colorSpace = THREE.SRGBColorSpace;
+      bgSource = frame;
+      bg.mat.uniforms.tex!.value = bgTexture;
+    }
+    if (!(frame instanceof HTMLVideoElement)) bgTexture!.needsUpdate = true;
+    const wco: [number, number, number] | null = pose.frame === 'machine' ? cam.wco() : [0, 0, 0];
+    if (!wco) return null;
+    // intrinsics for the stream's size (calibrated at lens.width × lens.height)
+    const k = vw / lens.width;
+    const L = { ...lens, width: vw, height: vh, fx: lens.fx * k, fy: lens.fy * k, cx: lens.cx * k, cy: lens.cy * k };
+    camView.projectionMatrix.fromArray(glProjection(L, 5, 5000));
+    camView.projectionMatrixInverse.copy(camView.projectionMatrix).invert();
+    // scene → work → machine (plus the work offset) → camera
+    const view = new THREE.Matrix4().fromArray(glView(pose)).multiply(new THREE.Matrix4().makeTranslation(wco[0], wco[1], wco[2])).multiply(sceneToWork(program.kind === 'lathe'));
+    camView.matrix.copy(view).invert();
+    camView.updateMatrixWorld(true);
+    const u = bg.mat.uniforms;
+    u.size!.value.set(vw, vh);
+    u.k!.value.set(L.fx, L.fy, L.cx, L.cy);
+    u.d!.value = lens.dist;
+    const s = Math.min(w / vw, h / vh);
+    return { x: (w - vw * s) / 2, y: (h - vh * s) / 2, w: vw * s, h: vh * s };
+  }
+
   function dispose(o: THREE.Object3D | null): void {
     if (!o) return;
     world.remove(o);
@@ -68,7 +140,10 @@
     if (material instanceof LatheMaterial) part = latheMesh(material);
     else if (material instanceof MillMaterial) part = millMesh(material);
     else part = null;
-    if (part) world.add(part);
+    if (part) {
+      part.visible = !overlay;
+      world.add(part);
+    }
   }
 
   function buildFixture(): void {
@@ -151,9 +226,38 @@
       }
     }
     // render only when something changed: software GL (and laptops) thank us
+    if (overlay && renderer) {
+      // draw on a new camera picture, or when the scene changed
+      const n = cam.newFrame(camFrame);
+      if (n === camFrame && !dirty) return;
+      camFrame = n;
+      dirty = false;
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      const rect = placeCamView(w, h);
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, w, h);
+      renderer.setClearColor(0x111111, 1);
+      renderer.clear();
+      if (rect) {
+        const y = h - rect.y - rect.h;
+        renderer.setViewport(rect.x, y, rect.w, rect.h);
+        renderer.setScissor(rect.x, y, rect.w, rect.h);
+        renderer.setScissorTest(true);
+        renderer.autoClear = false;
+        renderer.render(bg.scene, bg.camera);
+        renderer.clearDepth();
+        renderer.render(scene, camView);
+        renderer.autoClear = true;
+        renderer.setScissorTest(false);
+      }
+      renderer.setClearColor(0x000000, 0);
+      return;
+    }
     const moved = controls.update();
     if (moved || dirty) {
       dirty = false;
+      renderer?.setViewport(0, 0, host.clientWidth, host.clientHeight);
       renderer?.render(scene, camera);
     }
   }
@@ -242,6 +346,25 @@
     });
   });
 
+  // the overlay: the part as a ghost would hide the real stock, so its outline and the work zero instead
+  $effect(() => {
+    const on = overlay;
+    void job;
+    if (!mounted) return;
+    untrack(() => {
+      dispose(outline);
+      outline = null;
+      if (on) {
+        outline = stockOutline(job);
+        world.add(outline);
+      }
+      if (part) part.visible = !on;
+      if (fixture) fixture.visible = !on;
+      controls.enabled = !on;
+      dirty = true;
+    });
+  });
+
   const pct = $derived(total ? Math.round((at / total) * 100) : 0);
 </script>
 
@@ -251,7 +374,7 @@
     <span><i class="sw feed"></i>cutting</span>
     <span><i class="sw rapid"></i>rapid</span>
   </div>
-  <button class="fit" onclick={() => fit(true)} title="Reset the view">Reset view</button>
+  {#if !overlay}<button class="fit" onclick={() => fit(true)} title="Reset the view">Reset view</button>{/if}
   <div class="scrub">
     <button class="play" onclick={play} aria-label={playing ? 'Pause' : 'Play the program'}>
       {#if playing}

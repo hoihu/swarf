@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RT, Streamer, classify, parseStatus, prepare, type JobState, type Transport } from '../src/index.ts';
+import { RT, SimGrbl, Streamer, classify, parseStatus, prepare, type JobState, type Transport } from '../src/index.ts';
 
 /**
  * A pretend grblHAL: lines go into its receive buffer and are "executed" one per tick, each
@@ -166,5 +166,40 @@ describe('streaming', () => {
     void s.close();
     // one byte kept free, as grbl's own senders do
     expect(s.rxBuffer).toBe(1023);
+  });
+});
+
+describe('simulated controller', () => {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  it('streams a program, reports MPos and WCO, jogs in machine coordinates and pauses at M0', async () => {
+    const sim = new SimGrbl({ wco: [-100, -50, -20], speed: 200 });
+    const states: string[] = [];
+    const s = new Streamer(sim, { status: (st) => states.push(st.state) }, { pollMs: 5 });
+    await s.send('$I');
+    expect(s.rxBuffer).toBe(1023);
+    await s.run('G21 G90 G54\nG0 X10 Y5 Z2\nM0\nG1 X20 F600\nM30\n');
+    await wait(100);
+    expect(s.last?.wpos).toEqual([10, 5, 2]);
+    expect(s.last?.mpos).toEqual([-90, -45, -18]);
+    expect(s.last?.state).toBe('Hold');
+    s.resume();
+    await wait(150);
+    expect(s.last?.wpos?.[0]).toBeCloseTo(20, 3);
+    await s.send('$J=G53 G90 X-50 Y-30 Z-10 F3000');
+    await wait(150);
+    expect(s.last?.mpos).toEqual([-50, -30, -10]);
+    await s.close();
+    await sim.close();
+  });
+
+  it('lathe: X as a diameter in words and reports', async () => {
+    const sim = new SimGrbl({ lathe: true, wco: [-30, 0, -120], speed: 500 });
+    const s = new Streamer(sim, {}, { pollMs: 5 });
+    await s.send('G0 X20 Z-5');
+    await wait(80);
+    expect(sim.pos).toEqual([-20, 0, -125]);
+    expect(s.last?.wpos).toEqual([20, 0, -5]);
+    await s.close();
+    await sim.close();
   });
 });

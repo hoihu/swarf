@@ -50,6 +50,7 @@
     </form>
     <p class="muted small">Networked grblHAL boards: the WebSocket server ($307, usually port 81). If yours wants a subprotocol, add it after a space, e.g. <code>ws://192.168.1.50:81 arduino</code>.</p>
     <p class="muted small">Or download the .nc file from the G-code tab and run it with your usual sender.</p>
+    <p class="muted small">No machine at hand? <button class="link" onclick={() => machine.connect('sim', store.job.machine.kind)}>Connect a simulated {store.job.machine.kind}</button>: it moves in real time, for trying things out.</p>
     {#if machine.message}<p class="diag error">{machine.message}</p>{/if}
   </div>
 {:else}

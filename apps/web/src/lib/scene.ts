@@ -36,6 +36,42 @@ export function drawingLines(job: Job): THREE.LineSegments | null {
   return new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: COLORS.drawing, transparent: true, opacity: 0.85 }));
 }
 
+/** The inverse of toScene as a matrix (scene → work coordinates; lathe: x radius, y across the bed, z along the spindle). */
+export function sceneToWork(lathe: boolean): THREE.Matrix4 {
+  return lathe ? new THREE.Matrix4().set(0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1) : new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+}
+
+/** The raw stock's edges and the work zero's axes (X red, Y green, Z blue), for the camera overlay. */
+export function stockOutline(job: Job): THREE.Group {
+  const g = new THREE.Group();
+  const line = (pts: Vec3[], color: string | THREE.Color, opacity = 1) => {
+    const lathe = job.stock.kind === 'bar';
+    const geo = new THREE.BufferGeometry().setFromPoints(pts.map((p) => (lathe ? new THREE.Vector3(p.z, p.x, p.y) : toScene(p, false))));
+    g.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity, depthTest: false })));
+  };
+  const s = job.stock;
+  if (s.kind === 'block') {
+    const z0 = s.top - s.z;
+    for (const z of [z0, s.top]) line([{ x: 0, y: 0, z }, { x: s.x, y: 0, z }, { x: s.x, y: s.y, z }, { x: 0, y: s.y, z }, { x: 0, y: 0, z }], COLORS.stock, 0.9);
+    for (const [x, y] of [[0, 0], [s.x, 0], [s.x, s.y], [0, s.y]] as const) line([{ x, y, z: z0 }, { x, y, z: s.top }], COLORS.stock, 0.9);
+  } else {
+    const r = s.diameter / 2;
+    const ring = (z: number) => line(Array.from({ length: 65 }, (_, i) => ({ x: r * Math.cos((i / 64) * 2 * Math.PI), y: r * Math.sin((i / 64) * 2 * Math.PI), z })), COLORS.stock, 0.9);
+    ring(s.front);
+    ring(s.front - s.stickout);
+    for (const a of [0, 90, 180, 270]) {
+      const c = Math.cos((a * Math.PI) / 180) * r;
+      const d = Math.sin((a * Math.PI) / 180) * r;
+      line([{ x: c, y: d, z: s.front }, { x: c, y: d, z: s.front - s.stickout }], COLORS.stock, 0.6);
+    }
+  }
+  const L = 15;
+  line([{ x: 0, y: 0, z: 0 }, { x: L, y: 0, z: 0 }], '#e5534b');
+  if (s.kind === 'block') line([{ x: 0, y: 0, z: 0 }, { x: 0, y: L, z: 0 }], '#57ab5a');
+  line([{ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: L }], '#539bf5');
+  return g;
+}
+
 export function toScene(p: Vec3, lathe: boolean): THREE.Vector3 {
   return lathe ? new THREE.Vector3(p.z, p.x, 0) : new THREE.Vector3(p.x, p.z, -p.y);
 }

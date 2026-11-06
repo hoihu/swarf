@@ -21,6 +21,8 @@ export const RT = {
   feed100: '\x90',
   feedPlus10: '\x91',
   feedMinus10: '\x92',
+  /** Stops a jog ($J=) at once, without a reset. */
+  jogCancel: '\x85',
 } as const;
 
 export interface StreamLine {
@@ -145,7 +147,7 @@ export class Streamer {
     await this.#t.write(RT.reset);
   }
 
-  async override(cmd: (typeof RT)['feed100' | 'feedPlus10' | 'feedMinus10']): Promise<void> {
+  async override(cmd: (typeof RT)['feed100' | 'feedPlus10' | 'feedMinus10' | 'jogCancel']): Promise<void> {
     await this.#t.write(cmd);
   }
 

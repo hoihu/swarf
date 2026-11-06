@@ -1,7 +1,7 @@
 /**
  * The connected controller: one streamer over Web Serial, its live status and the console.
  */
-import { RT, Streamer, type JobState, type Status } from '@swarf/grbl';
+import { RT, SimGrbl, Streamer, type JobState, type Status, type Transport } from '@swarf/grbl';
 import { openSerial, serialSupported } from './serial.ts';
 import { openWebSocket } from './websocket.ts';
 
@@ -38,12 +38,19 @@ class Machine {
     this.console = [...this.console.slice(-199), l];
   }
 
-  /** Connect over USB (Web Serial), or to `url` over the network when given. */
-  async connect(network = false): Promise<void> {
+  /** Connect over USB (Web Serial), to `url` over the network, or to a simulated controller. */
+  async connect(how: boolean | 'sim' = false, kind: 'lathe' | 'mill' = 'mill'): Promise<void> {
     if (this.#s) return;
+    const network = how === true;
     try {
-      let t;
-      if (network) {
+      let t: Transport & { label: string };
+      if (how === 'sim') {
+        // work zero somewhere in the travel, the tool waiting above the work
+        t =
+          kind === 'lathe'
+            ? new SimGrbl({ lathe: true, wco: [-60, 0, -150], mpos: [-60 + 20, 0, -150 + 15] })
+            : new SimGrbl({ wco: [-200, -120, -80], mpos: [-200 + 40, -120 + 25, -80 + 30] });
+      } else if (network) {
         const [address, protocol] = this.url.trim().split(/\s+/);
         if (!address) throw new Error('Give the controller\'s address, e.g. ws://192.168.1.50:81');
         try {
@@ -111,6 +118,7 @@ class Machine {
   resume = () => this.#s?.resume();
   stop = () => this.#s?.stop();
   feed = (cmd: 'feed100' | 'feedPlus10' | 'feedMinus10') => this.#s?.override(RT[cmd]);
+  jogCancel = () => this.#s?.override(RT.jogCancel);
 }
 
 export const machine = new Machine();

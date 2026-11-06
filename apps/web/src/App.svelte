@@ -3,6 +3,8 @@
   import JobPanel from './lib/JobPanel.svelte';
   import Chat from './lib/Chat.svelte';
   import Settings from './lib/Settings.svelte';
+  import CameraView from './lib/camera/CameraView.svelte';
+  import { camera } from './lib/camera/camera.svelte.ts';
   import { store } from './lib/store.svelte.ts';
   import { minutes } from './lib/ops.ts';
   import { bridge } from './lib/bridge.svelte.ts';
@@ -55,7 +57,10 @@
 
   <main class="panes" data-pane={pane}>
     <div class="pane-job"><JobPanel /></div>
-    <div class="pane-view"><Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} /></div>
+    <div class="pane-view">
+      <Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} />
+      {#if camera.running && camera.view === 'camera'}<CameraView />{/if}
+    </div>
     <div class="pane-chat"><Chat onSettings={() => (settings = true)} /></div>
   </main>
 
@@ -89,6 +94,7 @@
   .btn.ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
   .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 340px) 1fr minmax(320px, 380px); }
   .panes > div { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+  .pane-view { position: relative; }
   .pane-job { border-right: 1px solid var(--line); }
   .pane-chat { border-left: 1px solid var(--line); }
   .switch { display: none; }

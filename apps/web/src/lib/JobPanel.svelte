@@ -2,6 +2,7 @@
   import { EXAMPLES, Job, MATERIALS, Machine, OP_TOOLS, cuttingData, defaultToolMaterial, type MaterialId, Operation, Tool, bbox, emptyJob, importDrawing, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
   import SchemaForm from './SchemaForm.svelte';
   import MachinePanel from './MachinePanel.svelte';
+  import CameraPanel from './camera/CameraPanel.svelte';
   import { machine } from './machine.svelte.ts';
   import { issuesByField, machineFields, opFields, toolFieldsFor } from './form.ts';
   import { store } from './store.svelte.ts';
@@ -334,6 +335,7 @@
 {/each}</pre>
     {:else}
       <MachinePanel />
+      <CameraPanel />
     {/if}
   </div>
 </section>

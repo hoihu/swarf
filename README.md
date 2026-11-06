@@ -65,6 +65,30 @@ not idle. The protocol logic lives in `packages/grbl` and is tested against a pr
 After every assistant turn the chat shows what changed (operations added, changed, removed) with
 **Keep** and **Revert this turn**.
 
+No machine at hand: **Connect a simulated mill/lathe** runs a pretend grblHAL in the browser that
+moves in real time, reports MPos and WCO, jogs and pauses at M0 (`packages/grbl/src/sim.ts`).
+
+## A camera on the work area
+
+The Machine tab's **Camera** section draws the toolpath, the raw stock and the work zero over the
+live picture of a webcam pointed at the work area, so a wrong work zero, a clamp in the way or too
+little stock shows before the spindle starts. Calibration, in two steps (OpenCV in the browser,
+loaded only here):
+
+1. **Lens:** print the ChArUco board (the app makes the page, A4 at 100 %) and show it to the
+   camera from many angles; views are kept as they come. Gives focal length, centre and distortion.
+2. **Where the camera is**, in machine coordinates: stick the printed tool marker to the spindle or
+   tool post, jog to the middle of the work area, and press Measure. The machine moves the marker
+   through a grid (mill: 3 × 3 × 2, lathe: 4 × 4 in X and Z) and the camera finds it each time; then
+   you click the tool tip at four points, which gives the marker's offset from the tip. Because the
+   pose is in machine coordinates, the overlay follows a new work zero (from the controller's WCO)
+   without measuring again. On the mill a quicker way: lay the table marker on the stock at a known
+   spot.
+
+The lens is undone on the GPU for the overlay. A **simulated camera** (a known lens with
+distortion, looking at the simulated machine, holding the board up during the lens step) runs the
+whole flow without hardware and is how it is tested.
+
 ## What works
 
 | | |
