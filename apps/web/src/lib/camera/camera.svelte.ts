@@ -8,6 +8,7 @@ import { BOARD, TABLE_MARKER, TOOL_MARKER, calibrateLens, detectBoard, detectMar
 import { pixelToRay, project, quadCenter, rodrigues, shiftPose, sub, mulMV, tipOffset, type Lens, type Pose, type V2, type V3 } from './geometry.ts';
 import { SimCamera } from './sim.ts';
 import { measureBlock, toGrey, type BlockFit } from './setup.ts';
+import type { LaserPlane } from './laser.ts';
 import { machine } from '../machine.svelte.ts';
 import { store } from '../store.svelte.ts';
 
@@ -18,6 +19,8 @@ export interface CameraCalib {
   lens?: Lens & { rms: number; views: number };
   /** Camera pose: Xc = R·X + t. `frame` machine: X in machine coordinates (needs the work offset live); work: in work coordinates. */
   pose?: Pose & { frame: 'machine' | 'work'; kind: 'lathe' | 'mill'; rms: number; points: number; method: 'machine' | 'marker'; tipPx?: number };
+  /** The line laser's sheet relative to the machine position (see laser.ts), measured with this camera. */
+  laser?: LaserPlane & { rms: number; points: number };
 }
 
 export type CameraView = 'scene' | 'camera' | 'overlay';
@@ -158,6 +161,13 @@ class Camera {
     }
   }
 
+  /** Keep the laser's calibration with this camera's. */
+  setLaser(laser: CameraCalib['laser']): void {
+    this.calib = { ...this.calib, ...(laser ? { laser } : {}) };
+    if (!laser) delete this.calib.laser;
+    this.#save();
+  }
+
   forget(what: 'lens' | 'pose'): void {
     const c = { ...this.calib };
     delete c.pose;
@@ -197,7 +207,7 @@ class Camera {
   }
 
   #simWorld() {
-    return { job: store.job, mpos: this.mpos() ?? [0, 0, 0], wco: this.wco() ?? [0, 0, 0], board: this.capturing } as const;
+    return { job: store.job, mpos: this.mpos() ?? [0, 0, 0], wco: this.wco() ?? [0, 0, 0], board: this.capturing, laser: !!machine.status?.acc?.includes('F') } as const;
   }
 
   // ---------- setup check ----------

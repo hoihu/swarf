@@ -48,6 +48,23 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
     const opId = segment.opId;
     const tool = job.tools.find((t) => t.id === segment.tool) as Tool;
     const pts = samplePath(from, move, step);
+    // obstacles (mill): the tool is a cylinder from its tip up; any move, rapids too, must keep it clear
+    if (!lathe && job.obstacles.length && tool) {
+      const r = (tool.diameter ?? 0) / 2;
+      for (const o of job.obstacles) {
+        const p = [from, ...pts].find((q) => q.z < o.top - 1e-6 && Math.hypot(Math.max(o.x0 - q.x, 0, q.x - o.x1), Math.max(o.y0 - q.y, 0, q.y - o.y1)) < r - 1e-6);
+        if (p) {
+          once({
+            severity: 'error',
+            code: 'OBSTACLE',
+            message: `T${tool.id} runs into ${o.name} (X${o.x0.toFixed(0)}…${o.x1.toFixed(0)} Y${o.y0.toFixed(0)}…${o.y1.toFixed(0)}, up to Z${o.top.toFixed(1)}) near ${fmt(p, false)}${move.type === 'rapid' ? ' on a rapid: raise the clearance in the machine settings above it' : ': keep this operation clear of it'}.`,
+            opId,
+            move: index,
+          });
+          break;
+        }
+      }
+    }
 
     for (const p of pts) {
       const out = p.x < env.min.x - 1e-6 || p.x > env.max.x + 1e-6 || p.z < env.min.z - 1e-6 || p.z > env.max.z + 1e-6 || (!lathe && (p.y < env.min.y - 1e-6 || p.y > env.max.y + 1e-6));

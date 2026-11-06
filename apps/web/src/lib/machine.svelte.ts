@@ -1,7 +1,9 @@
 /**
  * The connected controller: one streamer over Web Serial, its live status and the console.
  */
-import { RT, SimGrbl, Streamer, type JobState, type Status, type Transport } from '@swarf/grbl';
+import { RT, SimGrbl, Streamer, type JobState, type ProbeResult, type Reply, type Status, type Transport } from '@swarf/grbl';
+import { simWorld } from './simworld.ts';
+import { store } from './store.svelte.ts';
 import { openSerial, serialSupported } from './serial.ts';
 import { openWebSocket } from './websocket.ts';
 
@@ -33,6 +35,10 @@ class Machine {
     }
   })());
   #s: Streamer | null = null;
+  /** The last probing result (machine coordinates as the controller reports them). */
+  probe = $state<ProbeResult | null>(null);
+  /** Connected to the simulated controller (the simulated camera and probe world go with it). */
+  simulated = $state(false);
 
   #log(l: ConsoleLine): void {
     this.console = [...this.console.slice(-199), l];
@@ -46,10 +52,15 @@ class Machine {
       let t: Transport & { label: string };
       if (how === 'sim') {
         // work zero somewhere in the travel, the tool waiting above the work
-        t =
+        const sim =
           kind === 'lathe'
             ? new SimGrbl({ lathe: true, wco: [-60, 0, -150], mpos: [-60 + 20, 0, -150 + 15] })
             : new SimGrbl({ wco: [-200, -120, -80], mpos: [-200 + 40, -120 + 25, -80 + 30] });
+        // the simulated reality sits where this work zero was at the start
+        simWorld.origin = [...sim.wco] as [number, number, number];
+        sim.contact = (p) => simWorld.contact(store.job, p);
+        this.simulated = true;
+        t = sim;
       } else if (network) {
         const [address, protocol] = this.url.trim().split(/\s+/);
         if (!address) throw new Error('Give the controller\'s address, e.g. ws://192.168.1.50:81');
@@ -63,6 +74,7 @@ class Machine {
       this.label = t.label;
       this.#s = new Streamer(t, {
         status: (s) => (this.status = s),
+        probe: (p) => (this.probe = p),
         progress: (a, total, src) => {
           this.acked = a;
           this.total = total;
@@ -87,10 +99,21 @@ class Machine {
     }
   }
 
+  /** One line and the controller's answer to it (for routines that must know it went through). */
+  async request(line: string): Promise<Reply> {
+    if (!this.#s) return { ok: false, message: 'Not connected.' };
+    try {
+      return await this.#s.request(line);
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   async disconnect(): Promise<void> {
     await this.#s?.close();
     this.#s = null;
     this.connected = false;
+    this.simulated = false;
     this.status = null;
     this.job = 'idle';
   }
@@ -122,3 +145,4 @@ class Machine {
 }
 
 export const machine = new Machine();
+if (typeof window !== "undefined") (window as unknown as { __swarfMachine?: Machine }).__swarfMachine = machine;

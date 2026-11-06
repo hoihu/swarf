@@ -203,3 +203,68 @@ describe('simulated controller', () => {
     await sim.close();
   });
 });
+
+describe('probing (simulated controller)', () => {
+  it('G38.2 stops on contact, reports [PRB], answers the line only then, and holds the next lines back', async () => {
+    const sim = new SimGrbl({ mpos: [0, 0, -50], speed: 300 });
+    sim.contact = (p) => p[2] <= -61.234;
+    const probes: number[][] = [];
+    const s = new Streamer(sim, { probe: (p) => probes.push([...p.mpos, p.ok ? 1 : 0]) }, { pollMs: 5 });
+    const order: string[] = [];
+    await new Promise((r) => setTimeout(r, 20)); // the welcome line first (it means: reset)
+    const a = s.request('G91 G38.2 Z-20 F100').then((r) => order.push(`probe ${r.ok}`));
+    const b = s.request('G90').then((r) => order.push(`g90 ${r.ok}`));
+    await Promise.all([a, b]);
+    expect(order).toEqual(['probe true', 'g90 true']);
+    expect(probes).toHaveLength(1);
+    expect(probes[0]![2]).toBeCloseTo(-61.234, 2);
+    expect(s.lastProbe?.ok).toBe(true);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(s.last?.pins).toBe('P');
+    await s.close();
+    await sim.close();
+  });
+
+  it('no contact within the distance: ALARM:5, and the waiting request hears of it; $X unlocks', async () => {
+    const sim = new SimGrbl({ mpos: [0, 0, -50], speed: 300 });
+    sim.contact = (p) => p[2] <= -90;
+    const s = new Streamer(sim, {}, { pollMs: 5 });
+    await new Promise((r) => setTimeout(r, 20));
+    const r = await s.request('G91 G38.2 Z-10 F200');
+    expect(r).toMatchObject({ ok: false, alarm: 5 });
+    expect((await s.request('G0 X1')).ok).toBe(false);
+    await s.request('$X');
+    expect((await s.request('G90 G0 X1')).ok).toBe(true);
+    await s.close();
+    await sim.close();
+  });
+
+  it('M8 switches the flood output, seen in the status', async () => {
+    const sim = new SimGrbl({ speed: 300 });
+    const s = new Streamer(sim, {}, { pollMs: 5 });
+    await new Promise((r) => setTimeout(r, 20));
+    await s.request('M8');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(s.last?.acc).toBe('F');
+    await s.request('M9');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(s.last?.acc).toBeUndefined();
+    await s.close();
+    await sim.close();
+  });
+});
+
+describe('work offsets (simulated controller)', () => {
+  it('G10 L2 sets the offset in machine coordinates, L20 so the current position reads the value; neither moves', async () => {
+    const sim = new SimGrbl({ wco: [-100, -50, -20], mpos: [-60, -30, -5], speed: 300 });
+    const s = new Streamer(sim, {}, { pollMs: 5 });
+    await new Promise((r) => setTimeout(r, 20));
+    await s.request('G10 L2 P1 Z-30.5');
+    expect(sim.wco).toEqual([-100, -50, -30.5]);
+    await s.request('G10 L20 P1 X0 Y0');
+    expect(sim.wco).toEqual([-60, -30, -30.5]);
+    expect(sim.pos).toEqual([-60, -30, -5]);
+    await s.close();
+    await sim.close();
+  });
+});

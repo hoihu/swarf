@@ -18,6 +18,7 @@ How to build a job:
 - Drawings on the lathe: lathe_profile with shape (and no points) turns a drawing of the part seen from the side, spindle axis horizontal, face on the right (face: left if it is drawn the other way round); a full outline or just the half above the axis. The back face is where it gets parted off.
 - Drawings (mill): an imported DXF/SVG is a shape. mill_contour side outside cuts the part out along its outline and cuts its holes too (add tabs when it goes through the stock); side inside runs inside an outline; side on follows the lines (engraving, open paths). mill_pocket clears inside the closed outlines and leaves the outlines inside them standing as islands. Move a drawing on the stock with place_shape. You cannot see the drawing itself, only its summary: if what the user asks does not match it (sizes, number of holes), say so.
 - Holes: lathe_drill on centre, then lathe_bore with the boring bar (it needs a hole at least as big as its minimum bore, and reaches only so deep). Internal thread: drill, bore to the minor diameter (D − 1.0825 × pitch, e.g. Ø8.38 for M10), then lathe_thread with side internal and the internal threading bar.
+- Obstacles (clamps, vise jaws from the laser scan) are in the job state. An OBSTACLE error on a rapid means the clearance height is below the obstacle's top: tell the user to raise the clearance in the machine settings; on a cut, keep the operation away from it (a facing pass runs past the stock by the cutter's radius).
 - Every edit answers with the checks. Errors must be fixed before you finish; warnings you can leave if they are intended (say so).
 - If the request is ambiguous in a way that changes the part (a missing dimension, inside or outside, which end), ask one question rather than guess. Do not ask about things you can decide sensibly (number of passes, clearances).`;
 
@@ -53,6 +54,10 @@ export function formatJobContext(job: Job): string {
     const feed = t.type === 'endmill' ? `${c.feed} mm/tooth` : t.type === 'threading' ? '' : `${c.feed} mm/rev`;
     const data = [`vc ${c.vc} m/min`, feed, t.type === 'drill' || t.type === 'threading' ? '' : `${c.doc} mm/pass`].filter(Boolean).join(', ');
     lines.push(`  T${t.id} ${t.type}${size}: ${t.name}; ${data}${c.fromTool.vc || c.fromTool.feed || c.fromTool.doc ? ' (partly set on the tool)' : ''}${t.fluteLength ? `; flutes ${t.fluteLength} mm` : ''}`);
+  }
+  if (job.obstacles.length) {
+    lines.push('obstacles on the table (clamps, vise jaws; every move must stay clear of them):');
+    for (const o of job.obstacles) lines.push(`  ${o.name}: X${o.x0.toFixed(1)}…${o.x1.toFixed(1)} Y${o.y0.toFixed(1)}…${o.y1.toFixed(1)}, up to Z${o.top.toFixed(1)}`);
   }
   if (job.shapes.length) {
     lines.push(`drawings (imported; refer to them by id in ${job.machine.kind === 'lathe' ? 'lathe_profile shape' : 'mill_contour / mill_pocket'}):`);

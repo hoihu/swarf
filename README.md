@@ -68,6 +68,16 @@ After every assistant turn the chat shows what changed (operations added, change
 No machine at hand: **Connect a simulated mill/lathe** runs a pretend grblHAL in the browser that
 moves in real time, reports MPos and WCO, jogs and pauses at M0 (`packages/grbl/src/sim.ts`).
 
+## Zero by touching (mill)
+
+With the cutter wired to grblHAL's probe input, the Machine tab touches off with G38.2 (fast, back
+off, slow; positioning near the work as guarded G38.3 moves): **Z on a touch plate** of known
+thickness; on conductive stock with a clip, **the top at 3 × 3 points** (how flat and level it is,
+then Z zero on the highest point or the average) and **the front-left corner** (top, left side,
+front side twice: X, Y and Z zero, and how far the block is turned). On the simulator, against a
+block 0.37 mm low, tilted and turned 0.25°: Z to the micrometre, the corner to 0.001 mm, the turn
+to 0.001° (`scripts/check-probe.cjs`).
+
 ## A camera on the work area
 
 The Machine tab's **Camera** section draws the toolpath, the raw stock and the work zero over the
@@ -89,6 +99,16 @@ loaded only here):
    them and reports where its front-left corner really is (the job's X0 Y0), its length and width
    and whether it sits square, with **Use this size** for the Stock tab. It needs Z zero on the
    block's top and reads to about 0.1–0.3 mm. On the simulated camera: within 0.1 mm of the truth.
+
+4. **Line laser** (mill): a line laser on the spindle head, switched by the flood output (M8/M9),
+   slanting down onto the work. Calibrated once over the probed top (the line at four heights
+   gives the sheet's place); then **Scan the setup** sweeps the line across the block and 35 mm
+   around it: a point cloud in the 3D preview, how flat the top is, and what stands beside the
+   block (clamps, vise jaws) with its height, which **Add to the job** turns into obstacles. Every
+   move, rapids too, is checked against them (OBSTACLE). On the simulator: the sheet to 0.02 mm,
+   the top's average to 0.001 mm, single points ±0.25 mm, the clamps' height to 0.1 mm and their
+   outline to about 1 mm (`scripts/check-laser.cjs`). With a real camera: keep the exposure low
+   enough that the line does not turn white on bright metal.
 
 The lens is undone on the GPU for the overlay. A **simulated camera** (a known lens with
 distortion, looking at the simulated machine, holding the board up during the lens step) runs the

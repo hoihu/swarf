@@ -17,15 +17,15 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   await p.locator('section.camera').getByRole('button', { name: 'Start', exact: true }).click();
   await p.waitForFunction(() => window.__swarfCamera?.running && window.__swarfSimCamera?.frameNo > 10 && window.__swarfCamera.wco(), null, { polling: 300, timeout: 60000 });
   const cases = [
-    { name: 'as in the job', err: { dx: 0, dy: 0, dsx: 0, dsy: 0, angle: 0 } },
-    { name: 'off, other size, turned', err: { dx: 1.5, dy: -2.0, dsx: 2.4, dsy: -1.3, angle: 0.8 } },
+    { name: 'as in the job', err: { dx: 0, dy: 0, dsx: 0, dsy: 0, angle: 0, dz: 0, tiltX: 0, tiltY: 0 } },
+    { name: 'off, other size, turned', err: { dx: 1.5, dy: -2.0, dsx: 2.4, dsy: -1.3, angle: 0.8, dz: 0, tiltX: 0, tiltY: 0 } },
   ];
   await p.evaluate(() => {
     const c = window.__swarfCamera, s = window.__swarfSimCamera;
     c.calib = { lens: { ...s.lens, rms: 0, views: 0 }, pose: { R: s.pose.R, t: s.pose.t, frame: 'machine', kind: 'mill', rms: 0, points: 0, method: 'machine' } };
   });
   for (const k of cases) {
-    await p.evaluate((err) => { window.__swarfSimCamera.stockError = err; window.__swarfCamera.block = null; }, k.err);
+    await p.evaluate((err) => { window.__swarfSimWorld.stockError = err; window.__swarfSimWorld.clampsOn = false; window.__swarfCamera.block = null; }, k.err);
     await p.waitForTimeout(800);
     await p.locator('section.camera').getByRole('button', { name: 'Check the block' }).click();
     await p.waitForFunction(() => window.__swarfCamera.block || document.querySelector('section.camera .diag.error'), null, { polling: 300, timeout: 60000 });

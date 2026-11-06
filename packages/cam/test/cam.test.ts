@@ -675,3 +675,21 @@ describe('lathe arcs (G18)', () => {
     expect(concave).toBeGreaterThan(0);
   });
 });
+
+describe('obstacles', () => {
+  const clamp = { name: 'clamp left', x0: -22, y0: 16, x1: -4, y1: 34, top: 8.5 };
+  it('a clamp beside the block that the facing passes run over is an error, rapids too', () => {
+    const job = Job.parse({ ...EXAMPLES.mill(), obstacles: [clamp] });
+    const d = analyze(job).diagnostics.filter((x) => x.code === 'OBSTACLE');
+    expect(d.length).toBeGreaterThan(0);
+    expect(d[0]!.message).toContain('clamp left');
+  });
+  it('one out of the way is not', () => {
+    const job = Job.parse({ ...EXAMPLES.mill(), obstacles: [{ ...clamp, x0: -60, x1: -45 }] });
+    expect(codes(job)).not.toContain('OBSTACLE');
+  });
+  it('a low one the tool passes over at the clearance height is fine', () => {
+    const job = Job.parse({ ...EXAMPLES.mill(), operations: [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 40, h: 20, zBottom: -5, zTop: 0 }], obstacles: [{ ...clamp, x0: 30, x1: 50, y0: 60, y1: 70, top: 0.5 }] });
+    expect(codes(job)).not.toContain('OBSTACLE');
+  });
+});

@@ -271,6 +271,17 @@ export const MillContourRect = z.object({
 });
 
 /** Imported 2D geometry (DXF, SVG) in mm, placed on the stock by `at`. */
+/** Something on the mill table the tool must stay clear of (a clamp, a vise jaw): its outline in X/Y and its top, work coordinates. */
+export const Obstacle = z.object({
+  name: z.string().default('obstacle'),
+  x0: mm,
+  y0: mm,
+  x1: mm,
+  y1: mm,
+  top: mm,
+});
+export type Obstacle = z.infer<typeof Obstacle>;
+
 export const Shape = z.object({
   id: z.string().min(1),
   name: z.string(),
@@ -385,6 +396,8 @@ export const Job = z.object({
   operations: z.array(Operation),
   /** Imported drawings that operations refer to. */
   shapes: z.array(Shape).default([]),
+  /** Clamps, vise jaws: the checks keep every move of the tool clear of them (mill). */
+  obstacles: z.array(Obstacle).default([]),
   /** Workpiece material: sets speeds, feeds and depth of cut. */
   workMaterial: MaterialId.default('aluminium'),
   /** The grade or notes, free text (e.g. "6082 T6"), shown to the agent. */

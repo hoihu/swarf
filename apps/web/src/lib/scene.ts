@@ -41,6 +41,21 @@ export function sceneToWork(lathe: boolean): THREE.Matrix4 {
   return lathe ? new THREE.Matrix4().set(0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1) : new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1);
 }
 
+/** Obstacles (clamps, vise jaws) as red boxes from the stock's bottom up to their top (mill). */
+export function obstacleMeshes(job: Job): THREE.Group | null {
+  if (job.stock.kind !== 'block' || !job.obstacles.length) return null;
+  const g = new THREE.Group();
+  const bottom = job.stock.top - job.stock.z;
+  for (const o of job.obstacles) {
+    const h = Math.max(0.5, o.top - bottom);
+    const box = new THREE.BoxGeometry(o.x1 - o.x0, h, o.y1 - o.y0);
+    box.translate((o.x0 + o.x1) / 2, bottom + h / 2, -(o.y0 + o.y1) / 2);
+    g.add(new THREE.Mesh(box, new THREE.MeshStandardMaterial({ color: '#d9534f', transparent: true, opacity: 0.35, depthWrite: false })));
+    g.add(new THREE.LineSegments(new THREE.EdgesGeometry(box), new THREE.LineBasicMaterial({ color: '#d9534f' })));
+  }
+  return g;
+}
+
 /** The raw stock's edges and the work zero's axes (X red, Y green, Z blue), for the camera overlay. */
 export function stockOutline(job: Job): THREE.Group {
   const g = new THREE.Group();

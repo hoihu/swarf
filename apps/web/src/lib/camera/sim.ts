@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import type { Job } from '@swarf/cam';
 import { BOARD, TOOL_MARKER, boardImage, markerImage, type CV } from './cv.ts';
 import { glProjection, glView, project, type Lens, type Pose, type V3 } from './geometry.ts';
+import { simWorld } from '../simworld.ts';
 
 export interface SimWorld {
   job: Job;
@@ -19,7 +20,19 @@ export interface SimWorld {
   wco: V3;
   /** Show the board in front of the camera (lens calibration). */
   board: boolean;
+  /** The line laser on the spindle head is on. */
+  laser: boolean;
 }
+
+/**
+ * The line laser on the spindle head (the truth its calibration finds): a sheet of light through
+ * `at` (relative to the tool tip, machine coordinates), across X and slanting down and back.
+ */
+export const LASER = (() => {
+  const n: V3 = [0, 1, 0.6];
+  const l = Math.hypot(...n);
+  return { at: [0, -55, 70] as V3, normal: [n[0] / l, n[1] / l, n[2] / l] as V3, halfWidth: 0.3 };
+})();
 
 /** Where the tool marker sits relative to the tip, in machine coordinates (the "truth" the calibration finds). */
 const MARKER_OFFSET = { mill: [6, -44, 58] as V3, lathe: [34, 22, 4] as V3 };
@@ -70,8 +83,8 @@ export class SimCamera {
   #board: THREE.Mesh;
   #boardUntil = 0;
   #key = '';
-  /** How the real block differs from the job's (for trying the setup check): front-left corner offset, size difference, turn in degrees. */
-  stockError = { dx: 0, dy: 0, dsx: 0, dsy: 0, angle: 0 };
+  readonly laser = LASER;
+  #laserMat: THREE.ShaderMaterial;
   #timer: ReturnType<typeof setInterval>;
 
   constructor(cv: CV, world: () => SimWorld) {
@@ -127,9 +140,32 @@ export class SimCamera {
             x = (xd - tang) / radial;
           }
           vec2 s = x * k.xy + k.zw;
-          gl_FragColor = (s.x < 0.0 || s.y < 0.0 || s.x > size.x || s.y > size.y) ? vec4(0.0, 0.0, 0.0, 1.0) : texture2D(src, vec2((s.x + 0.5) / size.x, 1.0 - (s.y + 0.5) / size.y));
+          // a real lens is never perfectly sharp: a slight blur (3 × 3, 0.7 px apart), which also
+          // smooths the stair steps of the unantialiased render
+          vec4 c = vec4(0.0);
+          for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) {
+            float w = (i == 0 ? 2.0 : 1.0) * (j == 0 ? 2.0 : 1.0) / 16.0;
+            vec2 q = s + 0.7 * vec2(float(i), float(j));
+            c += w * texture2D(src, vec2((q.x + 0.5) / size.x, 1.0 - (q.y + 0.5) / size.y));
+          }
+          gl_FragColor = (s.x < 0.0 || s.y < 0.0 || s.x > size.x || s.y > size.y) ? vec4(0.0, 0.0, 0.0, 1.0) : c;
           #include <colorspace_fragment>
         }`,
+    });
+    this.#laserMat = new THREE.ShaderMaterial({
+      uniforms: { n: { value: new THREE.Vector3() }, d: { value: 0 }, hw: { value: LASER.halfWidth } },
+      // the same position computation as three's own materials (else the depth test flickers against them)
+      vertexShader: 'varying vec3 wp; void main() { wp = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform vec3 n; uniform float d; uniform float hw; varying vec3 wp;
+        void main() { float x = (dot(n, wp) + d) / hw; float i = exp(-x * x); if (i < 0.02) discard; gl_FragColor = vec4(i, 0.0, 0.0, 1.0); }`,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthFunc: THREE.LessEqualDepth,
+      // and pulled a hair towards the camera, so it always wins against the surface it lies on
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -4,
+      transparent: true,
     });
     const post = new THREE.Scene();
     post.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
@@ -151,11 +187,12 @@ export class SimCamera {
 
   #build(w: SimWorld): void {
     const { job } = w;
-    const key = `${job.machine.kind}:${JSON.stringify(job.stock)}:${w.wco.join(',')}:${JSON.stringify(this.stockError)}`;
+    // what is really there sits where the simulator's work zero started (a new zero does not move it)
+    const [ox, oy, oz] = simWorld.origin ?? w.wco;
+    const key = `${job.machine.kind}:${JSON.stringify(job.stock)}:${[ox, oy, oz].join(',')}:${JSON.stringify([simWorld.stockError, simWorld.clampsOn, simWorld.plate])}`;
     if (key === this.#key) return;
     this.#key = key;
     this.#fixed.clear();
-    const [ox, oy, oz] = w.wco;
     const metal = new THREE.MeshLambertMaterial({ color: '#c9ced0' });
     const dark = new THREE.MeshLambertMaterial({ color: '#4a5155' });
     const plate = this.#tool.getObjectByName('marker')!;
@@ -166,14 +203,28 @@ export class SimCamera {
     this.#tool.add(plate);
     if (job.stock.kind === 'block') {
       const s = job.stock;
-      // the real block: as the job has it, unless told otherwise (corner offset, size, turned about its front-left corner)
-      const er = this.stockError;
+      // the real block (simworld.ts): off from the job's, its top not quite at Z0, slightly tilted
+      const er = simWorld.stockError;
       const bx = s.x + er.dsx;
       const by = s.y + er.dsy;
       const a = (er.angle * Math.PI) / 180;
       const block = new THREE.Mesh(new THREE.BoxGeometry(bx, by, s.z), metal);
-      block.rotation.z = a;
-      block.position.set(ox + er.dx + (bx / 2) * Math.cos(a) - (by / 2) * Math.sin(a), oy + er.dy + (bx / 2) * Math.sin(a) + (by / 2) * Math.cos(a), oz + s.top - s.z / 2);
+      block.rotation.set(Math.atan(er.tiltY), -Math.atan(er.tiltX), a, 'ZYX');
+      const bcx = er.dx + (bx / 2) * Math.cos(a) - (by / 2) * Math.sin(a);
+      const bcy = er.dy + (bx / 2) * Math.sin(a) + (by / 2) * Math.cos(a);
+      block.position.set(ox + bcx, oy + bcy, oz + simWorld.topAt(job, bcx, bcy) - s.z / 2);
+      const steel = new THREE.MeshLambertMaterial({ color: '#8b9296' });
+      for (const c of simWorld.clamps(job)) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(c.w, c.d, c.z1 - c.z0), steel);
+        m.position.set(ox + c.x + c.w / 2, oy + c.y + c.d / 2, oz + (c.z0 + c.z1) / 2);
+        this.#fixed.add(m);
+      }
+      const pl = simWorld.plate;
+      if (pl) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(pl.size, pl.size, pl.thickness), new THREE.MeshLambertMaterial({ color: '#c08a50' }));
+        m.position.set(ox + pl.x, oy + pl.y, oz + simWorld.topAt(job, pl.x, pl.y) + pl.thickness / 2);
+        this.#fixed.add(m);
+      }
       const table = new THREE.Mesh(new THREE.BoxGeometry(600, 300, 20), dark);
       table.position.set(ox + s.x / 2, oy + s.y / 2, oz + s.top - s.z - 10);
       this.#fixed.add(block, table);
@@ -184,6 +235,10 @@ export class SimCamera {
       const cutter = new THREE.Mesh(new THREE.CylinderGeometry(d / 2, d / 2, 40, 24).rotateX(Math.PI / 2).translate(0, 0, 20), metal);
       const spindle = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, 80, 32).rotateX(Math.PI / 2).translate(0, 0, 80), dark);
       this.#tool.add(cutter, spindle);
+      // the laser module on the front of the spindle head
+      const module = new THREE.Mesh(new THREE.BoxGeometry(14, 10, 22), dark);
+      module.position.set(LASER.at[0], LASER.at[1] - 2, LASER.at[2] + 8);
+      this.#tool.add(module);
       plate.position.set(...MARKER_OFFSET.mill);
       plate.lookAt(new THREE.Vector3(...MARKER_OFFSET.mill).add(new THREE.Vector3(0, -1, 0.35)));
     } else {
@@ -225,6 +280,28 @@ export class SimCamera {
     }
     this.#renderer.setRenderTarget(this.#target);
     this.#renderer.render(this.#scene, this.#camera);
+    if (w.laser && w.job.machine.kind === 'mill') {
+      // the laser line: wherever the sheet of light cuts the surfaces, added on top of the picture
+      const P: V3 = [w.mpos[0] + LASER.at[0], w.mpos[1] + LASER.at[1], w.mpos[2] + LASER.at[2]];
+      const n = LASER.normal;
+      this.#laserMat.uniforms.n!.value.set(...n);
+      this.#laserMat.uniforms.d!.value = -(n[0] * P[0] + n[1] * P[1] + n[2] * P[2]);
+      const board = this.#board.visible;
+      this.#board.visible = false;
+      // a colour background makes three.js clear the picture even without autoClear: off for this pass
+      const bg = this.#scene.background;
+      this.#scene.background = null;
+      this.#scene.overrideMaterial = this.#laserMat;
+      this.#renderer.autoClear = false;
+      try {
+        this.#renderer.render(this.#scene, this.#camera);
+      } finally {
+        this.#renderer.autoClear = true;
+        this.#scene.overrideMaterial = null;
+        this.#scene.background = bg;
+      }
+      this.#board.visible = board;
+    }
     this.#renderer.setRenderTarget(null);
     this.#renderer.render(this.#post.scene, this.#post.camera);
     this.frameNo++;

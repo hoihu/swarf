@@ -3,6 +3,7 @@
   import SchemaForm from './SchemaForm.svelte';
   import MachinePanel from './MachinePanel.svelte';
   import CameraPanel from './camera/CameraPanel.svelte';
+  import ProbePanel from './ProbePanel.svelte';
   import { machine } from './machine.svelte.ts';
   import { issuesByField, machineFields, opFields, toolFieldsFor } from './form.ts';
   import { store } from './store.svelte.ts';
@@ -335,6 +336,7 @@
 {/each}</pre>
     {:else}
       <MachinePanel />
+      {#if machine.connected && job.machine.kind === 'mill'}<ProbePanel />{/if}
       <CameraPanel />
     {/if}
   </div>

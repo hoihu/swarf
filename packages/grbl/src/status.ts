@@ -18,7 +18,16 @@ export interface Status {
   ov?: [number, number, number];
   /** Planner blocks / RX bytes free. */
   buf?: [number, number];
+  /** Input pins active: X Y Z limits, P probe, D door, H hold, R reset, S start. */
   pins?: string;
+  /** Accessories on (A: field): S/C spindle, F flood, M mist. Only present while one is on. */
+  acc?: string;
+}
+
+/** A probing cycle's result: where the probe triggered (machine coordinates), and whether it did. */
+export interface ProbeResult {
+  mpos: [number, number, number];
+  ok: boolean;
 }
 
 export type Incoming =
@@ -28,6 +37,7 @@ export type Incoming =
   | { kind: 'status'; status: Status }
   | { kind: 'welcome'; text: string }
   | { kind: 'msg'; text: string }
+  | { kind: 'probe'; probe: ProbeResult }
   | { kind: 'other'; text: string };
 
 const xyz = (s: string): [number, number, number] | undefined => {
@@ -85,6 +95,9 @@ export function parseStatus(line: string, wco?: [number, number, number]): { sta
       case 'Pn':
         status.pins = val;
         break;
+      case 'A':
+        status.acc = val;
+        break;
     }
   }
   if (!status.wpos && status.mpos && newWco) status.wpos = [status.mpos[0] - newWco[0], status.mpos[1] - newWco[1], status.mpos[2] - newWco[2]];
@@ -101,6 +114,8 @@ export function classify(line: string, wco?: [number, number, number]): { incomi
   const s = parseStatus(t, wco);
   if (s) return { incoming: { kind: 'status', status: s.status }, ...(s.wco ? { wco: s.wco } : {}) };
   if (/^Grbl(HAL)?\s/i.test(t)) return { incoming: { kind: 'welcome', text: t } };
+  m = /^\[PRB:(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)(?:,[^:]*)?:([01])\]$/.exec(t);
+  if (m) return { incoming: { kind: 'probe', probe: { mpos: [Number(m[1]), Number(m[2]), Number(m[3])], ok: m[4] === '1' } } };
   m = /^\[MSG:(.*)\]$/.exec(t);
   if (m) return { incoming: { kind: 'msg', text: m[1]! } };
   return { incoming: { kind: 'other', text: t } };
@@ -123,7 +138,8 @@ export const ALARMS: Record<number, string> = {
   1: 'hard limit triggered: position lost, re-home',
   2: 'motion target outside the soft limits',
   3: 'reset while in motion: position lost, re-home',
-  4: 'probe fail',
+  4: 'probe fail: the probe was already touching',
+  5: 'probe fail: no contact within the distance',
   6: 'homing failed: reset during the cycle',
   8: 'homing failed: could not clear the limit switch',
   9: 'homing failed: limit switch not found',

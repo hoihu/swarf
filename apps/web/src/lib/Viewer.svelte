@@ -3,9 +3,10 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { LatheMaterial, MillMaterial, simulate, walk, type Job, type Program, type Vec3 } from '@swarf/cam';
-  import { chuckMesh, drawingLines, latheMesh, millMesh, pathGeometry, sceneToWork, stockOutline, toScene, toolMesh, type PathGeometry } from './scene.ts';
+  import { chuckMesh, drawingLines, latheMesh, millMesh, obstacleMeshes, pathGeometry, sceneToWork, stockOutline, toScene, toolMesh, type PathGeometry } from './scene.ts';
   import { camera as cam } from './camera/camera.svelte.ts';
   import { glProjection, glView } from './camera/geometry.ts';
+  import { laserScan } from './camera/laserscan.svelte.ts';
 
   let { job, program, selected = null, live = null }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null } = $props();
 
@@ -151,8 +152,13 @@
     dispose(fixture);
     fixture = null;
     if (job.stock.kind === 'block') {
-      fixture = drawingLines(job);
-      if (fixture) world.add(fixture);
+      const g = new THREE.Group();
+      const lines = drawingLines(job);
+      const obs = obstacleMeshes(job);
+      if (lines) g.add(lines);
+      if (obs) g.add(obs);
+      fixture = g;
+      world.add(fixture);
     } else if (job.stock.kind === 'bar') {
       fixture = chuckMesh(job.stock.front - job.stock.stickout, job.machine.chuckDiameter ?? job.stock.diameter * 2.5);
       world.add(fixture);
@@ -347,6 +353,36 @@
     });
   });
 
+  // the laser scan's points, coloured by height (blue low, red high)
+  let cloud: THREE.Points | null = null;
+  $effect(() => {
+    const pts = laserScan.cloud;
+    if (!mounted) return;
+    untrack(() => {
+      dispose(cloud);
+      cloud = null;
+      if (pts?.length && job.stock.kind === 'block') {
+        const pos = new Float32Array(pts.length * 3);
+        const col = new Float32Array(pts.length * 3);
+        const lo = job.stock.top - job.stock.z;
+        const hi = job.stock.top + 10;
+        const c = new THREE.Color();
+        pts.forEach((p, i) => {
+          const s = toScene({ x: p[0], y: p[1], z: p[2] }, false);
+          pos.set([s.x, s.y, s.z], i * 3);
+          c.setHSL(0.66 * (1 - Math.min(1, Math.max(0, (p[2] - lo) / (hi - lo)))), 0.85, 0.55);
+          col.set([c.r, c.g, c.b], i * 3);
+        });
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        cloud = new THREE.Points(g, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true }));
+        world.add(cloud);
+      }
+      dirty = true;
+    });
+  });
+
   // the overlay: the part as a ghost would hide the real stock, so its outline and the work zero instead
   $effect(() => {
     const on = overlay;
@@ -360,7 +396,8 @@
         world.add(outline);
       }
       if (part) part.visible = !on;
-      if (fixture) fixture.visible = !on;
+      // the chuck would hide the real one; drawings and obstacles stay (the obstacles are worth comparing)
+      if (fixture) fixture.visible = !on || job.stock.kind === 'block';
       controls.enabled = !on;
       dirty = true;
     });

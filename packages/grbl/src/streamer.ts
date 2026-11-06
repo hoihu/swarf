@@ -4,7 +4,7 @@
  * oldest. Real-time commands (status, hold, resume, reset, overrides) are single bytes that
  * bypass the buffer. Transport-agnostic: Web Serial in the app, a fake controller in tests.
  */
-import { ALARMS, ERRORS, classify, type Incoming, type MachineState, type Status } from './status.ts';
+import { ALARMS, ERRORS, classify, type Incoming, type MachineState, type ProbeResult, type Status } from './status.ts';
 
 export interface Transport {
   write(data: string): Promise<void>;
@@ -42,6 +42,14 @@ export function prepare(program: string): StreamLine[] {
   return out;
 }
 
+/** The controller's answer to one line. */
+export interface Reply {
+  ok: boolean;
+  error?: number;
+  alarm?: number;
+  message?: string;
+}
+
 export type JobState = 'idle' | 'running' | 'paused' | 'done' | 'failed' | 'stopped';
 
 export interface StreamerEvents {
@@ -49,6 +57,8 @@ export interface StreamerEvents {
   /** Lines acknowledged so far, of the total. */
   progress?: (acked: number, total: number, sourceLine: number) => void;
   job?: (state: JobState, message?: string) => void;
+  /** A probing cycle finished (G38.x). */
+  probe?: (p: ProbeResult) => void;
   /** Everything the controller says (except status reports) and everything sent, for the console. */
   log?: (dir: 'in' | 'out', text: string) => void;
 }
@@ -77,6 +87,10 @@ export class Streamer {
   #poll: ReturnType<typeof setInterval> | null = null;
   /** Lines sent outside a job (MDI) wait for their ok too. */
   #mdi = 0;
+  /** Who waits for the answer to each of those lines (null: nobody), oldest first. */
+  #replies: (((r: Reply) => void) | null)[] = [];
+  /** The last probing result. */
+  lastProbe: ProbeResult | null = null;
 
   constructor(t: Transport, ev: StreamerEvents = {}, opts: StreamerOptions = {}) {
     this.#t = t;
@@ -117,10 +131,28 @@ export class Streamer {
 
   /** One line typed by hand (MDI), only while no job runs. */
   async send(line: string): Promise<void> {
+    await this.#sendLine(line, null);
+  }
+
+  /**
+   * One line, and the controller's answer to it: ok, an error, or an alarm raised before the
+   * answer came (a failed probe: the controller raises an alarm instead of answering).
+   */
+  request(line: string): Promise<Reply> {
+    return new Promise((resolve, reject) => {
+      this.#sendLine(line, resolve).catch(reject);
+    });
+  }
+
+  async #sendLine(line: string, reply: ((r: Reply) => void) | null): Promise<void> {
     if (this.busy) throw new Error('Not while a job runs.');
     const text = line.trim();
-    if (!text) return;
+    if (!text) {
+      reply?.({ ok: true });
+      return;
+    }
     this.#mdi++;
+    this.#replies.push(reply);
     this.#ev.log?.('out', text);
     await this.#t.write(`${text}\n`);
   }
@@ -204,6 +236,7 @@ export class Streamer {
       case 'error': {
         if (this.#mdi > 0 && !this.#inflight.length) {
           this.#mdi--;
+          this.#replies.shift()?.(m.kind === 'ok' ? { ok: true } : { ok: false, error: m.code, message: `error:${m.code}: ${ERRORS[m.code] ?? 'see the grblHAL error codes'}` });
           return;
         }
         const done = this.#inflight.shift();
@@ -222,6 +255,9 @@ export class Streamer {
       }
       case 'alarm':
         this.state = 'Alarm';
+        // whoever waits for an answer gets the alarm (the controller may not answer the line after it)
+        for (const r of this.#replies.splice(0)) r?.({ ok: false, alarm: m.code, message: `ALARM:${m.code}: ${ALARMS[m.code] ?? 'see the grblHAL alarm codes'}` });
+        this.#mdi = 0;
         if (this.busy) {
           this.#queue = [];
           this.#inflight = [];
@@ -229,11 +265,16 @@ export class Streamer {
           this.#setJob('failed', `ALARM:${m.code}: ${ALARMS[m.code] ?? 'see the grblHAL alarm codes'}`);
         }
         return;
+      case 'probe':
+        this.lastProbe = m.probe;
+        this.#ev.probe?.(m.probe);
+        return;
       case 'welcome':
         // the controller restarted (reset, or it was just connected): nothing is in flight any more
         this.#inflight = [];
         this.#used = 0;
         this.#mdi = 0;
+        for (const r of this.#replies.splice(0)) r?.({ ok: false, message: 'The controller reset.' });
         if (this.busy) {
           this.#queue = [];
           this.#setJob('stopped', 'The controller reset.');

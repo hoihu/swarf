@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { BOARD, TABLE_MARKER, TOOL_MARKER, boardImage, markerImage } from './cv.ts';
   import { camera, SIM_SOURCE } from './camera.svelte.ts';
+  import { laserScan } from './laserscan.svelte.ts';
   import { machine } from '../machine.svelte.ts';
   import { store } from '../store.svelte.ts';
 
@@ -153,6 +154,36 @@
               </li>
             </ul>
           {/if}
+
+          <h4>4 · Line laser</h4>
+          <p class="small">A line laser on the spindle head, switched by the flood coolant output (M8/M9), slanting down onto the work. The camera sees where its line falls; that gives heights (about 0.05–0.1 mm) and, swept across the work, a height map of the setup: how flat the top is, and the clamps beside the block with their height.</p>
+          {#if camera.calib.laser}
+            <p class="small">Laser calibrated from {camera.calib.laser.points} points (scatter {camera.calib.laser.rms.toFixed(3)} mm).</p>
+          {/if}
+          <div class="row">
+            <button class="btn" disabled={laserScan.busy || !machine.connected} onclick={() => laserScan.calibrate()}>{camera.calib.laser ? 'Calibrate again' : 'Calibrate the laser'}</button>
+            <button class="btn pri" disabled={laserScan.busy || !machine.connected || !camera.calib.laser} onclick={() => laserScan.scan()}>Scan the setup</button>
+            {#if laserScan.busy}<button class="link" onclick={() => laserScan.cancel()}>Stop</button>{/if}
+          </div>
+          <p class="muted small">Calibrate once, after setting Z zero on the top with the touch plate: it goes over the middle of the block and up through four heights. Scan from a height that clears every clamp: the line sweeps the block and 35 mm around it.</p>
+          {#if laserScan.busy}<p class="small"><b>{laserScan.step}…</b></p>{/if}
+          {#if laserScan.result}
+            {@const t = laserScan.result.top}
+            <ul class="result">
+              <li>Top from Z{t.lowest.toFixed(2)} to Z{t.highest.toFixed(2)}, {t.flatness.toFixed(2)} mm off flat; sloping {t.slopeX.toFixed(2)} mm per 100 mm in X, {t.slopeY.toFixed(2)} in Y.</li>
+              {#if laserScan.result.obstacles.length}
+                <li class="warn">
+                  {laserScan.result.obstacles.length} thing{laserScan.result.obstacles.length > 1 ? 's' : ''} beside the block:
+                  {laserScan.result.obstacles.map((o) => `X${o.x0.toFixed(0)}…${o.x1.toFixed(0)} Y${o.y0.toFixed(0)}…${o.y1.toFixed(0)} up to Z${o.top.toFixed(1)}`).join('; ')}.
+                  <button class="link" onclick={() => laserScan.addObstacles()}>Add to the job</button>
+                </li>
+              {:else}
+                <li>Nothing standing beside the block.</li>
+              {/if}
+            </ul>
+            <div class="row"><button class="link" onclick={() => laserScan.clear()}>Clear the scan</button></div>
+          {/if}
+          {#if laserScan.error}<p class="diag error">{laserScan.error}</p>{/if}
         {/if}
       {:else}
         {#if !lathe}
