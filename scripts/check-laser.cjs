@@ -57,6 +57,8 @@ const OUT = process.argv[2] ?? require('os').tmpdir();
     return { err: L.error, points: L.cloud?.length, top: t && Object.fromEntries(Object.entries(t).map(([k, v]) => [k, +v.toFixed(3)])), obstacles: L.result?.obstacles.map((o) => ({ x0: +o.x0.toFixed(1), x1: +o.x1.toFixed(1), y0: +o.y0.toFixed(1), y1: +o.y1.toFixed(1), top: +o.top.toFixed(2), overTop: !!o.overTop })), truth, truthSlope: [w.stockError.tiltX * 100, w.stockError.tiltY * 100] };
   });
   log('scan', JSON.stringify(res));
+  // the points, to look at offline
+  require('fs').writeFileSync(`${OUT}/laser-cloud-${setup}.json`, JSON.stringify(await p.evaluate(() => window.__swarfLaser.cloud?.map((q) => q.map((v) => +v.toFixed(3))))));
   const bins = await p.evaluate(() => {
     const obs = window.__swarfLaser.result?.obstacles ?? [];
     const pts = window.__swarfLaser.cloud.filter((q) => q[0] > 3 && q[0] < 77 && q[1] > 3 && q[1] < 47 && !obs.some((o) => q[0] > o.x0 - 3 && q[0] < o.x1 + 3 && q[1] > o.y0 - 3 && q[1] < o.y1 + 3));

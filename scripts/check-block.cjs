@@ -25,7 +25,7 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
     c.calib = { lens: { ...s.lens, rms: 0, views: 0 }, pose: { R: s.pose.R, t: s.pose.t, frame: 'machine', kind: 'mill', rms: 0, points: 0, method: 'machine' } };
   });
   for (const k of cases) {
-    await p.evaluate((err) => { window.__swarfSimWorld.stockError = err; window.__swarfSimWorld.clampsOn = false; window.__swarfCamera.block = null; }, k.err);
+    await p.evaluate((err) => { window.__swarfSimWorld.stockError = err; window.__swarfSimWorld.setup = 'block'; window.__swarfCamera.block = null; }, k.err);
     await p.waitForTimeout(800);
     await p.locator('section.camera').getByRole('button', { name: 'Check the block' }).click();
     await p.waitForFunction(() => window.__swarfCamera.block || document.querySelector('section.camera .diag.error'), null, { polling: 300, timeout: 60000 });
