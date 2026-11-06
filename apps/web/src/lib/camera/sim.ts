@@ -70,6 +70,8 @@ export class SimCamera {
   #board: THREE.Mesh;
   #boardUntil = 0;
   #key = '';
+  /** How the real block differs from the job's (for trying the setup check): front-left corner offset, size difference, turn in degrees. */
+  stockError = { dx: 0, dy: 0, dsx: 0, dsy: 0, angle: 0 };
   #timer: ReturnType<typeof setInterval>;
 
   constructor(cv: CV, world: () => SimWorld) {
@@ -114,7 +116,8 @@ export class SimCamera {
       fragmentShader: `
         uniform sampler2D src; uniform vec2 size; uniform vec4 k; uniform float d[5];
         void main() {
-          vec2 p = vec2(gl_FragCoord.x, size.y - gl_FragCoord.y);
+          // this pixel in OpenCV's terms (pixel centres at whole numbers; GL's are at +0.5, from the bottom)
+          vec2 p = vec2(gl_FragCoord.x - 0.5, size.y - gl_FragCoord.y - 0.5);
           vec2 xd = (p - k.zw) / k.xy;
           vec2 x = xd;
           for (int i = 0; i < 8; i++) {
@@ -124,7 +127,7 @@ export class SimCamera {
             x = (xd - tang) / radial;
           }
           vec2 s = x * k.xy + k.zw;
-          gl_FragColor = (s.x < 0.0 || s.y < 0.0 || s.x > size.x || s.y > size.y) ? vec4(0.0, 0.0, 0.0, 1.0) : texture2D(src, vec2(s.x / size.x, 1.0 - s.y / size.y));
+          gl_FragColor = (s.x < 0.0 || s.y < 0.0 || s.x > size.x || s.y > size.y) ? vec4(0.0, 0.0, 0.0, 1.0) : texture2D(src, vec2((s.x + 0.5) / size.x, 1.0 - (s.y + 0.5) / size.y));
           #include <colorspace_fragment>
         }`,
     });
@@ -148,7 +151,7 @@ export class SimCamera {
 
   #build(w: SimWorld): void {
     const { job } = w;
-    const key = `${job.machine.kind}:${JSON.stringify(job.stock)}:${w.wco.join(',')}`;
+    const key = `${job.machine.kind}:${JSON.stringify(job.stock)}:${w.wco.join(',')}:${JSON.stringify(this.stockError)}`;
     if (key === this.#key) return;
     this.#key = key;
     this.#fixed.clear();
@@ -157,11 +160,20 @@ export class SimCamera {
     const dark = new THREE.MeshLambertMaterial({ color: '#4a5155' });
     const plate = this.#tool.getObjectByName('marker')!;
     this.#tool.clear();
+    // aimed in the tool's own frame: put the tool at the origin while doing so (lookAt works in world terms)
+    this.#tool.position.set(0, 0, 0);
+    this.#tool.updateMatrixWorld(true);
     this.#tool.add(plate);
     if (job.stock.kind === 'block') {
       const s = job.stock;
-      const block = new THREE.Mesh(new THREE.BoxGeometry(s.x, s.y, s.z), metal);
-      block.position.set(ox + s.x / 2, oy + s.y / 2, oz + s.top - s.z / 2);
+      // the real block: as the job has it, unless told otherwise (corner offset, size, turned about its front-left corner)
+      const er = this.stockError;
+      const bx = s.x + er.dsx;
+      const by = s.y + er.dsy;
+      const a = (er.angle * Math.PI) / 180;
+      const block = new THREE.Mesh(new THREE.BoxGeometry(bx, by, s.z), metal);
+      block.rotation.z = a;
+      block.position.set(ox + er.dx + (bx / 2) * Math.cos(a) - (by / 2) * Math.sin(a), oy + er.dy + (bx / 2) * Math.sin(a) + (by / 2) * Math.cos(a), oz + s.top - s.z / 2);
       const table = new THREE.Mesh(new THREE.BoxGeometry(600, 300, 20), dark);
       table.position.set(ox + s.x / 2, oy + s.y / 2, oz + s.top - s.z - 10);
       this.#fixed.add(block, table);

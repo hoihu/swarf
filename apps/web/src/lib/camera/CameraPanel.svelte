@@ -12,6 +12,23 @@
   let span = $state({ x: 40, y: 25, z: 30 });
   let markerAt = $state({ x: 20, y: 20, size: 40 });
   let problem = $state('');
+  const stockNow = $derived(store.job.stock);
+  /** How far off the measured block is, and whether it matters (camera precision is a few tenths). */
+  const blockDiff = $derived.by(() => {
+    const f = camera.block;
+    const s = stockNow;
+    if (!f || s.kind !== 'block') return null;
+    return { dx: f.corner[0], dy: f.corner[1], sx: f.x - s.x, sy: f.y - s.y, angle: f.angle };
+  });
+  const off = (v: number, tol = 0.3) => Math.abs(v) > tol;
+  const signed = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}`;
+
+  function useSize(): void {
+    const f = camera.block;
+    const s = store.job.stock;
+    if (!f || s.kind !== 'block') return;
+    store.set({ ...store.job, stock: { ...s, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10 } });
+  }
   const ENOUGH = 15;
 
   onMount(() => void camera.listSources());
@@ -113,10 +130,30 @@
       <h4>2 · Where the camera is</h4>
       {#if pose}
         <p class="small">
-          {pose.method === 'machine' ? `Measured at ${pose.points} positions (marker error ${pose.rms.toFixed(2)} px, tool tip clicks ${pose.tipPx?.toFixed(1)} px).` : `From the table marker (error ${pose.rms.toFixed(2)} px).`}
+          {pose.method === 'machine' ? `Measured at ${pose.points} positions (marker error ${pose.rms.toFixed(2)} px, tool tip clicks ${pose.tipPx !== undefined ? pose.tipPx.toFixed(1) : '–'} px).` : `From the table marker (error ${pose.rms.toFixed(2)} px).`}
           {pose.frame === 'work' ? 'Relative to work zero: re-run it if you set a new work zero.' : 'In machine coordinates: it follows your work zero.'}
         </p>
         <div class="row"><button class="btn" onclick={() => camera.forget('pose')}>Measure again</button></div>
+
+        {#if !lathe}
+          <h4>3 · Check the setup</h4>
+          <p class="small">Compares the block in the picture with the job: where its front-left corner is (the job's X0 Y0), its length and width, and whether it sits square. Needs Z zero on the block's top; the camera reads to a few tenths of a millimetre.</p>
+          <div class="row"><button class="btn pri" onclick={() => run(async () => void (await camera.checkBlock()))}>Check the block</button></div>
+          {#if blockDiff && camera.block}
+            <ul class="result">
+              <li class:warn={off(blockDiff.dx) || off(blockDiff.dy)}>
+                Front-left corner at X{signed(blockDiff.dx)} Y{signed(blockDiff.dy)}{off(blockDiff.dx) || off(blockDiff.dy) ? ': the work zero is not on the corner. Touch off again (or move the job), the cuts would land that far off.' : ': on the work zero.'}
+              </li>
+              <li class:warn={off(blockDiff.sx) || off(blockDiff.sy)}>
+                {camera.block.x.toFixed(1)} × {camera.block.y.toFixed(1)} mm{off(blockDiff.sx) || off(blockDiff.sy) ? ` (the job says ${stockNow.kind === 'block' ? `${stockNow.x} × ${stockNow.y}` : ''})` : ', as in the job.'}
+                {#if off(blockDiff.sx) || off(blockDiff.sy)}<button class="link" onclick={useSize}>Use this size</button>{/if}
+              </li>
+              <li class:warn={off(blockDiff.angle, 0.2)}>
+                {off(blockDiff.angle, 0.2) ? `Turned ${blockDiff.angle.toFixed(1)}° against X: square the block (or the vise) to the table.` : 'Square to X.'}
+              </li>
+            </ul>
+          {/if}
+        {/if}
       {:else}
         {#if !lathe}
           <div class="views" role="group" aria-label="Method">
@@ -175,5 +212,8 @@
   .grid input { width: 64px; border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 6px; background: var(--panel); text-align: right; }
   .small { font-size: 12.5px; margin: 0; }
   .muted { color: var(--ink-3); }
+  .result { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+  .result li.warn { color: var(--warn, #b26b00); font-weight: 500; }
+  .result .link { margin-left: 6px; }
   .link { border: 0; background: none; color: var(--accent-ink, #2a6fb0); text-decoration: underline; padding: 0; font-size: 12.5px; cursor: pointer; }
 </style>

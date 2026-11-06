@@ -52,13 +52,14 @@
       fragmentShader: `
         varying vec2 vUv; uniform sampler2D tex; uniform vec2 size; uniform vec4 k; uniform float d[5];
         void main() {
-          vec2 p = vec2(vUv.x * size.x, (1.0 - vUv.y) * size.y);
+          // OpenCV pixel coordinates (centres at whole numbers)
+          vec2 p = vec2(vUv.x * size.x - 0.5, (1.0 - vUv.y) * size.y - 0.5);
           vec2 x = (p - k.zw) / k.xy;
           float r2 = dot(x, x);
           float radial = 1.0 + d[0] * r2 + d[1] * r2 * r2 + d[4] * r2 * r2 * r2;
           vec2 xd = x * radial + vec2(2.0 * d[2] * x.x * x.y + d[3] * (r2 + 2.0 * x.x * x.x), d[2] * (r2 + 2.0 * x.y * x.y) + 2.0 * d[3] * x.x * x.y);
           vec2 s = xd * k.xy + k.zw;
-          vec4 c = texture2D(tex, vec2(s.x / size.x, 1.0 - s.y / size.y));
+          vec4 c = texture2D(tex, vec2((s.x + 0.5) / size.x, 1.0 - (s.y + 0.5) / size.y));
           gl_FragColor = (s.x < 0.0 || s.y < 0.0 || s.x > size.x || s.y > size.y) ? vec4(0.006, 0.006, 0.006, 1.0) : vec4(c.rgb * 0.75, 1.0);
           #include <colorspace_fragment>
         }`,

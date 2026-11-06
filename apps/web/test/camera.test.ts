@@ -30,8 +30,9 @@ describe('camera geometry', () => {
     for (const X of points(40)) {
       const [u, v] = project(pinhole, pose, X)!;
       const ndc = new THREE.Vector3(...X).project(cam);
-      expect((ndc.x + 1) / 2 * lens.width).toBeCloseTo(u, 6);
-      expect((1 - ndc.y) / 2 * lens.height).toBeCloseTo(v, 6);
+      // GL window coordinates: OpenCV's pixel u (centre) is at u + 0.5
+      expect((ndc.x + 1) / 2 * lens.width - 0.5).toBeCloseTo(u, 6);
+      expect((1 - ndc.y) / 2 * lens.height - 0.5).toBeCloseTo(v, 6);
       expect(Math.abs(ndc.z)).toBeLessThan(1);
     }
   });

@@ -37,7 +37,8 @@
     const s = Math.min(w / vw, h / vh);
     fit = { s, x: (w - vw * s) / 2, y: (h - vh * s) / 2 };
     g.drawImage(v, fit.x, fit.y, vw * s, vh * s);
-    const P = (p: [number, number]): [number, number] => [fit.x + p[0] * s, fit.y + p[1] * s];
+    // image pixel coordinates (OpenCV: centres at whole numbers) → canvas
+    const P = (p: [number, number]): [number, number] => [fit.x + (p[0] + 0.5) * s, fit.y + (p[1] + 0.5) * s];
     g.lineWidth = 2 * dpr;
 
     // views kept so far: faint outlines of where the board was
@@ -77,6 +78,43 @@
       g.fillText(String(m.id), ...P(m.corners[0]));
     }
     for (const c of camera.clicks) cross(g, ...P(c), '#9ed3a6', dpr);
+    // the setup check: where the job has the block (dashed) and where the camera found it
+    const measured = camera.block;
+    const st = store.job.stock;
+    if (measured && st.kind === 'block' && camera.calib.lens && camera.calib.pose) {
+      const L = camera.calib.lens;
+      const pose = camera.calib.pose;
+      const wco: [number, number, number] | null = pose.frame === 'machine' ? camera.wco() : [0, 0, 0];
+      const k = L.width / vw;
+      const at = (x: number, y: number): [number, number] | null => {
+        if (!wco) return null;
+        const q = project(L, pose, [x + wco[0], y + wco[1], st.top + wco[2]]);
+        return q ? P([q[0] / k, q[1] / k]) : null;
+      };
+      const outline = (pts: [number, number][], color: string, dash: number[]) => {
+        g.strokeStyle = color;
+        g.setLineDash(dash.map((d) => d * dpr));
+        g.beginPath();
+        for (const [i, p] of [...pts, pts[0]!].entries()) {
+          // straight in the world, bent by the lens: draw in short pieces
+          const prev = i ? (i === pts.length ? pts[pts.length - 1]! : pts[i - 1]!) : p;
+          for (let t = i ? 0.1 : 1; t <= 1.0001; t += 0.1) {
+            const q = at(prev[0] + (p[0] - prev[0]) * t, prev[1] + (p[1] - prev[1]) * t);
+            if (q) g.lineTo(...q);
+          }
+        }
+        g.stroke();
+        g.setLineDash([]);
+      };
+      outline([[0, 0], [st.x, 0], [st.x, st.y], [0, st.y]], 'rgba(255, 255, 255, 0.75)', [6, 5]);
+      outline(measured.corners, '#9ed3a6', []);
+      g.fillStyle = '#9ed3a6';
+      for (const e of measured.edges)
+        for (const h of e.hits) {
+          const q = at(h[0], h[1]);
+          if (q) g.fillRect(q[0] - dpr, q[1] - dpr, 2 * dpr, 2 * dpr);
+        }
+    }
     // once calibrated: where the camera thinks work zero is
     const { lens, pose } = camera.calib;
     if (lens && pose && pose.kind === store.job.machine.kind) {
@@ -121,7 +159,7 @@
   function toImage(clientX: number, clientY: number): [number, number] {
     const r = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    return [((clientX - r.left) * dpr - fit.x) / fit.s, ((clientY - r.top) * dpr - fit.y) / fit.s];
+    return [((clientX - r.left) * dpr - fit.x) / fit.s - 0.5, ((clientY - r.top) * dpr - fit.y) / fit.s - 0.5];
   }
 
   function onClick(e: MouseEvent): void {
@@ -133,7 +171,7 @@
     (window as unknown as { __swarfImageToClient?: unknown }).__swarfImageToClient = (u: number, v: number) => {
       const r = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      return [r.left + (fit.x + u * fit.s) / dpr, r.top + (fit.y + v * fit.s) / dpr];
+      return [r.left + (fit.x + (u + 0.5) * fit.s) / dpr, r.top + (fit.y + (v + 0.5) * fit.s) / dpr];
     };
   });
   onDestroy(() => cancelAnimationFrame(raf));

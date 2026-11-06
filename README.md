@@ -85,6 +85,11 @@ loaded only here):
    without measuring again. On the mill a quicker way: lay the table marker on the stock at a known
    spot.
 
+3. **Check the setup** (mill): the camera finds the block's four top edges near where the job has
+   them and reports where its front-left corner really is (the job's X0 Y0), its length and width
+   and whether it sits square, with **Use this size** for the Stock tab. It needs Z zero on the
+   block's top and reads to about 0.1–0.3 mm. On the simulated camera: within 0.1 mm of the truth.
+
 The lens is undone on the GPU for the overlay. A **simulated camera** (a known lens with
 distortion, looking at the simulated machine, holding the board up during the lens step) runs the
 whole flow without hardware and is how it is tested.

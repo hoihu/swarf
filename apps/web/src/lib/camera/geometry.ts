@@ -89,10 +89,14 @@ export function undistortedToDistorted(lens: Lens, u: number, v: number): V2 {
 /**
  * The GL projection matrix (column-major, as THREE.Matrix4.elements) of a pinhole camera with
  * these intrinsics, for an image of the calibrated size: a point at GL camera coordinates (x, y,
- * z), z < 0 in front, lands where the undistorted image shows it.
+ * z), z < 0 in front, lands where the undistorted image shows it (GL window coordinates, where
+ * pixel i spans i..i+1: OpenCV's pixel coordinate u is at u + 0.5).
  */
 export function glProjection(lens: Lens, near: number, far: number): number[] {
-  const { width: w, height: h, fx, fy, cx, cy } = lens;
+  const { width: w, height: h, fx, fy } = lens;
+  // OpenCV puts a pixel's centre at whole numbers, GL at +0.5: the principal point in GL's terms
+  const cx = lens.cx + 0.5;
+  const cy = lens.cy + 0.5;
   // rows of the matrix
   const r0 = [(2 * fx) / w, 0, 1 - (2 * cx) / w, 0];
   const r1 = [0, (2 * fy) / h, (2 * cy) / h - 1, 0];

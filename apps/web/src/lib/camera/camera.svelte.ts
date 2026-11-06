@@ -7,6 +7,7 @@
 import { BOARD, TABLE_MARKER, TOOL_MARKER, calibrateLens, detectBoard, detectMarkers, loadCv, solvePose, type BoardView, type CV, type Marker } from './cv.ts';
 import { pixelToRay, project, quadCenter, rodrigues, shiftPose, sub, mulMV, tipOffset, type Lens, type Pose, type V2, type V3 } from './geometry.ts';
 import { SimCamera } from './sim.ts';
+import { measureBlock, toGrey, type BlockFit } from './setup.ts';
 import { machine } from '../machine.svelte.ts';
 import { store } from '../store.svelte.ts';
 
@@ -54,6 +55,8 @@ class Camera {
   clicks = $state<V2[]>([]);
   width = $state(0);
   height = $state(0);
+  /** The last setup check: the block as the camera measured it (work coordinates). */
+  block = $state<BlockFit | null>(null);
 
   readonly video: HTMLVideoElement | null = typeof document === 'undefined' ? null : Object.assign(document.createElement('video'), { muted: true, playsInline: true, autoplay: true });
   /** A new picture since `n`? (The simulated camera counts them; a webcam always has one.) */
@@ -195,6 +198,38 @@ class Camera {
 
   #simWorld() {
     return { job: store.job, mpos: this.mpos() ?? [0, 0, 0], wco: this.wco() ?? [0, 0, 0], board: this.capturing } as const;
+  }
+
+  // ---------- setup check ----------
+
+  /** Measure the block's top from the picture (mill, calibrated camera). Averages a few pictures. */
+  async checkBlock(): Promise<BlockFit> {
+    const { lens, pose } = this.calib;
+    const stock = store.job.stock;
+    if (!lens || !pose || !this.ready) throw new Error('Calibrate the camera first.');
+    if (stock.kind !== 'block') throw new Error('The block check is for the mill.');
+    const wco: V3 | null = pose.frame === 'machine' ? this.wco() : [0, 0, 0];
+    if (!wco) throw new Error('Connect the machine: the check needs its work offset.');
+    this.block = null;
+    // a few pictures averaged against noise
+    let sum: Float32Array | null = null;
+    let w = 0;
+    let h = 0;
+    const N = 4;
+    for (let i = 0; i < N; i++) {
+      const img = this.grab();
+      if (!img) throw new Error('No camera picture.');
+      const g = toGrey(img);
+      w = g.width;
+      h = g.height;
+      if (!sum) sum = new Float32Array(g.lum.length);
+      for (let k = 0; k < sum.length; k++) sum[k]! += g.lum[k]! / N;
+      await sleep(120);
+    }
+    const fit = measureBlock({ width: w, height: h, lum: sum! }, lens, pose, wco, { x: stock.x, y: stock.y, top: stock.top });
+    this.block = fit;
+    this.view = 'camera';
+    return fit;
   }
 
   // ---------- lens ----------
