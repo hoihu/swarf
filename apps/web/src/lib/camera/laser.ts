@@ -317,13 +317,14 @@ const pct = (a: number[], q: number) => {
 export function analyseScan(
   points: V3[],
   block: { x: number; y: number; top: number; bottom: number },
-  o: { inset?: number; margin?: number; minHeight?: number; onTop?: number; cell?: number } = {},
+  o: { inset?: number; margin?: number; minHeight?: number; onTop?: number; cell?: number; rim?: number } = {},
 ): ScanResult {
   const inset = o.inset ?? 3;
   const margin = o.margin ?? 1.5;
   const minHeight = o.minHeight ?? 2;
   const onTop = o.onTop ?? 1.5;
   const cell = o.cell ?? 1;
+  const rim = o.rim ?? 4;
   const within = (x: number, y: number, m: number) => x > m && y > m && x < block.x - m && y < block.y - m;
   const top = points.filter(([x, y]) => within(x, y, inset));
   if (top.length < 50) throw new Error(`Only ${top.length} laser points on the block's top: did the line cross it?`);
@@ -331,7 +332,9 @@ export function analyseScan(
   const first = topPlane(top, () => true);
 
   // everything standing up, in 1 mm cells: beside the block, above the stock's bottom; on the
-  // block, above its top. The band along the block's sides (its side faces, half seen) is left out.
+  // block, above its top. The band along the block's sides (its side faces, half seen) is left out,
+  // and so is the top's own height up to `rim` mm outside the job's outline (the real block a
+  // little bigger than the job's, or off from it).
   const hm = heightMap(points, cell);
   const N = hm.nx * hm.ny;
   const up = new Uint8Array(N);
@@ -346,7 +349,7 @@ export function analyseScan(
       const z = hm.z[k]!;
       if (within(x, y, -margin)) {
         if (within(x, y, margin) && z > first.at(x, y) + onTop) up[k] = 1;
-      } else if (z > block.bottom + minHeight) up[k] = 1;
+      } else if (z > block.bottom + minHeight && !(within(x, y, -rim) && Math.abs(z - first.at(x, y)) < 1)) up[k] = 1;
     }
 
   // the top again, without the patches near anything lying on it

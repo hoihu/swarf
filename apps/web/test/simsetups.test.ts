@@ -169,6 +169,16 @@ describe('simulated setups', () => {
     });
   }
 
+  it('a block 2.5 mm off from the job and bigger: its rim beyond the outline is not an obstacle; the vise jaws stop at its side', () => {
+    const off: StockError = { ...err, dx: -1.5, dy: 1.2, dsx: 2.5, dsy: 1 };
+    for (const setup of ['block', 'vise'] as const) {
+      const w = buildSetup(stock, off, setup);
+      const r = analyseScan(scan(w, stock.top + 50), { x: stock.x, y: stock.y, top: stock.top, bottom });
+      expect(r.obstacles.length, setup).toBe(setup === 'block' ? 0 : 2);
+      for (const o of r.obstacles) expect(o.overTop, JSON.stringify(o)).toBeFalsy();
+    }
+  });
+
   it('the checks with what a scan found: facing over vise jaws is fine, a deep contour into them is not; straps are in the way of facing', () => {
     const found = (setup: SetupName) =>
       analyseScan(scan(world(setup), stock.top + 50), { x: stock.x, y: stock.y, top: stock.top, bottom }).obstacles.map((o, i) => ({ name: `scanned ${i + 1}`, x0: o.x0, y0: o.y0, x1: o.x1, y1: o.y1, top: o.top }));

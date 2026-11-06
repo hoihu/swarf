@@ -118,7 +118,9 @@ loaded only here):
    whatever lies on the top is left out of the top's figures and flagged as in the way of facing.
    Every move, rapids too, is checked against them (OBSTACLE). On the simulator: the sheet to
    0.02 mm, the top's average to 0.001 mm, single points ±0.25 mm, the clamps' height to 0.1 mm
-   and their outline to about 1 mm (`scripts/check-laser.cjs [outdir] [setup]`). With a real
+   and their outline to about 1 mm (`scripts/check-laser.cjs [outdir] [setup]`); with the strap
+   clamps, bolt, nut, strap and step block each within 0.05 mm of their height, the vise jaws
+   within 0.15 mm. The top's slope reads to about 0.05 mm per 100 mm. With a real
    camera: keep the exposure low enough that the line does not turn white on bright metal.
    The tests scan every simulated setup without a browser too, by casting the laser's rays at
    the same solids (with its shadows and what the camera cannot see), and run the checks on what
