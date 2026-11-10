@@ -79,6 +79,17 @@ against a pretend controller.
   the job is marked failed and the tab says that nothing can be stopped from here.
 - Closing or reloading the page while a program runs asks first.
 
+**Move by hand** (in the Machine tab): a button per axis and direction, in steps of 0.01, 0.1, 1
+or 10 mm or for as long as the button is held; optionally the arrow keys (Page Up/Down for Z).
+Holding does not send one long move to be cancelled on release: it feeds a tenth of a second of
+travel at a time and keeps a quarter of a second queued, so if the cancel is ever lost (cable,
+a hung tab) the machine stops by itself within that. Letting go, the pointer leaving the button,
+the window losing focus or Esc all stop it at once. Below it: make the place where the tool
+stands a given X, Y or Z of the work zero (G10 L20), and the spindle on and off. All of it is
+open while the controller is idle, so also at a tool change, and shut while the program runs or
+a touching or camera routine moves the machine (`apps/web/src/lib/jog.ts`,
+`scripts/check-jog.cjs`).
+
 After every assistant turn the chat shows what changed (operations added, changed, removed) with
 **Keep** and **Revert this turn**.
 

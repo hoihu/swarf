@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import JogPanel from './JogPanel.svelte';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
   import { simWorld } from './simworld.ts';
@@ -144,6 +145,8 @@
     <button class="btn" onclick={() => machine.feed('feed100')}>100%</button>
     <button class="btn" onclick={() => machine.feed('feedPlus10')}>Feed +10%</button>
   </div>
+  <JogPanel />
+
   <div class="row">
     <button class="btn" onclick={() => machine.send('$X')} disabled={busy}>Unlock</button>
     <button class="btn" onclick={() => machine.send('$H')} disabled={busy}>Home</button>
