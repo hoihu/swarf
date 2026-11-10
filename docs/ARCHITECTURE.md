@@ -54,7 +54,6 @@ chamfers, external and internal threading as G33 passes, boring, lathe profiles,
 - A thread pull-out (G33 with X moving), internal profiles.
 - Camera: bar diameter and stickout on the lathe (silhouette, better with a backlight), the tool after a change.
 - Probing: rotate the toolpath by the measured angle; probe a height map for engraving on uneven stock; bores and bosses as datums; the corner routine to keep clear of known obstacles (it touches the sides 6 mm out, where low edge clamps sit).
-- Climb/conventional choice.
 
 Tier 3 (only by reusing libraries): STEP import (build123d / OpenCascade), adaptive clearing,
 3D finishing.

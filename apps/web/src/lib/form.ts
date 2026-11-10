@@ -127,7 +127,7 @@ export function opFields(type: OpType): Field[] {
   return v ? fields(v, ['type', 'id']) : [];
 }
 
-export const toolFields: Field[] = fields(z.toJSONSchema(Tool, { io: 'input', unrepresentable: 'any' }) as Json, []);
+export const toolFields: Field[] = fields(z.toJSONSchema(Tool, { io: 'input', unrepresentable: 'any' }) as Json, ['offset']);
 
 /** Tool fields that mean nothing for a type of tool. */
 const NOT_FOR: Record<string, string[]> = {

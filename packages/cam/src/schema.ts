@@ -67,6 +67,12 @@ export const Tool = z.object({
   flutes: z.number().int().min(1).optional(),
   /** Endmill can plunge straight down. */
   centerCutting: z.boolean().optional(),
+  /**
+   * Where this tool's tip sits against the reference tool's when it is in the machine (mm; X a
+   * radius): for tools that come back to the same place (quick-change holders). Learned by
+   * touching off once, applied to the work zero at tool changes; the checks do not use it.
+   */
+  offset: z.object({ x: z.number(), z: z.number() }).optional(),
   /** Cutting edge: HSS or carbide (default: HSS for drills, carbide otherwise). Picks the material table's speeds. */
   toolMaterial: z.enum(['hss', 'carbide']).optional(),
   /** Cutting speed, m/min (default: from the workpiece material). */

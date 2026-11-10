@@ -91,6 +91,25 @@ against a pretend controller.
   to jog, touch off and set the new tool's Z. **Resume** goes on: the program says its modes
   again (G21 G90 G94 G54, the plane; G97 on the lathe) and the tool first rises straight up to
   the travel height from wherever touching off left it, before it moves across.
+- **Tool lengths.** "Tool changes" in the Machine tab carries the work zero over to the new
+  tool, by moving the zero (G10 L20) by how the new tool's tip sits against the old one's; no
+  tool length offset in the controller is used. Three ways:
+  - *Stored offsets*, for tools that come back to the same place every time (a quick-change tool
+    post on the lathe, fixed holders): make one tool the reference, touch each other tool off
+    once by hand and store that; from then on one click at each change. On the lathe X and Z.
+  - *A tool setter* on the mill (a switch on the table, wired to the probe input), for collets:
+    jog over it once ("the setter is under the tool now"), take a reading of the first tool, and
+    at every change **Measure it on the setter**: guarded moves there, a fast and a slow touch,
+    and Z zero moves by the difference of the two readings.
+  - *By hand*, as before: touch the new tool off (the plate, or the jog panel's Set buttons).
+  Resume asks before going on with a tool whose zero has not been carried over. From above the
+  travel height (after the setter) Resume goes across first, so the program's move to the
+  travel height does not come down on the setter.
+- **Start again in the middle.** After a stop or a broken tool, **Start at** picks the
+  operation to go on from (it offers the one the machine stopped in, found from where it
+  stands). The rest of the program begins like a tool change: the tool is asked for, the modes
+  said, up to the travel height, across, spindle. What came before is taken as done; only what
+  will run can hold the start up.
 - **Stop** sends nothing more, holds motion (so the position stays true), and resets the
   controller once it stands (or after 1.5 s if it will not): what it had buffered is dropped and
   the spindle stops. It is not an emergency stop.
@@ -188,7 +207,7 @@ whole flow without hardware and is how it is tested.
 | | |
 |---|---|
 | Lathe | face, turn a diameter (roughing + finishing pass, shoulder), profile (a whole outline with steps, tapers, chamfers and radii: roughing, semi-finish and a nose-radius-compensated finish), 45° chamfer, groove, boring, external and internal threads, single or multi-start (G33 passes, flank or radial infeed, spring passes), part off, drill on centre with pecking |
-| Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside with holding tabs, drill hole patterns with pecking; and any imported outline: cut it out (holes included, with tabs), run inside it, follow its lines (engraving), or pocket it around islands |
+| Mill (2.5D) | face, rectangular and circular pocket, rectangular contour inside/outside with holding tabs, a finishing pass on the walls at full depth (`finish`) and climb or conventional (`direction`) for pockets and contours, drill hole patterns with pecking; and any imported outline: cut it out (holes included, with tabs), run inside it, follow its lines (engraving), or pocket it around islands |
 | Drawings | DXF (lines, arcs, circles, polylines with bulges, ellipses, splines, blocks; units from the file) and SVG (paths, shapes, transforms, mm sizes). Mill: placed on the stock and shown in the preview. Lathe: a side view of the part (full outline or the half above the axis) becomes a profile |
 | G-code size | runs of short lines on a circle (or helix) are written as G2/G3 arcs within 5 µm: XY on the mill, ZX (G18) on the lathe, where I stays a radius in diameter mode as grblHAL reads it |
 | Speeds and feeds | from the workpiece material (aluminium, free-cutting steel, steel, stainless, brass, plastic) × the tool (HSS or carbide, turning / grooving / threading / drilling / milling): cutting speed, feed per rev or per tooth, depth per pass. A tool's own values override the table; everything is clamped to the machine |

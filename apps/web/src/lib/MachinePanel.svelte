@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { tick } from 'svelte';
-  import { emit, hasErrors, resumeFrom } from '@swarf/cam';
+  import { tick, untrack } from 'svelte';
+  import { emit, hasErrors, resumeFrom, walk } from '@swarf/cam';
   import JogPanel from './JogPanel.svelte';
+  import ToolPanel from './ToolPanel.svelte';
+  import { tooling } from './tooling.svelte.ts';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
   import { simWorld } from './simworld.ts';
@@ -68,19 +70,61 @@
   // what will be run must be free of errors (errors of operations already done do not hold a restart up)
   const errors = $derived(hasErrors(resume ? resume.diagnostics : store.analysis.diagnostics));
   const canStart = $derived(machine.connected && !busy && !waiting && !errors && st === 'Idle' && !machine.lost);
-  /** The operation the program was in when it last stopped short (offered as the place to start again). */
-  let stoppedIn = $state('');
+  // the program waits at a tool change: which tool it wants next (the first segment after the line it stopped at)
   $effect(() => {
-    if (machine.job !== 'stopped' && machine.job !== 'failed') return;
-    const move = store.gcode.lineOfMove.findIndex((l) => l >= machine.line);
+    if (machine.job !== 'waiting') return;
+    const whole = store.gcode.lineOfMove;
     let n = 0;
     for (const seg of store.analysis.program.segments) {
+      const firstLine = whole[n] ?? -1;
       n += seg.moves.length;
-      if (move >= 0 && move < n) {
-        stoppedIn = seg.opId;
+      if (firstLine > machine.line) {
+        const id = seg.tool;
+        untrack(() => {
+          tooling.begin(id);
+          // the simulated mill: the new tool sits differently in its collet
+          if (machine.simulated && !lathe) {
+            const before = simWorld.stickout;
+            const d = simWorld.loadTool(id) - before;
+            machine.note(`Simulated tool change: T${id} sticks out ${Math.abs(d).toFixed(1)} mm ${d >= 0 ? 'more' : 'less'} than the tool before. Until its Z is set, everything is off by that.`);
+          }
+        });
         return;
       }
     }
+  });
+  // nothing is known about the tools once the controller is gone or has lost its place
+  $effect(() => {
+    if (!machine.connected || st === 'Alarm') untrack(() => tooling.forget());
+  });
+  /**
+   * The operation the program was in when it last stopped short (offered as the place to start
+   * again). The line last acknowledged is ahead of the machine by whatever the controller had
+   * buffered, so: of the moves in the last 150 lines up to it, the one the machine stands nearest to.
+   */
+  let stoppedIn = $state('');
+  $effect(() => {
+    if (machine.job !== 'stopped' && machine.job !== 'failed') return;
+    const w = machine.status?.wpos;
+    const line = machine.line;
+    if (!w || line < 0) return;
+    untrack(() => {
+      const at = { x: lathe && store.job.machine.xMode === 'diameter' ? w[0]! / 2 : w[0]!, y: lathe ? 0 : w[1]!, z: w[2]! };
+      const lines = store.gcode.lineOfMove;
+      let best = { d: Infinity, op: '' };
+      for (const m of walk(store.analysis.program)) {
+        const l = lines[m.index] ?? -1;
+        if (l < line - 150 || l > line) continue;
+        // distance from where it stands to this move's straight line
+        const [ax, ay, az] = [m.from.x, m.from.y, m.from.z];
+        const [bx, by, bz] = [m.move.to.x - ax, m.move.to.y - ay, m.move.to.z - az];
+        const len2 = bx * bx + by * by + bz * bz;
+        const t = len2 > 1e-12 ? Math.min(1, Math.max(0, ((at.x - ax) * bx + (at.y - ay) * by + (at.z - az) * bz) / len2)) : 0;
+        const d = Math.hypot(at.x - ax - t * bx, at.y - ay - t * by, at.z - az - t * bz);
+        if (d < best.d - 1e-6) best = { d, op: store.analysis.program.segments[m.seg]!.opId };
+      }
+      if (best.op) stoppedIn = best.op;
+    });
   });
 
   async function start(): Promise<void> {
@@ -100,6 +144,8 @@
     if (errors) return;
     machine.crash = '';
     simWorld.crashes = [];
+    // the user has just said so: the zero is right for the tool the program starts with
+    if (first) tooling.setActive(first.id);
     if (!resume) {
       await machine.run(store.gcode.text, true);
       return;
@@ -121,6 +167,29 @@
       else cur = map[i]!;
     }
     await machine.run(part.text, true, map);
+  }
+
+  async function resumeProgram(): Promise<void> {
+    if (!waiting) return void machine.resume();
+    // at a tool change: has the zero been carried over to the new tool?
+    if (tooling.pending !== null) {
+      if (!confirm(`The zero has not been carried over to T${tooling.pending} yet (see "Tool changes" below): its length is not accounted for.\n\nGo on anyway?`)) return;
+      tooling.touchedOff(false);
+    }
+    // The program goes on with "Z to the travel height, then across". From below that is straight
+    // up; from above (after the tool setter, or jogged up high) it would come down where the tool
+    // stands, perhaps onto the setter. So from above: across first, at the height it is at.
+    const home = store.analysis.program.home;
+    const w = machine.status?.wpos;
+    if (w && w[2]! > home.z + 0.01) {
+      const x = lathe && store.job.machine.xMode === 'diameter' ? home.x * 2 : home.x;
+      const r = await machine.request(lathe ? `G90 G0 X${x.toFixed(3)}` : `G90 G0 X${x.toFixed(3)} Y${home.y.toFixed(3)}`);
+      if (!r.ok) return;
+      await new Promise((res) => setTimeout(res, 300));
+      for (let i = 0; i < 1500 && machine.status?.state !== 'Idle'; i++) await new Promise((res) => setTimeout(res, 40));
+      await new Promise((res) => setTimeout(res, 450));
+    }
+    void machine.resume();
   }
 
   async function sendMdi(e: Event): Promise<void> {
@@ -197,7 +266,7 @@
   <div class="row">
     <button class="btn pri" onclick={start} disabled={!canStart} title={errors ? 'The job has errors' : st !== 'Idle' ? 'The controller must be idle' : ''}>{resume ? `Run from ${startAt}` : 'Run program'}</button>
     {#if machine.job === 'paused' || waiting}
-      <button class="btn" class:pri={waiting} onclick={() => machine.resume()} disabled={waiting && st !== 'Idle'}>Resume</button>
+      <button class="btn" class:pri={waiting && tooling.pending === null} onclick={resumeProgram} disabled={waiting && st !== 'Idle'}>Resume</button>
     {:else}
       <button class="btn" onclick={() => machine.hold()} disabled={!busy}>Hold</button>
     {/if}
@@ -217,6 +286,7 @@
     <button class="btn" onclick={() => machine.feed('feedPlus10')}>Feed +10%</button>
   </div>
   <JogPanel />
+  <ToolPanel />
 
   <div class="row">
     <button class="btn" onclick={() => machine.send('$X')} disabled={busy}>Unlock</button>

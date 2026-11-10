@@ -114,7 +114,7 @@ class Machine {
             this.#log({ dir: 'note', text: message });
           } else if (state === 'running') this.message = '';
           if (state === 'paused') this.message = 'Held. Resume goes on; Stop ends the program.';
-          if (state === 'waiting') this.message = 'Tool change: the program waits and the machine is free. Change the tool, set its Z zero (Zero tab, or by hand), then Resume. The tool then rises straight up to the travel height before it goes anywhere.';
+          if (state === 'waiting') this.message = 'Tool change: the program waits and the machine is free. Change the tool, carry the zero over to it ("Tool changes" below: a stored offset, the tool setter, or touch it off by hand), then Resume. The tool then rises straight up to the travel height before it goes anywhere.';
           if (state === 'done') this.message = 'Program finished.';
         },
         link: (lost) => {
@@ -181,6 +181,10 @@ class Machine {
     }
   }
 
+  /** A line for the console that is neither sent nor received. */
+  note(text: string): void {
+    this.#log({ dir: 'note', text });
+  }
   hold = () => this.#s?.hold();
   async resume(): Promise<void> {
     try {

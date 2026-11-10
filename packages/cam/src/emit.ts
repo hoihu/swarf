@@ -96,7 +96,7 @@ export function emit(job: Job, program: Program, o: { fromSegment?: number } = {
         // the tool before is at home by now (the last moves of its operation)
         if (tool !== null) lines.push('M5');
         lines.push(comment(`${tool === null ? 'Load' : 'Change to'} T${s.tool}: ${t?.name ?? '?'}, touch off, then cycle start`));
-        lines.push(comment(`from wherever it is then, the tool goes ${lathe ? `along Z to Z${num(home.z)}, then to X${num(X(home.x))}` : `straight up to Z${num(home.z)}, then to X${num(home.x)} Y${num(home.y)}`}`));
+        lines.push(comment(`from wherever it is then, the tool goes ${lathe ? `along Z to Z${num(home.z)}, then to X${num(X(home.x))}` : `straight to Z${num(home.z)} (up, or DOWN if it stands higher), then to X${num(home.x)} Y${num(home.y)}`}`));
         lines.push(`M0`);
         // nothing is known about where the tool is or what was typed meanwhile: say everything again
         modes();

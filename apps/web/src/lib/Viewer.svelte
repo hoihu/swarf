@@ -69,6 +69,7 @@
   let material: LatheMaterial | MillMaterial | null = null;
   const partMaterials = new Map<string, THREE.MeshStandardMaterial>();
   let lastTime = 0;
+  let liveAt = '';
   /** Where the cutter's tip was at the last frame (scene), for the chips between there and here. */
   const lastTip = new THREE.Vector3();
   let haveTip = false;
@@ -495,7 +496,8 @@
 
   function frame(now = 0): void {
     raf = requestAnimationFrame(frame);
-    const dt = Math.min(0.05, lastTime ? (now - lastTime) / 1000 : 0.016);
+    // (real time, also when frames come slowly: what flies must land and fade in its seconds, not its frames)
+    const dt = Math.min(0.12, lastTime ? (now - lastTime) / 1000 : 0.016);
     lastTime = now;
     if (playing) {
       if (at >= total) playing = false;
@@ -568,7 +570,10 @@
     const gl = renderer.getContext();
     const dbg = gl.getExtension('WEBGL_debug_renderer_info');
     const software = /swiftshader|llvmpipe|software/i.test(String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : ''));
-    if (software && !look.asked) look.shadows = false;
+    if (software && !look.asked) {
+      look.shadows = false;
+      look.chips = false;
+    }
     renderer.shadowMap.enabled = look.shadows;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     world.add(chips.mesh, coolant.mesh, jet);
@@ -651,9 +656,12 @@
 
   // follow the machine
   $effect(() => {
-    void live;
+    const at = live ? `${live.x},${live.y},${live.z}` : '';
     if (!mounted) return;
     untrack(() => {
+      // (a status report with the machine where it was is nothing to draw again)
+      if (at === liveAt) return;
+      liveAt = at;
       placeTool();
       dirty = true;
     });
@@ -786,7 +794,7 @@
         {#if look.surround === 'picture'}<label><input type="checkbox" bind:checked={look.soften} onchange={() => look.save()} /> Soften the picture a little</label>{/if}
         {#if look.error}<p class="err">{look.error}</p>{/if}
         <div class="lbl">While it cuts</div>
-        <label><input type="checkbox" bind:checked={look.chips} onchange={() => look.save()} /> Chips</label>
+        <label><input type="checkbox" bind:checked={look.chips} onchange={() => { look.asked = true; look.save(); }} /> Chips</label>
         <label><input type="checkbox" bind:checked={look.coolant} onchange={() => look.save()} /> Coolant</label>
         <label><input type="checkbox" bind:checked={look.sound} /> Sound</label>
         <div class="lbl">Light</div>

@@ -9,6 +9,7 @@ import type { V3 } from './camera/geometry.ts';
 import { machine } from './machine.svelte.ts';
 import { simWorld } from './simworld.ts';
 import { store } from './store.svelte.ts';
+import { tooling } from './tooling.svelte.ts';
 import { analyseSurface, type SurfaceResult } from './surface.ts';
 
 export { analyseSurface, type SurfaceResult };
@@ -195,6 +196,8 @@ class Probe {
       await this.#moveTo({ z: stock.top + thickness + 5 });
       if (machine.simulated) simWorld.plate = null;
       this.result = `Z zero set: the top was ${Math.abs(shift).toFixed(3)} mm ${shift < 0 ? 'lower' : 'higher'} than the old zero said.${thickness > 0 ? ' Take the plate away.' : ''}`;
+      // at a tool change: this was the new tool's touch-off
+      if (tooling.pending !== null) tooling.touchedOff(false);
     });
   }
 

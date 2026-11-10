@@ -30,11 +30,31 @@ export const simWorld = {
   toolDiameter: 6,
   /** Length of the tool below the spindle (contact with its side). */
   toolLength: 40,
+  /**
+   * How much further the tool now in the spindle sticks out than the one the simulator started
+   * with (mm): its tip is that much lower than the controller's Z says, until its length is taken
+   * into account. A new tool is put in with `loadTool`.
+   */
+  stickout: 0,
+  /** Put tool `id` in: each sits a little differently in its collet (the same every time, so tests can tell). */
+  loadTool(id: number): number {
+    this.stickout = [6.4, -3.2, 9.1, -1.7][(Math.max(1, id) - 1) % 4]!;
+    return this.stickout;
+  },
+  /** The tool setter on the table (a switch wired to the probe input): where its top is, in work coordinates of the original zero. */
+  setterAt(job: Job): { x: number; y: number; top: number } | null {
+    if (job.stock.kind !== 'block') return null;
+    return { x: job.stock.x + 60, y: -40, top: this.world(job, false).floor + 12 };
+  },
 
   /** Everything on the table: the block, what holds it, the touch plate; and the table's top. */
-  world(job: Job): { solids: Solid[]; floor: number } {
+  world(job: Job, withSetter = true): { solids: Solid[]; floor: number } {
     if (job.stock.kind !== 'block') return { solids: [], floor: 0 };
     const w = buildSetup(job.stock, this.stockError, this.setup);
+    if (withSetter) {
+      const t = this.setterAt(job)!;
+      w.solids.push({ kind: 'cyl', name: 'tool setter', cx: t.x, cy: t.y, r: 9, z0: w.floor, z1: t.top, conductive: true, look: 'copper' });
+    }
     const p = this.plate;
     if (p) {
       const z = this.topAt(job, p.x, p.y);
@@ -45,7 +65,7 @@ export const simWorld = {
 
   /** What holds the block (its obstacles). */
   obstacles(job: Job): Solid[] {
-    return this.world(job).solids.filter((s) => !s.stock && s.name !== 'touch plate');
+    return this.world(job, false).solids.filter((s) => !s.stock && s.name !== 'touch plate');
   },
 
   /** The block's top at a point (work coordinates at the start), with its error and tilt. */
@@ -83,7 +103,7 @@ export const simWorld = {
     if (!this.origin || job.stock.kind !== 'block') return;
     const o = this.origin;
     const holders = this.world(job).solids.filter((s) => !s.stock).map((s) => ({ ...s, conductive: true }));
-    const hit = touches(holders, this.toolDiameter / 2, this.toolLength, mpos[0] - o[0], mpos[1] - o[1], mpos[2] - o[2]);
+    const hit = touches(holders, this.toolDiameter / 2, this.toolLength, mpos[0] - o[0], mpos[1] - o[1], mpos[2] - o[2] - this.stickout);
     if (hit && !this.crashes.some((c) => c.what === hit.name)) this.crashes.push({ what: hit.name, at: [...mpos] as V3, move });
   },
 
@@ -91,7 +111,7 @@ export const simWorld = {
   touching(job: Job, mpos: V3): Solid | null {
     if (!this.origin || job.stock.kind !== 'block') return null;
     const o = this.origin;
-    return touches(this.world(job).solids, this.toolDiameter / 2, this.toolLength, mpos[0] - o[0], mpos[1] - o[1], mpos[2] - o[2]);
+    return touches(this.world(job).solids, this.toolDiameter / 2, this.toolLength, mpos[0] - o[0], mpos[1] - o[1], mpos[2] - o[2] - this.stickout);
   },
 };
 

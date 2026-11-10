@@ -30,7 +30,7 @@ const PIC = process.argv[3];
   await p.getByRole('tab', { name: 'Stock' }).click();
   await p.getByRole('button', { name: 'Mill example' }).click();
   await p.waitForTimeout(800);
-  await look('Workshop', { Shadows: true });
+  await look('Workshop', { Shadows: true, Chips: true });
   await playAt(0.42, 2500); await shot('workshop-mill'); await pause();
   await look('Workshop', { Coolant: true });
   await playAt(0.3, 2500); await shot('workshop-mill-coolant'); await pause();
