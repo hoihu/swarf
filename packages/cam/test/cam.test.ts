@@ -748,3 +748,89 @@ describe('getting to and from the work safely', () => {
     expect(c.diagnostics.some((d) => d.code === 'OBSTACLE' || d.code === 'OUT_OF_RANGE')).toBe(true);
   });
 });
+
+describe('finishing the walls', () => {
+  const circle = (cx: number, cy: number, r: number, n = 72): [number, number][] => Array.from({ length: n }, (_, i) => [cx + r * Math.cos((2 * Math.PI * i) / n), cy + r * Math.sin((2 * Math.PI * i) / n)]);
+  const plate = { id: 's1', name: 'plate', at: { x: 20, y: 10 }, paths: [{ closed: true, pts: [[0, 0], [40, 0], [40, 30], [0, 30]] as [number, number][] }, { closed: true, pts: circle(20, 15, 6) }] };
+  const ops: OperationInput[] = [
+    { type: 'mill_pocket_rect', tool: 1, x: 10, y: 10, w: 40, h: 25, zBottom: -4 },
+    { type: 'mill_pocket_circle', tool: 1, cx: 40, cy: 25, diameter: 30, zBottom: -4 },
+    { type: 'mill_contour_rect', tool: 1, x: 15, y: 10, w: 50, h: 30, zBottom: -4, side: 'outside', tabs: 2 },
+    { type: 'mill_contour_rect', tool: 1, x: 15, y: 10, w: 50, h: 30, zBottom: -4, side: 'inside' },
+    { type: 'mill_contour', tool: 1, shape: 's1', zBottom: -4, side: 'outside' },
+    { type: 'mill_contour', tool: 1, shape: 's1', zBottom: -4, side: 'inside' },
+    { type: 'mill_pocket', tool: 1, shape: 's1', zBottom: -4 },
+  ];
+  const run = (op: OperationInput) => analyze(withOps('mill', [op], { shapes: [plate] }));
+  /** The cutting moves' ends, with the level they are at. */
+  const cuts = (a: ReturnType<typeof analyze>) => a.program.segments.flatMap((s) => s.moves).filter((m) => m.type !== 'rapid').map((m) => m.to);
+
+  for (const op of ops) {
+    it(`${op.type}${'side' in op ? ` ${op.side}` : ''}: the levels stay 0.2 off the wall, one pass at full depth takes it off; the part is the same`, () => {
+      const plain = run(op);
+      const fin = run({ ...op, finish: 0.2 } as OperationInput);
+      for (const a of [plain, fin]) expect(a.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+      // the part: nothing left standing that the plain version takes off (but for a cell or two on the line)
+      const [m0, m1] = [plain.material as MillMaterial, fin.material as MillMaterial];
+      let left = 0;
+      let more = 0;
+      for (let i = 0; i < m0.h.length; i++) {
+        if (m1.h[i]! > m0.h[i]! + 1e-6) left++;
+        if (m1.h[i]! < m0.h[i]! - 1e-6) more++;
+      }
+      // (with holding tabs: those are a little wider, where the two passes' tabs do not quite meet)
+      expect(left).toBeLessThanOrEqual('tabs' in op && op.tabs ? 400 : 4);
+      // (a contour's slot is 0.2 wider on the waste side; a pocket is the same pocket)
+      if (op.type.startsWith('mill_pocket')) expect(more).toBeLessThanOrEqual(4);
+      // how far the cutter's centre gets, in X: above the bottom 0.2 short of where the plain
+      // version goes (inside) or 0.2 further out (outside); at the bottom, by the last pass, the same
+      const span = (pts: { x: number }[]) => [Math.min(...pts.map((p) => p.x)), Math.max(...pts.map((p) => p.x))] as const;
+      const upper = (a: ReturnType<typeof analyze>) => cuts(a).filter((p) => p.z > -4 + 1e-6 && p.z < 0.6);
+      const bottom = (a: ReturnType<typeof analyze>) => cuts(a).filter((p) => Math.abs(p.z + 4) < 1e-6);
+      const out = 'side' in op && op.side === 'outside' ? 1 : -1;
+      const [u0, u1] = [span(upper(plain)), span(upper(fin))];
+      expect(u1[0] - u0[0]).toBeCloseTo(-out * 0.2, 6);
+      expect(u1[1] - u0[1]).toBeCloseTo(out * 0.2, 6);
+      const b0 = span(bottom(plain));
+      for (const edge of b0) expect(bottom(fin).some((q) => Math.abs(q.x - edge) < 1e-6), `the last pass reaches X${edge}`).toBe(true);
+      if (out < 0) expect(span(bottom(fin))).toEqual(b0);
+    });
+  }
+
+  it('conventional goes the other way round; the part is the same', () => {
+    const area = (pts: { x: number; y: number }[]) => pts.reduce((s, p, i) => s + (p.x * pts[(i + 1) % pts.length]!.y - pts[(i + 1) % pts.length]!.x * p.y), 0) / 2;
+    for (const withTabs of ops) {
+      const op = { ...withTabs, tabs: 0 } as OperationInput;
+      const a = run({ ...op, finish: 0.2 } as OperationInput);
+      const b = run({ ...op, finish: 0.2, direction: 'conventional' } as OperationInput);
+      expect(b.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+      const [ma, mb] = [a.material as MillMaterial, b.material as MillMaterial];
+      let differ = 0;
+      for (let i = 0; i < ma.h.length; i++) if (Math.abs(ma.h[i]! - mb.h[i]!) > 1e-6) differ++;
+      expect(differ, op.type).toBeLessThanOrEqual(12);
+      // the last pass at full depth, as a polygon: its sense is reversed
+      const last = (x: ReturnType<typeof analyze>) => {
+        const all = cuts(x);
+        let i = all.length - 1;
+        while (i >= 0 && Math.abs(all[i]!.z + 4) > 1e-6) i--;
+        let j = i;
+        while (j >= 0 && Math.abs(all[j]!.z + 4) < 1e-6) j--;
+        return all.slice(j + 1, i + 1);
+      };
+      if (op.type === 'mill_pocket_circle') continue; // arcs: two half circles have no area as a polygon
+      expect(Math.sign(area(last(a))), op.type).toBe(-Math.sign(area(last(b))));
+    }
+    // climb: inside counter-clockwise, outside clockwise (the spindle turns clockwise seen from above)
+    const inside = run({ type: 'mill_contour_rect', tool: 1, x: 15, y: 10, w: 50, h: 30, zBottom: -4, side: 'inside' });
+    const outside = run({ type: 'mill_contour_rect', tool: 1, x: 15, y: 10, w: 50, h: 30, zBottom: -4, side: 'outside' });
+    const lap = (x: ReturnType<typeof analyze>) => cuts(x).filter((p) => Math.abs(p.z + 4) < 1e-6);
+    expect(area(lap(inside))).toBeGreaterThan(0);
+    expect(area(lap(outside))).toBeLessThan(0);
+  });
+
+  it('where there is no room for an allowance the levels go to the line as before', () => {
+    const a = run({ type: 'mill_pocket_rect', tool: 1, x: 10, y: 10, w: 6.5, h: 30, zBottom: -2, finish: 0.2 });
+    const b = run({ type: 'mill_pocket_rect', tool: 1, x: 10, y: 10, w: 6.5, h: 30, zBottom: -2 });
+    expect(emit(withOps('mill', []), a.program).text).toBe(emit(withOps('mill', []), b.program).text);
+  });
+});

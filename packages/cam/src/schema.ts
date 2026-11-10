@@ -234,6 +234,11 @@ const depthFields = {
 };
 
 const rampAngle = z.number().gt(0).max(30).default(3).describe('Entry ramp angle, degrees');
+/** Walls: roughed to within an allowance, then finished in one pass at full depth; and which way round the cutter goes. */
+const wallFinish = {
+  finish: z.number().min(0).max(2).default(0).describe('Allowance (mm) the levels leave on the walls, taken off in one finishing pass at full depth. 0: no finishing pass. 0.2 is usual'),
+  direction: z.enum(['climb', 'conventional']).default('climb').describe('climb: the cutter rolls along the wall (best finish on a rigid machine); conventional: against it (kinder to a machine with backlash)'),
+};
 
 export const MillPocketRect = z.object({
   type: z.literal('mill_pocket_rect'),
@@ -243,6 +248,7 @@ export const MillPocketRect = z.object({
   stepover: z.number().gt(0).max(1).default(0.45),
   entry: z.enum(['ramp', 'plunge']).default('ramp').describe('How the tool gets down to each level'),
   rampAngle,
+  ...wallFinish,
 });
 
 export const MillPocketCircle = z.object({
@@ -255,6 +261,7 @@ export const MillPocketCircle = z.object({
   stepover: z.number().gt(0).max(1).default(0.45),
   entry: z.enum(['helix', 'plunge']).default('helix').describe('How the tool gets down to each level'),
   rampAngle,
+  ...wallFinish,
 });
 
 export const MillContourRect = z.object({
@@ -265,6 +272,7 @@ export const MillContourRect = z.object({
   side: z.enum(['outside', 'inside']).default('outside').describe('Which side of the line the tool runs'),
   entry: z.enum(['ramp', 'plunge']).default('ramp').describe('How the tool gets down to each level'),
   rampAngle,
+  ...wallFinish,
   tabs: z.number().int().min(0).max(16).default(0).describe('Holding tabs left standing so a cut-out part stays in place'),
   tabWidth: pos.default(4).describe('Tab width along the edge'),
   tabHeight: pos.default(1).describe('Tab height above the bottom'),
@@ -295,6 +303,7 @@ export type Shape = z.infer<typeof Shape>;
 const shapeEntry = {
   entry: z.enum(['ramp', 'plunge']).default('ramp').describe('ramp: down along the path at the ramp angle; plunge: straight down'),
   rampAngle,
+  ...wallFinish,
 };
 
 export const MillContour = z.object({

@@ -51,6 +51,7 @@ const LABELS: Record<string, [string, string?]> = {
   side: ['Side'],
   points: ['Points'],
   entry: ['Entry'],
+  direction: ['Cutting direction'],
   pitch: ['Pitch', 'mm'],
   firstCut: ['First pass depth', 'mm'],
   springPasses: ['Spring passes'],

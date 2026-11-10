@@ -77,7 +77,7 @@ const millExample: JobInput = {
   material: '6082',
   operations: [
     { id: 'op1', type: 'mill_face', tool: 2, z: 0 },
-    { id: 'op2', type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 40, h: 20, zBottom: -5, zTop: 0 },
+    { id: 'op2', type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 40, h: 20, zBottom: -5, zTop: 0, finish: 0.2 },
     { id: 'op3', type: 'mill_drill', tool: 3, points: [{ x: 8, y: 8 }, { x: 72, y: 8 }, { x: 72, y: 42 }, { x: 8, y: 42 }], zBottom: -16, zTop: 0, peck: 4 },
   ],
 };
