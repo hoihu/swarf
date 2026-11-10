@@ -6,6 +6,15 @@
 import * as THREE from 'three';
 import { LatheMaterial, MillMaterial, arcPoints, walk, type Job, type Program, type Vec3 } from '@swarf/cam';
 
+/** How the work looks: cut surfaces bright, what is left of the raw stock duller. */
+export interface WorkLook {
+  color: string;
+  raw: string;
+  metalness: number;
+  roughness: number;
+}
+const PLAIN: WorkLook = { color: '#b8c2c2', raw: '#b8c2c2', metalness: 0.55, roughness: 0.4 };
+
 export const COLORS = {
   feed: new THREE.Color('#6fb2e8'),
   rapid: new THREE.Color('#ef8a4c'),
@@ -128,7 +137,7 @@ export function pathGeometry(program: Program, selectedOp: string | null): PathG
 }
 
 /** The turned part: outer radius and bore revolved around the spindle axis. */
-export function latheMesh(m: LatheMaterial): THREE.Mesh {
+export function latheMesh(m: LatheMaterial, look: WorkLook = PLAIN, rawRadius = Infinity): THREE.Mesh {
   const step = Math.max(1, Math.floor(m.n / 600));
   const outer: THREE.Vector2[] = [];
   const inner: THREE.Vector2[] = [];
@@ -155,8 +164,21 @@ export function latheMesh(m: LatheMaterial): THREE.Mesh {
   // LatheGeometry revolves around Y; the spindle runs along scene X
   g.rotateZ(-Math.PI / 2);
   g.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ color: COLORS.material, metalness: 0.55, roughness: 0.38, side: THREE.DoubleSide });
-  return new THREE.Mesh(g, mat);
+  // the bar's own skin where nothing has been turned off, bright metal elsewhere
+  const cut = new THREE.Color(look.color);
+  const raw = new THREE.Color(look.raw);
+  const col = new Float32Array(g.getAttribute('position').count * 3);
+  const isRaw = pts.map((p, k) => k >= 1 && k <= outer.length + 1 && p.x >= rawRadius - 1e-3);
+  for (let v = 0; v < col.length / 3; v++) {
+    const c = isRaw[v % pts.length] ? raw : cut;
+    col.set([c.r, c.g, c.b], v * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: look.metalness, roughness: look.roughness, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 /** The chuck body behind the stock, for orientation. */
@@ -169,7 +191,7 @@ export function chuckMesh(chuckZ: number, diameter: number): THREE.Mesh {
 }
 
 /** The milled block: height map as a stepped top surface plus walls down to the bottom. */
-export function millMesh(m: MillMaterial): THREE.Group {
+export function millMesh(m: MillMaterial, look: WorkLook = PLAIN): THREE.Group {
   const group = new THREE.Group();
   // resample to at most ~250 cells per side for the mesh
   const k = Math.max(1, Math.ceil(Math.max(m.nx, m.ny) / 250));
@@ -187,7 +209,15 @@ export function millMesh(m: MillMaterial): THREE.Group {
 
   // one flat quad per cell top, plus vertical faces where neighbours differ (a voxel-style skin)
   const pos: number[] = [];
-  const quad = (a: number[], b: number[], c: number[], d: number[]) => pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+  const col: number[] = [];
+  const cutC = new THREE.Color(look.color);
+  const rawC = new THREE.Color(look.raw);
+  // `raw`: a face of the block as it came (its top where nothing was taken off, its outside)
+  const quad = (a: number[], b: number[], c: number[], d: number[], raw: boolean) => {
+    pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+    const k = raw ? rawC : cutC;
+    for (let v = 0; v < 6; v++) col.push(k.r, k.g, k.b);
+  };
   const P = (x: number, y: number, z: number) => [x, z, -y];
   const bottom = m.bottom;
   const H = (i: number, j: number) => (i < 0 || j < 0 || i >= nx || j >= ny ? bottom : heights[j * nx + i]!);
@@ -198,23 +228,27 @@ export function millMesh(m: MillMaterial): THREE.Group {
       const x1 = Math.min(m.sx, (i + 1) * cw);
       const y0 = j * cw;
       const y1 = Math.min(m.sy, (j + 1) * cw);
-      if (h > bottom + 1e-4) quad(P(x0, y0, h), P(x1, y0, h), P(x1, y1, h), P(x0, y1, h));
-      // walls towards lower neighbours (+x, -x, +y, -y)
+      if (h > bottom + 1e-4) quad(P(x0, y0, h), P(x1, y0, h), P(x1, y1, h), P(x0, y1, h), h >= m.top - 1e-4);
+      // walls towards lower neighbours (+x, -x, +y, -y); the block's own outside is raw
       const hx1 = H(i + 1, j);
-      if (hx1 < h) quad(P(x1, y0, hx1), P(x1, y1, hx1), P(x1, y1, h), P(x1, y0, h));
+      if (hx1 < h) quad(P(x1, y0, hx1), P(x1, y1, hx1), P(x1, y1, h), P(x1, y0, h), i + 1 >= nx);
       const hx0 = H(i - 1, j);
-      if (hx0 < h) quad(P(x0, y1, hx0), P(x0, y0, hx0), P(x0, y0, h), P(x0, y1, h));
+      if (hx0 < h) quad(P(x0, y1, hx0), P(x0, y0, hx0), P(x0, y0, h), P(x0, y1, h), i === 0);
       const hy1 = H(i, j + 1);
-      if (hy1 < h) quad(P(x1, y1, hy1), P(x0, y1, hy1), P(x0, y1, h), P(x1, y1, h));
+      if (hy1 < h) quad(P(x1, y1, hy1), P(x0, y1, hy1), P(x0, y1, h), P(x1, y1, h), j + 1 >= ny);
       const hy0 = H(i, j - 1);
-      if (hy0 < h) quad(P(x0, y0, hy0), P(x1, y0, hy0), P(x1, y0, h), P(x0, y0, h));
+      if (hy0 < h) quad(P(x0, y0, hy0), P(x1, y0, hy0), P(x1, y0, h), P(x0, y0, h), j === 0);
     }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ color: COLORS.material, metalness: 0.5, roughness: 0.42, flatShading: true, side: THREE.DoubleSide });
-  group.add(new THREE.Mesh(g, mat));
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: look.metalness, roughness: look.roughness, flatShading: true, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
 
   // the raw stock as an outline
   const box = new THREE.BoxGeometry(m.sx, m.top - bottom, m.sy);

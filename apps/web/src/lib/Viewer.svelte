@@ -3,12 +3,23 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { LatheMaterial, MillMaterial, simulate, walk, type Job, type Program, type Vec3 } from '@swarf/cam';
-  import { chuckMesh, drawingLines, latheMesh, millMesh, obstacleMeshes, pathGeometry, sceneToWork, stockOutline, toScene, toolMesh, type PathGeometry } from './scene.ts';
+  import { drawingLines, latheMesh, millMesh, obstacleMeshes, pathGeometry, sceneToWork, stockOutline, toScene, type PathGeometry } from './scene.ts';
+  import { CHIPS, Chips, Coolant } from './workshop/particles.ts';
+  import { METAL, bedMesh, chuckGroup, latheToolMesh, millToolMesh, nozzleMesh, tableMesh } from './workshop/stage.ts';
+  import { SURROUNDS, cover, makeSurround, type Surround } from './workshop/surround.ts';
+  import { MachineSound } from './workshop/sound.ts';
+  import { look } from './workshop/look.svelte.ts';
   import { camera as cam } from './camera/camera.svelte.ts';
   import { glProjection, glView } from './camera/geometry.ts';
   import { laserScan } from './camera/laserscan.svelte.ts';
 
-  let { job, program, selected = null, live = null }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null } = $props();
+  let {
+    job,
+    program,
+    selected = null,
+    live = null,
+    spindle = 0,
+  }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null; /** The connected machine's spindle speed (0: off). */ spindle?: number } = $props();
 
   let host: HTMLDivElement;
   let renderer: THREE.WebGLRenderer | null = null;
@@ -38,7 +49,93 @@
   let fixture: THREE.Object3D | null = null;
   let tool: THREE.Object3D | null = null;
   let toolKey = '';
-  let tips: { p: Vec3; tool: number }[] = [];
+  let tips: { p: Vec3; tool: number; cut: boolean; rpm: number }[] = [];
+
+  // ---- the workshop around it: surroundings, table, chips, coolant, sound ----
+  const chips = new Chips();
+  const coolant = new Coolant();
+  const sound = new MachineSound();
+  let surround: Surround | null = null;
+  let keyLight: THREE.DirectionalLight | null = null;
+  let hemi: THREE.HemisphereLight | null = null;
+  let stage: THREE.Object3D | null = null;
+  let nozzle: THREE.Object3D | null = null;
+  /** The coolant between the nozzle and the cutter: a thin stream (the drops are what splashes off). */
+  const jet = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.8, 1, 10, 1, true).translate(0, 0.5, 0), coolant.mesh.material);
+  jet.visible = false;
+  /** The machine's own lamp, for the night shift: warm, from beside the spindle, on the work. */
+  const lamp = new THREE.SpotLight(0xffd9a8, 0, 0, 0.6, 0.6, 0);
+  lamp.castShadow = false;
+  let material: LatheMaterial | MillMaterial | null = null;
+  const partMaterials = new Map<string, THREE.MeshStandardMaterial>();
+  let lastTime = 0;
+  /** Where the cutter's tip was at the last frame (scene), for the chips between there and here. */
+  const lastTip = new THREE.Vector3();
+  let haveTip = false;
+  let menu = $state(false);
+  let dropping = $state(false);
+  let fileInput: HTMLInputElement | undefined = $state();
+
+  /** Is the cutter in the work at this tip position (work coordinates)? Roughly: within the stock. */
+  function engaged(p: Vec3, toolId: number): boolean {
+    const s = job.stock;
+    const r = (job.tools.find((t) => t.id === toolId)?.diameter ?? 6) / 2;
+    if (s.kind === 'block') return p.z <= s.top + 0.02 && p.x > -r && p.x < s.x + r && p.y > -r && p.y < s.y + r;
+    return p.x <= s.diameter / 2 + 0.02 && p.z <= s.front + 0.02;
+  }
+
+  /** The ground for what falls: the work as it is cut, the table around it (mill); the bed (lathe). */
+  function setGround(): void {
+    const s = job.stock;
+    if (s.kind === 'block') {
+      const ext = stage?.userData.extent as { x0: number; x1: number; z0: number; z1: number } | undefined;
+      const bottom = s.top - s.z;
+      const m = material instanceof MillMaterial ? material : null;
+      const ground = (x: number, z: number) => {
+        const y = -z;
+        if (m && x >= 0 && y >= 0 && x < m.sx && y < m.sy) return m.h[Math.min(m.ny - 1, Math.floor(y / m.cell)) * m.nx + Math.min(m.nx - 1, Math.floor(x / m.cell))]!;
+        if (ext && x > ext.x0 && x < ext.x1 && z > ext.z0 && z < ext.z1) return bottom;
+        return -Infinity;
+      };
+      chips.ground = ground;
+      coolant.ground = ground;
+    } else {
+      const y = -Math.max(s.diameter * 1.1, (job.machine.chuckDiameter ?? s.diameter * 2.5) / 2 + 12);
+      const ground = (x: number, z: number) => (Math.abs(z) < s.diameter * 1.6 && x > s.front - s.stickout - 60 && x < s.front + 80 ? y + 5 : -Infinity);
+      chips.ground = ground;
+      coolant.ground = ground;
+    }
+  }
+
+  /** The surroundings as the look says. */
+  function applySurround(): void {
+    if (!renderer) return;
+    surround?.dispose();
+    surround = makeSurround(renderer, look.surround, look.picture, look.soften);
+    scene.environment = surround.environment;
+    scene.environmentIntensity = surround.light;
+    placeBackground();
+    if (keyLight) keyLight.intensity = 2.2 * surround.light;
+    if (hemi) hemi.intensity = 0.5 * surround.light;
+    // at night the machine's lamp does the work
+    lamp.intensity = look.surround === 'night' ? 3.2 : 0;
+    dirty = true;
+  }
+
+  function placeBackground(): void {
+    if (!surround) return;
+    scene.background = overlay ? null : surround.background;
+    scene.backgroundBlurriness = surround.background && !surround.backdrop && look.surround !== 'picture' ? 0.06 : 0;
+    if (surround.backdrop && surround.background && host) cover(surround.background, host.clientWidth / Math.max(1, host.clientHeight));
+  }
+
+  function onDrop(e: DragEvent): void {
+    e.preventDefault();
+    dropping = false;
+    const f = [...(e.dataTransfer?.files ?? [])].find((x) => x.type.startsWith('image/'));
+    if (f) void look.usePicture(f);
+    else look.error = 'Drop a picture (JPEG, PNG or WebP).';
+  }
 
   // ---- the toolpath over the camera picture ----
   const overlay = $derived(cam.view === 'overlay' && cam.running && cam.ready);
@@ -118,7 +215,7 @@
       const m = x as THREE.Mesh;
       m.geometry?.dispose();
       const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
-      for (const mm of mats) mm.dispose();
+      for (const mm of mats) if (!mm.userData.keep) mm.dispose();
     });
   }
 
@@ -130,7 +227,10 @@
     todoLines = new THREE.LineSegments(path.geometry.clone(), new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.22 }));
     world.add(todoLines, doneLines);
     tips = [];
-    for (const w of walk(program)) tips.push({ p: w.move.to, tool: program.segments[w.seg]!.tool });
+    for (const w of walk(program)) {
+      const seg = program.segments[w.seg]!;
+      tips.push({ p: w.move.to, tool: seg.tool, cut: w.move.type !== 'rapid' && (engaged(w.move.to, seg.tool) || engaged(w.from, seg.tool)), rpm: seg.rpm });
+    }
     total = tips.length;
     if (followEnd || at > total) at = total;
   }
@@ -138,10 +238,27 @@
   function buildPart(): void {
     dirty = true;
     dispose(part);
-    const { material } = simulate(job, program, at);
-    if (material instanceof LatheMaterial) part = latheMesh(material);
-    else if (material instanceof MillMaterial) part = millMesh(material);
+    material = simulate(job, program, at).material;
+    const metal = METAL[job.workMaterial] ?? METAL.aluminium!;
+    if (material instanceof LatheMaterial) part = latheMesh(material, metal, job.stock.kind === 'bar' ? job.stock.diameter / 2 : Infinity);
+    else if (material instanceof MillMaterial) part = millMesh(material, metal);
     else part = null;
+    // the part is rebuilt at every step of the program: one material for all of them (a new one
+    // each time would have its shader compiled again each time)
+    part?.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+      if (!mesh.isMesh || !mat?.isMeshStandardMaterial) return;
+      const key = `${job.workMaterial}:${mat.flatShading}`;
+      let kept = partMaterials.get(key);
+      if (!kept) {
+        kept = mat;
+        kept.userData.keep = true;
+        partMaterials.set(key, kept);
+      } else mat.dispose();
+      mesh.material = kept;
+    });
+    setGround();
     if (part) {
       part.visible = !overlay;
       world.add(part);
@@ -150,8 +267,11 @@
 
   function buildFixture(): void {
     dispose(fixture);
+    dispose(stage);
     fixture = null;
-    if (job.stock.kind === 'block') {
+    stage = null;
+    const s = job.stock;
+    if (s.kind === 'block') {
       const g = new THREE.Group();
       const lines = drawingLines(job);
       const obs = obstacleMeshes(job);
@@ -159,10 +279,21 @@
       if (obs) g.add(obs);
       fixture = g;
       world.add(fixture);
-    } else if (job.stock.kind === 'bar') {
-      fixture = chuckMesh(job.stock.front - job.stock.stickout, job.machine.chuckDiameter ?? job.stock.diameter * 2.5);
-      world.add(fixture);
+      stage = tableMesh(s.x, s.y, s.top - s.z);
+    } else if (s.kind === 'bar') {
+      const d = job.machine.chuckDiameter ?? s.diameter * 2.5;
+      const chuck = chuckGroup(s.front - s.stickout, d, s.diameter);
+      fixture = chuck;
+      world.add(chuck);
+      stage = bedMesh(s.front - s.stickout - Math.max(20, d * 0.35) - 10, s.front + 60, -Math.max(s.diameter * 1.1, d / 2 + 12), Math.max(60, s.diameter * 2.4));
     }
+    if (stage) {
+      stage.visible = !overlay;
+      world.add(stage);
+    }
+    chips.clear();
+    coolant.clear();
+    setGround();
   }
 
   function placeTool(): void {
@@ -171,11 +302,21 @@
     const p = t?.p ?? program.home;
     const id = t?.tool ?? program.segments[0]?.tool ?? 0;
     const spec = job.tools.find((x) => x.id === id);
-    const key = `${lathe}:${spec?.diameter ?? 0}`;
+    const d = spec?.diameter ?? 6;
+    const key = `${lathe}:${spec?.type}:${d}:${look.coolant}`;
     if (key !== toolKey) {
       dispose(tool);
-      tool = toolMesh(lathe, spec?.diameter ?? 6);
-      world.add(tool);
+      const made: THREE.Object3D = lathe ? latheToolMesh() : millToolMesh(spec?.type === 'drill' ? 'drill' : 'endmill', d, spec?.fluteLength, spec?.flutes ?? 3);
+      // the coolant hose comes down beside the cutter and looks at its tip
+      nozzle = null;
+      if (look.coolant) {
+        const size = Math.max(1.6, Math.min(3.2, d * 0.35));
+        const top = (made.userData.top as number | undefined) ?? 30;
+        nozzle = lathe ? nozzleMesh(new THREE.Vector3(26, 44, 10), new THREE.Vector3(12, 16, 7), size) : nozzleMesh(new THREE.Vector3(-d - 13, top * 0.85, d + 9), new THREE.Vector3(-d * 0.8 - 7, Math.max(9, d * 1.7), d * 0.6 + 5), size);
+        made.add(nozzle);
+      }
+      tool = made;
+      world.add(made);
       toolKey = key;
     }
     tool!.position.copy(toScene(live ?? p, lathe));
@@ -214,6 +355,17 @@
     camera.far = size * 50;
     camera.updateProjectionMatrix();
     controls.update();
+    if (keyLight) {
+      // the light looks at the work; its shadow covers the work and the table around it
+      keyLight.target.position.copy(center);
+      keyLight.position.copy(center).add(new THREE.Vector3(0.45, 1, 0.6).multiplyScalar(size * 2.5));
+      const c = keyLight.shadow.camera;
+      c.left = c.bottom = -size * 1.3;
+      c.right = c.top = size * 1.3;
+      c.near = size * 0.5;
+      c.far = size * 6;
+      c.updateProjectionMatrix();
+    }
     dirty = true;
   }
 
@@ -223,8 +375,69 @@
     simTimer = window.setTimeout(buildPart, 30);
   }
 
-  function frame(): void {
+  /** Chips, coolant, the turning of the cutter and the chuck, the sound: `dt` seconds on. */
+  function effects(dt: number): void {
+    const lathe = program.kind === 'lathe';
+    const t = at > 0 ? tips[at - 1] : null;
+    // the simulated run, or the machine itself
+    const rpm = live ? spindle : playing && t ? t.rpm : 0;
+    const tip = tool ? tool.position : lastTip;
+    const moved = haveTip && tip.distanceToSquared(lastTip) > 1e-8;
+    const cutting = !overlay && rpm > 0 && moved && (live ? engaged(live, t?.tool ?? 0) : !!t?.cut);
+    if (rpm > 0 && !overlay) {
+      const turn = dt * Math.min(40, Math.max(8, rpm / 150));
+      const spin = (lathe ? fixture : tool)?.userData.spin as THREE.Object3D | undefined;
+      if (spin) {
+        if (lathe) spin.rotation.x -= turn;
+        else spin.rotation.y -= turn;
+      }
+      dirty = true;
+    }
+    if (cutting && look.chips) {
+      const d = job.tools.find((x) => x.id === (t?.tool ?? 0))?.diameter ?? 6;
+      const away = new THREE.Vector3();
+      if (lathe) away.set(0.35, 0.5, 0.8).normalize();
+      else {
+        // behind the cutter and to the side its edge moves away on
+        const f = tip.clone().sub(lastTip).setY(0);
+        if (f.lengthSq() < 1e-10) f.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+        f.normalize();
+        away.set(-f.x * 0.6 - f.z * 0.8, 0.3, -f.z * 0.6 + f.x * 0.8).normalize();
+      }
+      chips.emit(CHIPS[job.workMaterial] ?? CHIPS.aluminium!, lastTip, tip, away, lathe ? Math.max(4, d ?? 6) : d, dt);
+    }
+    if (look.coolant && rpm > 0 && !overlay && nozzle && tool) {
+      const mouth = (nozzle.userData.mouth as THREE.Vector3).clone().add(tool.position);
+      const d = job.tools.find((x) => x.id === (t?.tool ?? 0))?.diameter ?? 6;
+      const target = lathe ? tip.clone().add(new THREE.Vector3(0.5, 0.5, 0)) : tip.clone().add(new THREE.Vector3(-d * 0.3, d * 0.5, d * 0.2));
+      const width = Math.max(0.9, Math.min(1.6, d * 0.2));
+      coolant.emit(mouth, target, width, dt);
+      // the stream itself, wavering a little
+      const dir = target.clone().sub(mouth);
+      jet.position.copy(mouth);
+      jet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+      const wob = 1 + 0.12 * Math.sin(performance.now() / 45);
+      jet.scale.set(width * 0.55 * wob, dir.length(), width * 0.55 / wob);
+      jet.visible = true;
+    } else jet.visible = false;
+    // the lamp follows the spindle
+    if (tool && lamp.intensity > 0) {
+      const size = job.stock.kind === 'block' ? Math.max(job.stock.x, job.stock.y) : job.stock.kind === 'bar' ? job.stock.stickout : 100;
+      lamp.position.copy(tool.position).add(new THREE.Vector3(-size * 0.35, size * 0.9, size * 0.5));
+      lamp.target.position.copy(tool.position);
+    }
+    chips.mesh.visible = coolant.mesh.visible = !overlay;
+    if (chips.update(dt)) dirty = true;
+    if (coolant.update(dt)) dirty = true;
+    if (look.sound) sound.set(overlay ? 0 : rpm, cutting ? 1 : 0);
+    lastTip.copy(tip);
+    haveTip = !!tool;
+  }
+
+  function frame(now = 0): void {
     raf = requestAnimationFrame(frame);
+    const dt = Math.min(0.05, lastTime ? (now - lastTime) / 1000 : 0.016);
+    lastTime = now;
     if (playing) {
       if (at >= total) playing = false;
       else {
@@ -232,6 +445,7 @@
         onScrub();
       }
     }
+    effects(dt);
     // render only when something changed: software GL (and laptops) thank us
     if (overlay && renderer) {
       // draw on a new camera picture, or when the scene changed
@@ -285,16 +499,35 @@
   onMount(() => {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    // drawn in software (no graphics card to speak of): shadows cost too much there unless asked for
+    const gl = renderer.getContext();
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const software = /swiftshader|llvmpipe|software/i.test(String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : ''));
+    if (software && !look.asked) look.shadows = false;
+    renderer.shadowMap.enabled = look.shadows;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    world.add(chips.mesh, coolant.mesh, jet);
+    scene.add(lamp, lamp.target);
     host.appendChild(renderer.domElement);
     camera = new THREE.PerspectiveCamera(35, 1, 0.1, 5000);
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.12;
 
-    scene.add(new THREE.HemisphereLight(0xe8eee9, 0x30383a, 1.4));
+    // most of the light comes from the surroundings (what the metal reflects); a key light for the shadows
+    hemi = new THREE.HemisphereLight(0xe8eee9, 0x30383a, 0.5);
+    scene.add(hemi);
     const key = new THREE.DirectionalLight(0xffffff, 2.2);
     key.position.set(80, 140, 120);
-    scene.add(key);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.6;
+    scene.add(key, key.target);
+    keyLight = key;
+    applySurround();
     const rim = new THREE.DirectionalLight(0xbcd2ff, 0.8);
     rim.position.set(-120, 40, -80);
     scene.add(rim);
@@ -307,6 +540,7 @@
       const first = camera.aspect === 1 && w !== h;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      placeBackground();
       if (first) fit(true);
       dirty = true;
     });
@@ -320,6 +554,8 @@
     clearTimeout(simTimer);
     resize?.disconnect();
     controls?.dispose();
+    surround?.dispose();
+    sound.stop();
     renderer?.dispose();
   });
 
@@ -398,21 +634,92 @@
       if (part) part.visible = !on;
       // the chuck would hide the real one; drawings and obstacles stay (the obstacles are worth comparing)
       if (fixture) fixture.visible = !on || job.stock.kind === 'block';
+      if (stage) stage.visible = !on;
+      placeBackground();
       controls.enabled = !on;
       dirty = true;
     });
   });
 
+  // the look: surroundings, shadows, the hose, the sound
+  $effect(() => {
+    void look.surround;
+    void look.picture;
+    void look.soften;
+    if (!mounted) return;
+    untrack(applySurround);
+  });
+  $effect(() => {
+    const on = look.shadows;
+    void look.coolant;
+    void look.chips;
+    if (!mounted) return;
+    untrack(() => {
+      if (renderer) renderer.shadowMap.enabled = on;
+      if (keyLight) keyLight.castShadow = on;
+      scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material;
+        for (const x of Array.isArray(m) ? m : m ? [m] : []) x.needsUpdate = true;
+      });
+      if (!look.chips) chips.clear();
+      if (!look.coolant) coolant.clear();
+      toolKey = '';
+      placeTool();
+      dirty = true;
+    });
+  });
+  $effect(() => {
+    if (look.sound) sound.start();
+    else sound.stop();
+  });
+
   const pct = $derived(total ? Math.round((at / total) * 100) : 0);
 </script>
 
-<div class="viewer">
+<div
+  class="viewer"
+  class:pictured={look.surround !== 'plain' && !overlay}
+  role="application"
+  aria-label="3D preview"
+  ondragover={(e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); dropping = true; } }}
+  ondragleave={(e) => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node | null)) dropping = false; }}
+  ondrop={onDrop}
+>
   <div class="canvas" bind:this={host}></div>
+  {#if dropping}<div class="drop"><b>Drop a picture of your workshop</b><span>It becomes the surroundings, and what the metal reflects. A 360° panorama surrounds the machine; any other picture stands behind it.</span></div>{/if}
   <div class="legend" aria-hidden="true">
     <span><i class="sw feed"></i>cutting</span>
     <span><i class="sw rapid"></i>rapid</span>
   </div>
-  {#if !overlay}<button class="fit" onclick={() => fit(true)} title="Reset the view">Reset view</button>{/if}
+  {#if !overlay}
+    <div class="tools">
+      <button class="fit" onclick={() => (menu = !menu)} aria-expanded={menu}>Look</button>
+      <button class="fit" onclick={() => fit(true)} title="Reset the view">Reset view</button>
+    </div>
+    {#if menu}
+      <div class="look" role="dialog" aria-label="How the preview looks">
+        <div class="lbl">Surroundings</div>
+        <div class="chips">
+          {#each SURROUNDS as s (s.name)}
+            {#if s.name !== 'picture' || look.picture}
+              <button class:on={look.surround === s.name} onclick={() => { look.surround = s.name; look.save(); }}>{s.label}</button>
+            {/if}
+          {/each}
+        </div>
+        <p>Drop a picture of your own workshop onto the preview, or <button class="lnk" onclick={() => fileInput?.click()}>choose one</button>.{#if look.picture} <button class="lnk" onclick={() => look.removePicture()}>Remove it</button>{/if}</p>
+        <input bind:this={fileInput} type="file" accept="image/*" hidden onchange={(e) => { const f = e.currentTarget.files?.[0]; if (f) void look.usePicture(f); e.currentTarget.value = ''; }} />
+        {#if look.surround === 'picture'}<label><input type="checkbox" bind:checked={look.soften} onchange={() => look.save()} /> Soften the picture a little</label>{/if}
+        {#if look.error}<p class="err">{look.error}</p>{/if}
+        <div class="lbl">While it cuts</div>
+        <label><input type="checkbox" bind:checked={look.chips} onchange={() => look.save()} /> Chips</label>
+        <label><input type="checkbox" bind:checked={look.coolant} onchange={() => look.save()} /> Coolant</label>
+        <label><input type="checkbox" bind:checked={look.sound} /> Sound</label>
+        <div class="lbl">Light</div>
+        <label><input type="checkbox" bind:checked={look.shadows} onchange={() => { look.asked = true; look.save(); }} /> Shadows</label>
+        <p class="dim">Press play to see it cut. None of this changes the checks or the G-code.</p>
+      </div>
+    {/if}
+  {/if}
   <div class="scrub">
     <button class="play" onclick={play} aria-label={playing ? 'Pause' : 'Play the program'}>
       {#if playing}
@@ -435,8 +742,26 @@
   .sw { width: 16px; height: 0; border-top: 2px solid; display: inline-block; }
   .sw.feed { border-color: #6fb2e8; }
   .sw.rapid { border-color: #ef8a4c; }
-  .fit { position: absolute; right: 12px; top: 10px; background: rgba(255, 255, 255, 0.06); color: var(--on-iron); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; padding: 4px 10px; font-size: 12px; }
+  .tools { position: absolute; right: 12px; top: 10px; display: flex; gap: 6px; }
+  .fit { background: rgba(255, 255, 255, 0.06); color: var(--on-iron); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; padding: 4px 10px; font-size: 12px; }
   .fit:hover { background: rgba(255, 255, 255, 0.12); }
+  /* over a picture: the controls on a dark glass so they stay readable */
+  .pictured .fit, .pictured .legend { background: rgba(20, 22, 24, 0.62); color: #f1f3f4; }
+  .pictured .legend { padding: 4px 9px; border-radius: 6px; }
+  .look { position: absolute; right: 12px; top: 44px; width: 250px; padding: 12px 14px; border-radius: 10px; background: rgba(22, 25, 27, 0.94); color: #eef0f1; font-size: 12.5px; border: 1px solid rgba(255, 255, 255, 0.14); display: flex; flex-direction: column; gap: 5px; z-index: 3; }
+  .look .lbl { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #a9b0b4; margin-top: 6px; }
+  .look .lbl:first-child { margin-top: 0; }
+  .look .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .look .chips button { border: 1px solid rgba(255, 255, 255, 0.18); background: transparent; color: inherit; border-radius: 14px; padding: 3px 10px; font-size: 12px; }
+  .look .chips button.on { background: var(--accent); border-color: var(--accent); color: #1c1a10; font-weight: 600; }
+  .look p { margin: 2px 0; color: #c9ced1; line-height: 1.35; }
+  .look p.dim { color: #8f979b; margin-top: 6px; }
+  .look p.err { color: #ffb4a8; }
+  .look label { display: flex; align-items: center; gap: 7px; }
+  .look .lnk { border: 0; background: none; padding: 0; color: #f2d16b; text-decoration: underline; font-size: inherit; cursor: pointer; }
+  .drop { position: absolute; inset: 10px; border: 2px dashed #f2d16b; border-radius: 14px; background: rgba(20, 22, 24, 0.72); color: #fff; display: grid; place-content: center; text-align: center; gap: 8px; padding: 24px; z-index: 4; pointer-events: none; }
+  .drop b { font-size: 18px; }
+  .drop span { max-width: 420px; color: #d5d9dc; font-size: 13px; }
   .scrub { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.35)); color: var(--on-iron); }
   .scrub input { flex: 1; accent-color: var(--accent); }
   .play { width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--accent); color: #1c1a10; display: grid; place-items: center; flex: none; }

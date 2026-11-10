@@ -53,6 +53,24 @@ writes the .nc file next to your project (refused while the job has errors).
 The server listens on 127.0.0.1 only, accepts the tab only from localhost pages, and only with
 the access key from `~/.swarf/server.json`.
 
+## How the preview looks
+
+The 3D preview shows the work in its surroundings: the mill's table with its T-slots, cutters
+with flutes one can see turn, a chuck with jaws that goes round, the work's material (aluminium,
+steel, brass, plastic) with cut surfaces bright and the raw stock's skin duller. Press play and
+it cuts: **chips** fly off the cutter in the material's own way (curls of aluminium, blued steel,
+a spray of brass needles, long white strings of plastic), tumble, land on the work and the table
+and fade after a while; with **coolant** on, a hose looks at the cutter and the stream splashes
+off it; **sound** (off unless switched on) hums with the spindle and hisses with the cut. The
+same happens while a connected machine runs.
+
+**Look** (top right of the preview) picks the surroundings: a painted workshop, a studio, a
+night shift under the machine's own lamp, or none. Or your own: **drop a picture of your
+workshop onto the preview**. It stands behind the machine and is what the metal reflects; a 360°
+panorama (twice as wide as high, a phone's photo sphere) surrounds the machine and turns with the
+view. The picture stays in this browser only. None of this touches the checks or the G-code
+(`apps/web/src/lib/workshop/`).
+
 ## Run it on the machine
 
 The **Machine** tab streams the program to a grblHAL controller over USB (Web Serial: Chrome or

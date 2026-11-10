@@ -58,7 +58,7 @@
   <main class="panes" data-pane={pane}>
     <div class="pane-job"><JobPanel /></div>
     <div class="pane-view">
-      <Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} />
+      <Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} spindle={machine.status?.spindle ?? 0} />
       {#if camera.running && camera.view === 'camera'}<CameraView />{/if}
     </div>
     <div class="pane-chat"><Chat onSettings={() => (settings = true)} /></div>
