@@ -5,7 +5,7 @@
  * a machine would not).
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { EXAMPLES, Job, analyze, emit, hasErrors } from '@swarf/cam';
+import { EXAMPLES, Job, analyze, emit, hasErrors, resumeFrom } from '@swarf/cam';
 import { SimGrbl, Streamer, type JobState } from '@swarf/grbl';
 import { simWorld } from '../src/lib/simworld.ts';
 import type { SetupName } from '../src/lib/sim/setups.ts';
@@ -94,4 +94,72 @@ describe('programs on the simulated mill', () => {
     // and the travel height clears the bolts
     expect(a.program.home.z).toBeGreaterThan(36);
   }, 30000);
+  it('stopped in the middle of the pocket, started again at the pocket: it comes back from above, finishes, and touches nothing', async () => {
+    const job = EXAMPLES.mill();
+    const a = analyze(job);
+    const sim = new SimGrbl({ wco: [-200, -120, -80], mpos: [-160, -95, -30], speed: 300, rapid: 3000 });
+    simWorld.origin = [...sim.wco] as [number, number, number];
+    simWorld.setup = 'toe';
+    simWorld.crashes = [];
+    const dia = (id: number) => job.tools.find((t) => t.id === id)!.diameter!;
+    sim.onStep = (p, m) => simWorld.watch(job, p, m.jog ? 'jog' : m.rapid ? 'rapid' : 'feed');
+    const states: JobState[] = [];
+    let line = -1;
+    const s = new Streamer(sim, { job: (st) => states.push(st), progress: (_a, _t, src) => (line = src) }, { pollMs: 4 });
+    await wait(20);
+    const whole = emit(job, a.program);
+    const seg = a.program.segments.findIndex((x) => x.opId === 'op2');
+    let first = 0;
+    for (let i = 0; i < seg; i++) first += a.program.segments[i]!.moves.length;
+    const pocketLine = whole.lineOfMove[first + 12]!;
+    simWorld.toolDiameter = dia(a.program.segments[0]!.tool);
+    await s.run(whole.text, { skipLeadingPause: true });
+    for (let i = 0; i < 4000 && line < pocketLine; i++) {
+      if (s.jobState === 'waiting') {
+        simWorld.toolDiameter = dia(a.program.segments[seg]!.tool);
+        await s.resume();
+      }
+      await wait(5);
+    }
+    // well into the pocket, cutter down in it, spindle on: stop
+    expect(sim.pos[2] - sim.wco[2]).toBeLessThan(0.5);
+    expect(sim.spindle).toBeGreaterThan(0);
+    await s.stop();
+    await wait(80);
+    expect(s.jobState).toBe('stopped');
+    expect(sim.spindle).toBe(0);
+    expect(sim.state).toBe('Idle');
+    const stoodAt = [...sim.pos];
+    // again from the pocket on
+    const r = resumeFrom(job, a.program, seg);
+    expect(hasErrors(r.diagnostics)).toBe(false);
+    const part = emit(job, r.program, { fromSegment: seg });
+    let lowestBeforeHome = Infinity;
+    let reachedHome = false;
+    const watch = sim.onStep;
+    sim.onStep = (p, m) => {
+      watch!(p, m);
+      const w = p.map((v, k) => v - sim.wco[k]!);
+      if (!reachedHome) {
+        // until it is above home: straight up from where it stood, then across at the travel height
+        if (Math.abs(w[0]!) < 1e-6 && Math.abs(w[1]!) < 1e-6) reachedHome = true;
+        else if (Math.hypot(p[0]! - stoodAt[0]!, p[1]! - stoodAt[1]!) > 1e-6) lowestBeforeHome = Math.min(lowestBeforeHome, w[2]!);
+      }
+    };
+    await s.run(part.text, { skipLeadingPause: true });
+    for (let i = 0; i < 6000 && !['done', 'failed', 'stopped'].includes(s.jobState); i++) {
+      if (s.jobState === 'waiting') {
+        simWorld.toolDiameter = dia(a.program.segments.at(-1)!.tool);
+        await s.resume();
+      }
+      await wait(5);
+    }
+    await s.close();
+    await sim.close();
+    expect(s.jobState).toBe('done');
+    expect(reachedHome).toBe(true);
+    expect(lowestBeforeHome).toBeCloseTo(a.program.home.z, 6);
+    expect(simWorld.crashes).toEqual([]);
+    expect(sim.spindle).toBe(0);
+  }, 40000);
 });

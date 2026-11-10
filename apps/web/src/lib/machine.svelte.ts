@@ -104,7 +104,8 @@ class Machine {
         progress: (a, total, src) => {
           this.acked = a;
           this.total = total;
-          this.line = src;
+          // (a program started in the middle: its lines as numbered in the whole program)
+          this.line = this.#lineMap ? (this.#lineMap[src] ?? src) : src;
         },
         job: (state, message) => {
           this.job = state;
@@ -154,12 +155,18 @@ class Machine {
     this.job = 'idle';
   }
 
-  /** `firstToolLoaded`: the user has just confirmed it, so the program's pause for loading it is passed over. */
-  async run(gcode: string, firstToolLoaded = false): Promise<void> {
+  #lineMap: number[] | null = null;
+  /**
+   * `firstToolLoaded`: the user has just confirmed it, so the program's pause for loading it is
+   * passed over. `lineMap`: for a program that is the rest of a longer one, each of its lines'
+   * number in the whole one (so the G-code tab and the preview show the right place).
+   */
+  async run(gcode: string, firstToolLoaded = false, lineMap: number[] | null = null): Promise<void> {
     if (!this.#s) return;
     try {
       this.acked = 0;
       this.line = -1;
+      this.#lineMap = lineMap;
       await this.#s.run(gcode, { skipLeadingPause: firstToolLoaded });
     } catch (e) {
       this.message = e instanceof Error ? e.message : String(e);

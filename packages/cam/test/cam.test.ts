@@ -5,6 +5,8 @@ import {
   LatheMaterial,
   MillMaterial,
   analyze,
+  resumeFrom,
+  hasErrors,
   emit,
   levels,
   parseGcode,
@@ -832,5 +834,67 @@ describe('finishing the walls', () => {
     const a = run({ type: 'mill_pocket_rect', tool: 1, x: 10, y: 10, w: 6.5, h: 30, zBottom: -2, finish: 0.2 });
     const b = run({ type: 'mill_pocket_rect', tool: 1, x: 10, y: 10, w: 6.5, h: 30, zBottom: -2 });
     expect(emit(withOps('mill', []), a.program).text).toBe(emit(withOps('mill', []), b.program).text);
+  });
+});
+
+describe('starting again in the middle', () => {
+  // two operations with the same cutter, then another tool: starting at the second has no tool change before it in the full program
+  const job = withOps('mill', [
+    { type: 'mill_pocket_rect', tool: 1, x: 10, y: 10, w: 20, h: 15, zBottom: -3 },
+    { type: 'mill_pocket_circle', tool: 1, cx: 55, cy: 30, diameter: 20, zBottom: -4 },
+    { type: 'mill_drill', tool: 3, points: [{ x: 8, y: 40 }], zBottom: -6, peck: 2 },
+  ]);
+  const full = analyze(job);
+
+  it('the program from an operation on: begins like a tool change, has nothing of what came before, ends the same', () => {
+    const whole = emit(job, full.program);
+    for (let seg = 1; seg < full.program.segments.length; seg++) {
+      const r = resumeFrom(job, full.program, seg);
+      expect(r.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+      const part = emit(job, r.program, { fromSegment: seg });
+      const lines = part.text.split('\n').filter((l) => l && !l.startsWith('('));
+      const s = full.program.segments[seg]!;
+      const home = full.program.home;
+      // modes, the pause for the tool, modes again, straight up, across, spindle
+      expect(lines.slice(0, 8)).toEqual(['G21 G90 G94 G54', 'G17', 'M0', 'G21 G90 G94 G54', 'G17', `G0 Z${home.z}`, `G0 X${home.x} Y${home.y}`, `S${s.rpm} M3`]);
+      expect(part.text).toContain(`starting again at ${s.opId}`);
+      expect(part.text).toContain(`Load T${s.tool}`);
+      for (const earlier of full.program.segments.slice(0, seg)) expect(part.text).not.toContain(`(${earlier.opId}:`);
+      // every move of the rest is there, in the same words as in the whole program (after its first positioning)
+      expect(part.lineOfMove.slice(0, r.firstMove).every((l) => l === -1)).toBe(true);
+      expect(part.lineOfMove.slice(r.firstMove).every((l) => l >= 0)).toBe(true);
+      const tail = (text: string) => text.slice(text.indexOf(`(${s.opId}:`)).split('\n').filter((l) => /^(G1|G2|G3)\b|^[XYZ]/.test(l));
+      const [tp, tw] = [tail(part.text), tail(whole.text)];
+      const n = Math.min(tp.length, tw.length) - 4;
+      expect(n).toBeGreaterThan(5);
+      expect(tp.slice(-n)).toEqual(tw.slice(-n));
+      expect(lines.slice(-2)).toEqual(['M5', 'M30']);
+      // read back: it starts from home and visits the same places
+      const parsed = parseGcode(part.text, 'mill');
+      expect(parsed.warnings).toEqual([]);
+      const rest = full.program.segments.slice(seg).flatMap((x) => x.moves).map((m) => m.to);
+      const last = parsed.moves.at(-1)!.move.to;
+      expect([last.x, last.y, last.z]).toEqual([rest.at(-1)!.x, rest.at(-1)!.y, rest.at(-1)!.z]);
+    }
+  });
+
+  it('the way back in comes from home, and is checked: something tall in it is an error for the restart only', () => {
+    // a post between home (X0 Y0) and the second pocket, taller than the rapids fly but not known when the travel height was set
+    const r = resumeFrom(job, full.program, 1);
+    // in the whole program the cutter goes from the first pocket to the second at the safe height; restarting, it comes from home
+    const first = r.program.segments[1]!.moves[0]!;
+    const before = r.program.segments[0]!.moves.at(-1)!;
+    expect(before.to).toEqual(full.program.home);
+    expect(first.type).toBe('rapid');
+    expect(r.added).toBeGreaterThan(0);
+    // errors of operations already done do not hold a restart up; those of what will run do
+    const bad = Job.parse({ ...job, operations: [{ type: 'mill_pocket_rect', tool: 1, x: 10, y: 10, w: 20, h: 15, zBottom: -3, zTop: -1 }, ...job.operations.slice(1)] });
+    const a = analyze(bad);
+    expect(hasErrors(a.diagnostics)).toBe(true);
+    expect(hasErrors(resumeFrom(bad, a.program, 1).diagnostics)).toBe(false);
+    // (a pocket said to start 1 mm down in solid stock: its approach is a rapid into material)
+    const bad2 = Job.parse({ ...job, operations: [...job.operations.slice(0, 2), { type: 'mill_pocket_rect', tool: 1, x: 40, y: 5, w: 20, h: 12, zBottom: -3, zTop: -1 }] });
+    const a2 = analyze(bad2);
+    expect(hasErrors(resumeFrom(bad2, a2.program, 1).diagnostics)).toBe(true);
   });
 });

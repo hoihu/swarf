@@ -31,7 +31,14 @@ function stockLine(job: Job): string {
 
 const comment = (s: string) => `(${s.replace(/[()]/g, '')})`;
 
-export function emit(job: Job, program: Program): Emitted {
+/**
+ * `fromSegment`: write the program from that segment on only (starting again after a stop, see
+ * `resumeFrom` in check.ts). It begins like any tool change: the tool is asked for, the modes
+ * said, and the tool rises straight up before it goes anywhere. `lineOfMove` still counts every
+ * move of the program; those left out have line -1.
+ */
+export function emit(job: Job, program: Program, o: { fromSegment?: number } = {}): Emitted {
+  const from = o.fromSegment ?? 0;
   const lathe = program.kind === 'lathe';
   const dia = lathe && job.machine.xMode === 'diameter';
   const X = (x: number) => (dia ? x * 2 : x);
@@ -42,6 +49,7 @@ export function emit(job: Job, program: Program): Emitted {
   lines.push(comment(`${job.machine.name}, ${lathe ? 'lathe' : 'mill'}, mm`));
   lines.push(comment(stockLine(job)));
   if (lathe) lines.push(comment(`X is a ${dia ? 'diameter' : 'radius'}; Z0 = finished front face`));
+  if (from > 0) lines.push(comment(`starting again at ${program.segments[from]?.opId ?? '?'}: everything before it is taken as done`));
   // the modes the program relies on: said at the start and again after every tool change (touching
   // off by hand may have left others); G97 so that S is rpm, not a surface speed left from before
   const modes = () => lines.push('G21 G90 G94 G54', lathe ? `G18 ${dia ? 'G7' : 'G8'} G97` : 'G17');
@@ -74,6 +82,10 @@ export function emit(job: Job, program: Program): Emitted {
   let rpm: number | null = null;
   let segIndex = -1;
   for (const { seg, move } of walk(program)) {
+    if (seg < from) {
+      lineOfMove.push(-1);
+      continue;
+    }
     if (seg !== segIndex) {
       segIndex = seg;
       const s = program.segments[seg]!;

@@ -3,7 +3,7 @@
  * deeper than the tool can take. Runs the material model move by move, so it also yields the
  * finished part for the preview.
  */
-import { generate, type Diagnostic } from './generate.ts';
+import { generate, retract, type Diagnostic } from './generate.ts';
 import { walk, type Program } from './program.ts';
 import { plannedSeconds } from './planner.ts';
 import type { Job, Tool, Vec3 } from './schema.ts';
@@ -158,3 +158,31 @@ export function analyze(job: Job): Analysis {
 }
 
 export const hasErrors = (d: Diagnostic[]) => d.some((x) => x.severity === 'error');
+
+/**
+ * Starting again at segment `seg` (after a stop, a broken tool): the program as it will then run,
+ * and what the checks say about it. Everything before `seg` is taken as done (its material gone);
+ * the tool comes to `seg` from the home position, not from where the segment before ended, so
+ * that way is put into the program (the segment before now ends at home) and checked like any
+ * other. Emit the result with `fromSegment: seg`. `firstMove`: the index of `seg`'s first move.
+ */
+export function resumeFrom(job: Job, program: Program, seg: number): { program: Program; diagnostics: Diagnostic[]; firstMove: number; added: number } {
+  if (seg <= 0 || seg >= program.segments.length) return { program, diagnostics: simulate(job, program).diagnostics, firstMove: 0, added: 0 };
+  const before = program.segments[seg - 1]!;
+  let end = program.home;
+  for (let i = seg - 1; i >= 0; i--) {
+    const last = program.segments[i]!.moves.at(-1);
+    if (last) {
+      end = last.to;
+      break;
+    }
+  }
+  const way = retract(end, program.home);
+  const segments = program.segments.map((s, i) => (i === seg - 1 ? { ...before, moves: [...before.moves, ...way] } : s));
+  const joined: Program = { ...program, segments };
+  let firstMove = 0;
+  for (let i = 0; i < seg; i++) firstMove += segments[i]!.moves.length;
+  // what matters is what will be run: the way from home into the segment, and everything after
+  const diagnostics = simulate(job, joined).diagnostics.filter((d) => d.move === undefined || d.move >= firstMove - way.length);
+  return { program: joined, diagnostics, firstMove, added: way.length };
+}

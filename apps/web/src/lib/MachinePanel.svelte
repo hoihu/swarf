@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { emit, hasErrors, resumeFrom } from '@swarf/cam';
   import JogPanel from './JogPanel.svelte';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
@@ -15,13 +16,11 @@
   };
   let log: HTMLDivElement | undefined = $state();
 
-  const errors = $derived(store.analysis.diagnostics.some((d) => d.severity === 'error'));
   const st = $derived(machine.status?.state ?? 'Unknown');
   // lines of the program are under way or held: nothing else may be sent
   const busy = $derived(machine.job === 'running' || machine.job === 'paused');
   // the program waits at a tool change: the machine is free for touching off
   const waiting = $derived(machine.job === 'waiting');
-  const canStart = $derived(machine.connected && !busy && !waiting && !errors && st === 'Idle' && !machine.lost);
 
   // leaving the page while a program runs stops feeding it; the machine would run what it has and stand with the spindle on
   $effect(() => {
@@ -49,21 +48,79 @@
   const pct = $derived(machine.total ? Math.round((machine.acked / machine.total) * 100) : 0);
   const fmt = (n: number | undefined) => (n === undefined ? '–' : n.toFixed(3));
 
+  // ---- starting in the middle: after a stop or a broken tool, from an operation on ----
+  /** The operations of the program in order, each with its first segment. */
+  const starts = $derived.by(() => {
+    const out: { seg: number; opId: string; label: string; tool: number }[] = [];
+    store.analysis.program.segments.forEach((s, i) => {
+      if (out.at(-1)?.opId !== s.opId) out.push({ seg: i, opId: s.opId, label: s.label, tool: s.tool });
+    });
+    return out;
+  });
+  /** The operation to start at (its id; '': the whole program). */
+  let startAt = $state('');
+  $effect(() => {
+    // the job changed under it
+    if (startAt && !starts.some((s) => s.opId === startAt)) startAt = '';
+  });
+  const startSeg = $derived(starts.find((s) => s.opId === startAt)?.seg ?? 0);
+  const resume = $derived(startSeg > 0 ? resumeFrom(store.job, store.analysis.program, startSeg) : null);
+  // what will be run must be free of errors (errors of operations already done do not hold a restart up)
+  const errors = $derived(hasErrors(resume ? resume.diagnostics : store.analysis.diagnostics));
+  const canStart = $derived(machine.connected && !busy && !waiting && !errors && st === 'Idle' && !machine.lost);
+  /** The operation the program was in when it last stopped short (offered as the place to start again). */
+  let stoppedIn = $state('');
+  $effect(() => {
+    if (machine.job !== 'stopped' && machine.job !== 'failed') return;
+    const move = store.gcode.lineOfMove.findIndex((l) => l >= machine.line);
+    let n = 0;
+    for (const seg of store.analysis.program.segments) {
+      n += seg.moves.length;
+      if (move >= 0 && move < n) {
+        stoppedIn = seg.opId;
+        return;
+      }
+    }
+  });
+
   async function start(): Promise<void> {
-    const first = store.job.tools.find((t) => t.id === store.analysis.program.segments[0]?.tool);
-    const warnings = store.analysis.diagnostics.filter((d) => d.severity === 'warning').length;
+    const program = resume ? resume.program : store.analysis.program;
+    const first = store.job.tools.find((t) => t.id === program.segments[startSeg]?.tool);
+    const diags = resume ? resume.diagnostics : store.analysis.diagnostics;
+    const warnings = diags.filter((d) => d.severity === 'warning').length;
+    const from = starts.find((s) => s.seg === startSeg);
     const ok = confirm(
-      `Run "${store.job.name}" on the machine?\n\n` +
-        `Check first:\n• work zero set where the job has it\n• ${first ? `T${first.id} (${first.name})` : 'the first tool'} loaded and its Z touched off\n• clamps and everything else clear of the path${store.job.obstacles.length ? '' : ' (the job knows of no obstacles: nothing is checked against clamps)'}\n• a hand on the emergency stop\n\n` +
+      (resume && from ? `Run "${store.job.name}" from ${from.opId} (${from.label}) on?\n\nEverything before it is taken as done: the checks assume that material is gone.\n\n` : `Run "${store.job.name}" on the machine?\n\n`) +
+        `Check first:\n• work zero set where the job has it${resume ? ' (still: a reset keeps it, a power cycle without homing does not)' : ''}\n• ${first ? `T${first.id} (${first.name})` : 'the first tool'} loaded and its Z touched off\n• clamps and everything else clear of the path${store.job.obstacles.length ? '' : ' (the job knows of no obstacles: nothing is checked against clamps)'}\n• a hand on the emergency stop\n\n` +
         `${lathe ? 'The tool first goes along Z, away from the chuck, then out in X.' : 'The tool first rises straight up to the travel height, then goes to X0 Y0.'} The program waits at every later tool change.` +
         (warnings ? `\n\nThe checks have ${warnings} warning${warnings > 1 ? 's' : ''}.` : ''),
     );
     if (!ok) return;
     // the program as checked just now, not as it was when the tab was opened
-    if (store.analysis.diagnostics.some((d) => d.severity === 'error')) return;
+    if (errors) return;
     machine.crash = '';
     simWorld.crashes = [];
-    await machine.run(store.gcode.text, true);
+    if (!resume) {
+      await machine.run(store.gcode.text, true);
+      return;
+    }
+    // the rest of the program; its lines numbered as in the whole one, for the G-code tab and the preview
+    const part = emit(store.job, resume.program, { fromSegment: startSeg });
+    const whole = store.gcode.lineOfMove;
+    const map: number[] = [];
+    let last = whole[resume.firstMove - resume.added] ?? 0;
+    part.lineOfMove.forEach((line, k) => {
+      if (line < 0) return;
+      // (the way home put in before the start has no line in the whole program)
+      const w = k >= resume.firstMove ? whole[k - resume.added] : undefined;
+      if (w !== undefined && w >= 0) last = w;
+      map[line] = last;
+    });
+    for (let i = 0, cur = map.find((x) => x !== undefined) ?? 0; i < part.text.split('\n').length; i++) {
+      if (map[i] === undefined) map[i] = cur;
+      else cur = map[i]!;
+    }
+    await machine.run(part.text, true, map);
   }
 
   async function sendMdi(e: Event): Promise<void> {
@@ -123,8 +180,22 @@
     <div class="small"><span class="ax">F</span>{machine.status?.feed ?? '–'} <span class="ax">S</span>{machine.status?.spindle ?? '–'}{#if machine.status?.ov} · feed {machine.status.ov[0]}%{/if}</div>
   </div>
 
+  {#if starts.length > 1}
+    <div class="row from">
+      <label class="small">Start at
+        <select bind:value={startAt} disabled={busy || waiting}>
+          <option value="">the beginning</option>
+          {#each starts.slice(1) as s (s.opId)}<option value={s.opId}>{s.opId}: {s.label} (T{s.tool})</option>{/each}
+        </select>
+      </label>
+      {#if stoppedIn && stoppedIn !== startAt && starts.slice(1).some((s) => s.opId === stoppedIn) && !busy && !waiting && (machine.job === 'stopped' || machine.job === 'failed')}
+        <button class="link" onclick={() => (startAt = stoppedIn)}>It stopped in {stoppedIn}: start there again</button>
+      {/if}
+      {#if resume}<span class="muted small">Everything before it is taken as done.</span>{/if}
+    </div>
+  {/if}
   <div class="row">
-    <button class="btn pri" onclick={start} disabled={!canStart} title={errors ? 'The job has errors' : st !== 'Idle' ? 'The controller must be idle' : ''}>Run program</button>
+    <button class="btn pri" onclick={start} disabled={!canStart} title={errors ? 'The job has errors' : st !== 'Idle' ? 'The controller must be idle' : ''}>{resume ? `Run from ${startAt}` : 'Run program'}</button>
     {#if machine.job === 'paused' || waiting}
       <button class="btn" class:pri={waiting} onclick={() => machine.resume()} disabled={waiting && st !== 'Idle'}>Resume</button>
     {:else}
@@ -168,6 +239,8 @@
   .muted { color: var(--ink-3); }
   .small { font-size: 12px; }
   .grow { flex: 1; }
+  .from { gap: 10px; align-items: center; margin-bottom: 6px; }
+  .from select { max-width: 260px; }
   .simsetup { margin-bottom: 10px; }
   .simsetup label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .simsetup p { margin: 4px 0 0; }
