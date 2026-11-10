@@ -330,7 +330,54 @@
     todoLines.geometry.setDrawRange(end, n - end);
   }
 
-  function fit(force = false): void {
+  // ---- the viewpoint: presets, and the one the user left it at (kept per kind of machine) ----
+  type ViewName = '3d' | 'top' | 'front' | 'side';
+  const VIEW_KEY = 'swarf.view';
+  /** Where the eye is from the target, and the target from the work's centre, both in units of the work's size. */
+  type SavedView = { d: [number, number, number]; t: [number, number, number] };
+  const savedViews: Record<string, SavedView> = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as Record<string, SavedView>;
+    } catch {
+      return {};
+    }
+  })();
+  let viewMoved = false;
+  /** The page goes away while the view still glides: keep it as it is now. */
+  const leaving = () => {
+    if (viewMoved) rememberView();
+  };
+  const fitCenter = new THREE.Vector3();
+  let fitSize = 1;
+  function keepViews(): void {
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify(savedViews));
+    } catch {
+      // not kept
+    }
+  }
+  /** Remember where the user turned the view to. */
+  function rememberView(): void {
+    if (overlay || !fitSize) return;
+    const d = camera.position.clone().sub(controls.target).divideScalar(fitSize);
+    const t = controls.target.clone().sub(fitCenter).divideScalar(fitSize);
+    if (![...d.toArray(), ...t.toArray()].every(Number.isFinite)) return;
+    savedViews[program.kind] = { d: d.toArray() as [number, number, number], t: t.toArray() as [number, number, number] };
+    keepViews();
+  }
+  /** A preset: from above, from the front (where the operator stands), from the side (the mill's right; the lathe's tailstock end), or the usual three-quarter view. */
+  function view(name: ViewName): void {
+    delete savedViews[program.kind];
+    fit(true, name);
+    if (name !== '3d') rememberView();
+    else keepViews();
+  }
+
+  /**
+   * Frame the work. Without `name`: the view the user left (if any), else the three-quarter view;
+   * only when the stock changed, unless `force`.
+   */
+  function fit(force = false, name?: ViewName): void {
     const s = job.stock;
     const key = JSON.stringify(s) + program.kind;
     if (!force && key === fitKey) return;
@@ -347,10 +394,22 @@
       size = Math.max(s.x, s.y, s.z) * 1.15;
       dir = new THREE.Vector3(0.35, 0.95, 1);
     }
+    // (straight down needs a hair of tilt, or the view has no "up")
+    if (name === 'top') dir = new THREE.Vector3(0, 1, 0.0005);
+    else if (name === 'front') dir = new THREE.Vector3(0, 0, 1);
+    else if (name === 'side') dir = new THREE.Vector3(1, 0, 0);
+    fitCenter.copy(center);
+    fitSize = size;
     const fov = (camera.fov * Math.PI) / 180;
     const dist = (size / 2 / Math.tan(fov / 2)) * Math.max(1, 1.15 / Math.max(camera.aspect, 0.3));
-    camera.position.copy(center).addScaledVector(dir.normalize(), dist);
-    controls.target.copy(center);
+    const kept = name ? undefined : savedViews[program.kind];
+    if (kept) {
+      controls.target.copy(center).add(new THREE.Vector3(...kept.t).multiplyScalar(size));
+      camera.position.copy(controls.target).add(new THREE.Vector3(...kept.d).multiplyScalar(size));
+    } else {
+      camera.position.copy(center).addScaledVector(dir.normalize(), dist);
+      controls.target.copy(center);
+    }
     camera.near = size / 200;
     camera.far = size * 50;
     camera.updateProjectionMatrix();
@@ -476,6 +535,10 @@
       return;
     }
     const moved = controls.update();
+    if (!moved && viewMoved) {
+      viewMoved = false;
+      rememberView();
+    }
     if (moved || dirty) {
       dirty = false;
       renderer?.setViewport(0, 0, host.clientWidth, host.clientHeight);
@@ -515,6 +578,12 @@
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.12;
+    // kept when the hand lets go, and again once the view has come to rest (it glides on a little)
+    controls.addEventListener('end', () => {
+      rememberView();
+      viewMoved = true;
+    });
+    window.addEventListener('pagehide', leaving);
 
     // most of the light comes from the surroundings (what the metal reflects); a key light for the shadows
     hemi = new THREE.HemisphereLight(0xe8eee9, 0x30383a, 0.5);
@@ -553,6 +622,7 @@
     cancelAnimationFrame(raf);
     clearTimeout(simTimer);
     resize?.disconnect();
+    window.removeEventListener('pagehide', leaving);
     controls?.dispose();
     surround?.dispose();
     sound.stop();
@@ -694,7 +764,12 @@
   {#if !overlay}
     <div class="tools">
       <button class="fit" onclick={() => (menu = !menu)} aria-expanded={menu}>Look</button>
-      <button class="fit" onclick={() => fit(true)} title="Reset the view">Reset view</button>
+      <div class="views" role="group" aria-label="Viewpoint">
+        <button class="fit" onclick={() => view('3d')} title="The usual three-quarter view (and forget the one you left)">3D</button>
+        <button class="fit" onclick={() => view('top')} title="From above">Top</button>
+        <button class="fit" onclick={() => view('front')} title="From the front, where you stand">Front</button>
+        <button class="fit" onclick={() => view('side')} title={program.kind === 'lathe' ? 'From the tailstock end, along the spindle' : 'From the right'}>{program.kind === 'lathe' ? 'End' : 'Side'}</button>
+      </div>
     </div>
     {#if menu}
       <div class="look" role="dialog" aria-label="How the preview looks">
@@ -745,6 +820,10 @@
   .tools { position: absolute; right: 12px; top: 10px; display: flex; gap: 6px; }
   .fit { background: rgba(255, 255, 255, 0.06); color: var(--on-iron); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; padding: 4px 10px; font-size: 12px; }
   .fit:hover { background: rgba(255, 255, 255, 0.12); }
+  .views { display: flex; }
+  .views .fit { border-radius: 0; margin-left: -1px; padding: 4px 8px; }
+  .views .fit:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+  .views .fit:last-child { border-radius: 0 6px 6px 0; }
   /* over a picture: the controls on a dark glass so they stay readable */
   .pictured .fit, .pictured .legend { background: rgba(20, 22, 24, 0.62); color: #f1f3f4; }
   .pictured .legend { padding: 4px 9px; border-radius: 6px; }

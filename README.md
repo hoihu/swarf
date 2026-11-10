@@ -68,7 +68,10 @@ same happens while a connected machine runs.
 night shift under the machine's own lamp, or none. Or your own: **drop a picture of your
 workshop onto the preview**. It stands behind the machine and is what the metal reflects; a 360°
 panorama (twice as wide as high, a phone's photo sphere) surrounds the machine and turns with the
-view. The picture stays in this browser only. None of this touches the checks or the G-code
+view. The picture stays in this browser only. Turn the view by dragging, zoom with the wheel, pan with the
+right button; **3D / Top / Front / Side** (End on the lathe) jump to fixed viewpoints, and the
+view you leave is kept per kind of machine, over reloads and for the next job's stock (3D
+forgets it). None of this touches the checks or the G-code
 (`apps/web/src/lib/workshop/`).
 
 ## Run it on the machine
