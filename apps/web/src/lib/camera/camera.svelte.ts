@@ -412,7 +412,8 @@ class Camera {
     if (this.#stop) throw new Error('Stopped.');
     const k = xScale();
     const words = lathe() ? `X${(p[0] / k).toFixed(3)} Z${p[2].toFixed(3)}` : `X${p[0].toFixed(3)} Y${p[1].toFixed(3)} Z${p[2].toFixed(3)}`;
-    await machine.send(`$J=G53 G90 ${words} F2000`);
+    const r = await machine.request(`$J=G53 G90 ${words} F2000`);
+    if (!r.ok) throw new Error(r.error === 15 ? 'That move would leave the machine\'s travel (soft limits): make the grid smaller or start elsewhere.' : (r.message ?? 'The controller refused the move.'));
     const t0 = performance.now();
     for (;;) {
       if (this.#stop) {

@@ -31,6 +31,10 @@ interface Motion {
   /** mm/min */
   f: number;
   jog: boolean;
+  /** G0. */
+  rapid?: boolean;
+  /** Done when the motion queued before it is over (the spindle switches in step with the moves). */
+  then?: () => void;
   /** G38.2/.3: stop on contact; .4/.5: stop when contact is lost. `fail`: alarm when it never happens. */
   probe?: { towards: boolean; fail: boolean };
 }
@@ -63,6 +67,11 @@ export class SimGrbl implements Transport {
   mist = false;
   /** Does the tool touch something at this machine position? (the probe input) */
   contact: (mpos: V3) => boolean = () => false;
+  /** Spindle speed as commanded (0: off). */
+  spindle = 0;
+  #s = 0;
+  /** Called as the machine moves (every step of every move), for whoever watches for collisions. */
+  onStep: ((mpos: V3, move: { jog: boolean; probe: boolean; rapid: boolean }) => void) | null = null;
 
   constructor(o: SimOptions = {}) {
     this.lathe = o.lathe ?? false;
@@ -119,6 +128,10 @@ export class SimGrbl implements Transport {
       this.#queue = [];
       this.#held = [];
       this.#hold = this.#m0 = false;
+      // a reset stops the spindle and the coolant, and goes back to the power-on modes
+      this.spindle = 0;
+      this.flood = this.mist = false;
+      this.#absolute = true;
       return this.#emit('\r\nGrblHAL 1.1f [\'$\' or \'$HELP\' for help]\r\n');
     }
     for (const raw of data.split('\n')) {
@@ -148,7 +161,7 @@ export class SimGrbl implements Transport {
     const x = (v: V3): string => [this.lathe ? v[0] * 2 : v[0], v[1], v[2]].map(fmt).join(',');
     const pins = this.contact(this.pos) ? '|Pn:P' : '';
     const acc = this.flood || this.mist ? `|A:${this.flood ? 'F' : ''}${this.mist ? 'M' : ''}` : '';
-    return `<${this.state}|MPos:${x(this.pos)}|FS:${this.#queue.length ? this.#feed : 0},0|WCO:${x(this.wco)}${pins}${acc}>`;
+    return `<${this.state}|MPos:${x(this.pos)}|FS:${this.#queue.length ? this.#feed : 0},${this.spindle}|WCO:${x(this.wco)}${pins}${acc}>`;
   }
 
   /** One line: the reply ('ok', 'error:n' or the answer of a $ command); null while a probe runs (answered when it ends). */
@@ -177,6 +190,7 @@ export class SimGrbl implements Transport {
     let f: number | null = null;
     let m0 = false;
     let probe: Motion['probe'] | null = null;
+    let spin: boolean | null = null;
     for (const w of words) {
       if (w.l === 'G' && Math.abs(w.v - Math.round(w.v)) > 1e-6) {
         if (Math.abs(w.v - 38.2) < 1e-6) probe = { towards: true, fail: true };
@@ -187,6 +201,9 @@ export class SimGrbl implements Transport {
       } else if (w.l === 'M' && w.v === 8) this.flood = true;
       else if (w.l === 'M' && w.v === 7) this.mist = true;
       else if (w.l === 'M' && w.v === 9) this.flood = this.mist = false;
+      else if (w.l === 'S') this.#s = w.v;
+      else if (w.l === 'M' && (w.v === 3 || w.v === 4)) spin = true;
+      else if (w.l === 'M' && (w.v === 5 || w.v === 30 || w.v === 2)) spin = false;
       else if (w.l === 'G') {
         if (w.v === 53) machineCoords = true;
         else if (w.v === 90) absolute = true;
@@ -197,6 +214,12 @@ export class SimGrbl implements Transport {
       else if (w.l === 'X' || w.l === 'Y' || w.l === 'Z') axes[w.l] = w.l === 'X' && this.lathe ? w.v / 2 : w.v;
       else if (w.l === 'F') f = w.v;
       else if (w.l === 'M' && (w.v === 0 || w.v === 1)) m0 = true;
+    }
+    if (jog && spin !== null) return 'error:16';
+    if (spin !== null) {
+      // in step with the moves: when those queued before it are done
+      const rpm = spin ? this.#s : 0;
+      this.#queue.push({ to: this.#end(), f: 1, jog: false, then: () => (this.spindle = rpm) });
     }
     if (g10) {
       // G10 L2 P1: the work offset itself (machine coordinates); L20 P1: so that here reads the given values
@@ -235,8 +258,9 @@ export class SimGrbl implements Transport {
       this.#queue.push({ to, f: f ?? this.#feed, jog: false, probe });
       return null;
     }
-    const speed = jog ? f! : (motion ?? this.#motion) === 0 ? this.#rapid : this.#feed;
-    this.#queue.push({ to, f: speed, jog });
+    const rapid = !jog && (motion ?? this.#motion) === 0;
+    const speed = jog ? f! : rapid ? this.#rapid : this.#feed;
+    this.#queue.push({ to, f: speed, jog, rapid });
     return 'ok';
   }
 
@@ -286,7 +310,12 @@ export class SimGrbl implements Transport {
       }
       const d = m.to.map((v, i) => v - this.pos[i]!) as V3;
       const len = Math.hypot(...d);
-      const step = m.f * dt;
+      // no more than half a millimetre at a time where someone watches the way
+      const step = this.onStep ? Math.min(m.f * dt, 0.5) : m.f * dt;
+      if (this.onStep && !m.probe) {
+        const go = Math.min(step, len);
+        this.onStep(len > 1e-12 ? (this.pos.map((v, i) => v + (d[i]! * go) / len) as V3) : this.pos, { jog: m.jog, probe: false, rapid: !!m.rapid });
+      }
       if (m.probe) {
         // move, and find where along this step the input changed (to a micrometre)
         const from = this.pos;
@@ -316,10 +345,11 @@ export class SimGrbl implements Transport {
       if (step >= len) {
         this.pos = [...m.to] as V3;
         this.#queue.shift();
+        m.then?.();
         dt -= len / m.f;
       } else {
         this.pos = this.pos.map((v, i) => v + (d[i]! * step) / len) as V3;
-        dt = 0;
+        dt -= step / m.f;
       }
     }
   }

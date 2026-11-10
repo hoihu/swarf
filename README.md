@@ -58,21 +58,41 @@ the access key from `~/.swarf/server.json`.
 The **Machine** tab streams the program to a grblHAL controller over USB (Web Serial: Chrome or
 Edge on a computer) or over the network (the board's WebSocket server, `$307`, usually port 81). It uses grbl's character-counting protocol, learns the receive buffer size
 from `$I`, polls status for the DRO and the tool marker in the preview, and offers hold, resume,
-soft reset, feed override, unlock, home and a command line. The program pauses at every tool
-change (M0); Resume continues. It refuses to start while the job has errors or the controller is
-not idle. The protocol logic lives in `packages/grbl` and is tested against a pretend controller.
+stop, feed override, unlock, home and a command line. It refuses to start while the job has
+errors or the controller is not idle. The protocol logic lives in `packages/grbl` and is tested
+against a pretend controller.
+
+- **Tool changes.** The way to the tool-change position (straight up to a travel height above
+  the rapids and above every known obstacle, then to X0 Y0; on the lathe along Z away from the
+  chuck, then out) is part of the program: checked and shown like every other move. There the
+  program waits. The M0 is not sent to the controller (a controller paused by M0 takes no jog and
+  no zero setting): everything before it is finished, the spindle is off, and the machine is free
+  to jog, touch off and set the new tool's Z. **Resume** goes on: the program says its modes
+  again (G21 G90 G94 G54, the plane; G97 on the lathe) and the tool first rises straight up to
+  the travel height from wherever touching off left it, before it moves across.
+- **Stop** sends nothing more, holds motion (so the position stays true), and resets the
+  controller once it stands (or after 1.5 s if it will not): what it had buffered is dropped and
+  the spindle stops. It is not an emergency stop.
+- **An error from the controller** (a line it refuses) holds and resets at once: it would
+  otherwise skip that line and run on with the next ones from the wrong place.
+- **A controller that stops answering** (cable, power, network) is noticed within two seconds,
+  the job is marked failed and the tab says that nothing can be stopped from here.
+- Closing or reloading the page while a program runs asks first.
 
 After every assistant turn the chat shows what changed (operations added, changed, removed) with
 **Keep** and **Revert this turn**.
 
 No machine at hand: **Connect a simulated mill/lathe** runs a pretend grblHAL in the browser that
-moves in real time, reports MPos and WCO, jogs and pauses at M0 (`packages/grbl/src/sim.ts`). On
+moves in real time, reports MPos and WCO, spindle and probe input, and jogs (`packages/grbl/src/sim.ts`). On
 the simulated mill you choose what is on the table: the block alone, two steel blocks beside it,
 low edge clamps against a stop, strap clamps across its ends (step blocks, T-bolts and nuts
 standing 36 mm above the top) or a machine vise. The block itself is never quite where the job
 says (0.8 mm off, turned 0.25°, 0.37 mm low, tilted). The probe touches the same solids the
 simulated camera draws and its laser lights (`apps/web/src/lib/sim/`); the simulated camera's
 picture lags the machine like a webcam's and has sensor noise, and the laser's fan casts shadows.
+A real machine stops when it hits something; the simulated one says so and goes on: "Simulated
+crash: the tool ran into the left strap…". The tests run whole programs this way, tool changes
+included (`apps/web/test/simrun.test.ts`, in a browser `scripts/check-run.cjs`).
 
 ## Zero by touching (mill)
 
@@ -157,8 +177,33 @@ Not yet: profiles from DXF for the mill. See [docs/ARCHITECTURE.md](docs/ARCHITE
 ## Safety
 
 This is a young tool. Simulate, check the G-code, run the first time in the air with the feed
-override low and a hand on the E-stop. The material model is coarse (no nose radius, no drill
-point angle), so it catches crashes, not every gouge.
+override low and a hand on the E-stop. The browser is not a safety device: the machine needs its
+own emergency stop, and limit switches or soft limits.
+
+What is checked before a program may run (errors block **Run program**):
+
+- every move against the machine's travel, the chuck (lathe) and the job's obstacles (mill:
+  clamps, straps, vise jaws from the laser scan or typed in), rapids too, and the way to and
+  from the tool-change position;
+- rapids into material; plunges with a cutter that is not centre-cutting; cuts deeper than the
+  flutes; boring where there is no hole; threading without spindle sync;
+- as warnings: depth per pass well above what the tool and material take, speeds outside the
+  spindle's range, cuts through the block into what it sits on.
+
+What the automatic routines do for themselves: probing moves near the work are guarded (they
+stop on contact), probing refuses to start with the spindle on or before the probe circuit has
+been seen to close once since connecting (a broken wire would drive the cutter into the plate),
+its Stop button holds and resets at once; the laser sweep refuses to start below anything the
+job knows to stand on the table and switches the laser off however it ends.
+
+What is not checked: the tool holder and spindle nose against clamps (only the cutter, as a
+cylinder from its tip up); where work zero really is (a wrong zero moves everything); tool
+length (each tool's Z is touched off at its tool change); the travel in machine coordinates
+(the envelope is in work coordinates as you entered it: keep the controller's soft limits on);
+work offsets other than G54, G92 or a tool length offset being active while probing. The
+material model is coarse (no nose radius, no drill point angle), so it catches crashes, not
+every gouge. The chat's AI can only edit the job; it has no way to move the machine, change the
+machine's limits or remove obstacles.
 
 ## Origin
 

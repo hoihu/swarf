@@ -30,7 +30,7 @@
 <section class="probe">
   <h3>Zero by touching</h3>
   <p class="muted small">The cutter is the probe: wire it (the spindle or a clip on the cutter) to the controller's probe input, and the other side to a touch plate or, for aluminium and other conductive stock, a clip on the stock. Each touch goes down slowly and stops the moment the circuit closes (G38.2).</p>
-  <p class="small">Probe input: <b class:on={probe.touching}>{probe.touching ? 'closed (touching)' : 'open'}</b> <span class="muted">— touch the plate to the cutter: it must read closed.</span></p>
+  <p class="small">Probe input: <b class:on={probe.touching}>{probe.touching ? 'closed (touching)' : 'open'}</b> <span class="muted">— {machine.probeTested ? 'circuit tested since connecting.' : 'before the first touch, hold the plate (or the clip) against the cutter: it must read closed. Nothing here moves until it has.'}</span></p>
   <div class="grid">
     <label>Cutter
       <select value={tool?.id} onchange={(e) => (toolId = Number((e.currentTarget as HTMLSelectElement).value))}>
@@ -53,7 +53,7 @@
   <p class="muted small">Check the top: start above the top; it touches nine points and tells how flat and level it is. Corner: start above the corner, within about 5 mm; it touches the top, the left side and the front side twice, sets X, Y and Z zero there and tells whether the block sits square.</p>
 
   {#if probe.busy}
-    <p class="small"><b>{probe.step}…</b> <button class="link" onclick={() => probe.cancel()}>Stop after this move</button></p>
+    <p class="small"><b>{probe.step}…</b> <button class="btn danger" onclick={() => probe.cancel()}>Stop</button></p>
   {/if}
   {#if probe.result}<p class="small ok">{probe.result}</p>{/if}
   {#if probe.surface && !probe.busy}
@@ -79,5 +79,4 @@
   .muted { color: var(--ink-3); }
   b.on { color: #2e7d32; }
   .ok { color: var(--ink); background: var(--panel-2); padding: 6px 8px; border-radius: 6px; }
-  .link { border: 0; background: none; color: var(--accent-ink, #2a6fb0); text-decoration: underline; padding: 0; font-size: 12.5px; cursor: pointer; }
 </style>

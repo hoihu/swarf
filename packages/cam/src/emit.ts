@@ -42,8 +42,10 @@ export function emit(job: Job, program: Program): Emitted {
   lines.push(comment(`${job.machine.name}, ${lathe ? 'lathe' : 'mill'}, mm`));
   lines.push(comment(stockLine(job)));
   if (lathe) lines.push(comment(`X is a ${dia ? 'diameter' : 'radius'}; Z0 = finished front face`));
-  lines.push('G21 G90 G94 G54');
-  lines.push(lathe ? `G18 ${dia ? 'G7' : 'G8'}` : 'G17');
+  // the modes the program relies on: said at the start and again after every tool change (touching
+  // off by hand may have left others); G97 so that S is rpm, not a surface speed left from before
+  const modes = () => lines.push('G21 G90 G94 G54', lathe ? `G18 ${dia ? 'G7' : 'G8'} G97` : 'G17');
+  modes();
 
   // modal state of what has been written
   let motion = '';
@@ -67,8 +69,6 @@ export function emit(job: Job, program: Program): Emitted {
   };
 
   const home = program.home;
-  lines.push(`G0 ${axes(home.x, home.y, home.z, true).join(' ')}`);
-  motion = 'G0';
 
   let tool: number | null = null;
   let rpm: number | null = null;
@@ -81,13 +81,20 @@ export function emit(job: Job, program: Program): Emitted {
       lines.push('');
       lines.push(comment(`${s.opId}: ${s.label}, T${s.tool} ${t?.name ?? ''}`.trim()));
       if (s.tool !== tool) {
-        if (tool !== null) {
-          lines.push('M5');
-          lines.push(`G0 ${axes(home.x, home.y, home.z).join(' ')}`.trim());
-          motion = 'G0';
-        }
-        lines.push(comment(`${tool === null ? 'Load' : 'Change to'} T${s.tool}: ${t?.name ?? '?'}, touch off and press cycle start`));
+        // the tool before is at home by now (the last moves of its operation)
+        if (tool !== null) lines.push('M5');
+        lines.push(comment(`${tool === null ? 'Load' : 'Change to'} T${s.tool}: ${t?.name ?? '?'}, touch off, then cycle start`));
+        lines.push(comment(`from wherever it is then, the tool goes ${lathe ? `along Z to Z${num(home.z)}, then to X${num(X(home.x))}` : `straight up to Z${num(home.z)}, then to X${num(home.x)} Y${num(home.y)}`}`));
         lines.push(`M0`);
+        // nothing is known about where the tool is or what was typed meanwhile: say everything again
+        modes();
+        lines.push(`G0 Z${num(home.z)}`);
+        lines.push(lathe ? `G0 X${num(X(home.x))}` : `G0 X${num(home.x)} Y${num(home.y)}`);
+        px = home.x;
+        py = home.y;
+        pz = home.z;
+        pf = null;
+        motion = 'G0';
         tool = s.tool;
         rpm = null;
       }
@@ -138,7 +145,6 @@ export function emit(job: Job, program: Program): Emitted {
 
   lines.push('');
   lines.push('M5');
-  lines.push(`G0 ${axes(home.x, home.y, home.z).join(' ')}`.trim().replace(/^G0$/, comment('at home')));
   lines.push('M30');
   return { text: lines.join('\n') + '\n', lineOfMove };
 }

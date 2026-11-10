@@ -8,7 +8,7 @@ import { fitArcs } from './arcfit.ts';
 import { generateLathe, latheSpeedDiameter } from './ops/lathe.ts';
 import { generateMill } from './ops/mill.ts';
 import { latheSafe, millSafeZ } from './ops/context.ts';
-import { CamError, v, type Program, type Segment } from './program.ts';
+import { CamError, v, type Move, type Program, type Segment } from './program.ts';
 import { OP_MACHINE, OP_TOOLS, type Job, type Operation, type Vec3 } from './schema.ts';
 
 export interface Diagnostic {
@@ -42,7 +42,21 @@ export function homeOf(job: Job): Vec3 {
     const s = latheSafe(job);
     return v(s.x + 5, 0, s.z + 20);
   }
-  return v(0, 0, millSafeZ(job) + 10);
+  // above the rapids' height, and above everything known to stand on the table
+  const over = Math.max(-Infinity, ...job.obstacles.map((o) => o.top)) + job.machine.clearance;
+  return v(0, 0, Math.max(millSafeZ(job) + 10, over));
+}
+
+/**
+ * From where an operation ends to the home position, as moves like any other (so the checks and
+ * the preview see them): along Z first (the mill straight up; the lathe away from the chuck, which
+ * also draws a boring bar out of its bore), then across.
+ */
+export function retract(from: Vec3, home: Vec3): Move[] {
+  const out: Move[] = [];
+  if (Math.abs(from.z - home.z) > 1e-9) out.push({ type: 'rapid', to: v(from.x, from.y, home.z) });
+  if (Math.abs(from.x - home.x) > 1e-9 || Math.abs(from.y - home.y) > 1e-9) out.push({ type: 'rapid', to: home });
+  return out;
 }
 
 export function opLabel(op: Operation): string {
@@ -129,6 +143,12 @@ export function generate(job: Job): Generated {
       }
     }
     for (const n of cut.notes) diagnostics.push({ severity: 'warning', code: 'SPEED_LIMIT', message: n, opId });
+    // a tool change happens at home: the tool before goes there first
+    const before = program.segments.at(-1);
+    if (before && before.tool !== tool.id) {
+      before.moves.push(...retract(at, program.home));
+      at = program.home;
+    }
     try {
       const ctx = { job, tool, cut, from: at, c: job.machine.clearance };
       let moves = kind === 'lathe' ? generateLathe(op as never, ctx) : generateMill(op as never, ctx);
@@ -141,5 +161,7 @@ export function generate(job: Job): Generated {
       else throw e;
     }
   }
+  // and home at the end
+  program.segments.at(-1)?.moves.push(...retract(at, program.home));
   return { program, diagnostics };
 }

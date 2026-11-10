@@ -87,7 +87,7 @@ describe('G-code', () => {
     const job = EXAMPLES.lathe();
     const { program } = analyze(job);
     const { text } = emit(job, program);
-    expect(text).toMatch(/^G18 G7$/m);
+    expect(text).toMatch(/^G18 G7 G97$/m);
     expect(text).toMatch(/^X20$/m); // the finishing pass at Ø20
     expect(text).not.toMatch(/G4[1-2]|G8[1-9]|G96|G76/); // no cutter comp, canned cycles or CSS
     const parsed = parseGcode(text, 'lathe');
@@ -647,7 +647,7 @@ describe('lathe arcs (G18)', () => {
     const j = job(0.005);
     const a = analyze(j);
     const text = emit(j, a.program).text;
-    expect(text).toMatch(/^G18 G7$/m);
+    expect(text).toMatch(/^G18 G7 G97$/m);
     expect(text).toMatch(/^G[23] X[\d.]+ Z-?[\d.]+ I-?[\d.]+ K-?[\d.]+/m);
     const parsed = parseGcode(text, 'lathe');
     expect(parsed.warnings).toEqual([]);
@@ -691,5 +691,60 @@ describe('obstacles', () => {
   it('a low one the tool passes over at the clearance height is fine', () => {
     const job = Job.parse({ ...EXAMPLES.mill(), operations: [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 40, h: 20, zBottom: -5, zTop: 0 }], obstacles: [{ ...clamp, x0: 30, x1: 50, y0: 60, y1: 70, top: 0.5 }] });
     expect(codes(job)).not.toContain('OBSTACLE');
+  });
+});
+
+describe('getting to and from the work safely', () => {
+  it('mill: nothing moves before the first tool is in; after every tool change the modes are said again and the tool rises straight up first', () => {
+    const job = EXAMPLES.mill();
+    const a = analyze(job);
+    const lines = emit(job, a.program).text.split('\n').filter((l) => l && !l.startsWith('('));
+    const first = lines.indexOf('M0');
+    expect(lines.slice(0, first).some((l) => /[XYZ]/.test(l))).toBe(false);
+    const home = a.program.home;
+    const pauses = lines.map((l, i) => (l === 'M0' ? i : -1)).filter((i) => i >= 0);
+    expect(pauses.length).toBe(new Set(a.program.segments.map((s) => s.tool)).size);
+    for (const i of pauses) {
+      expect(lines.slice(i + 1, i + 5)).toEqual(['G21 G90 G94 G54', 'G17', `G0 Z${home.z}`, `G0 X${home.x} Y${home.y}`]);
+      // the spindle starts only after that, and is off before the pause (but for the first)
+      expect(lines[i + 5]).toMatch(/^S\d+ M3$/);
+      if (i !== first) expect(lines[i - 1]).toBe('M5');
+    }
+    expect(lines.slice(-2)).toEqual(['M5', 'M30']);
+  });
+
+  it('lathe: after a tool change the tool goes along Z away from the chuck first, then out; S is rpm (G97)', () => {
+    const job = EXAMPLES.lathe();
+    const a = analyze(job);
+    const lines = emit(job, a.program).text.split('\n').filter((l) => l && !l.startsWith('('));
+    const home = a.program.home;
+    const i = lines.lastIndexOf('M0');
+    expect(lines.slice(i + 1, i + 5)).toEqual(['G21 G90 G94 G54', 'G18 G7 G97', `G0 Z${home.z}`, `G0 X${home.x * 2}`]);
+  });
+
+  it('the way home is part of the program: Z first, then across, and checked like every other move', () => {
+    const job = EXAMPLES.mill();
+    const a = analyze(job);
+    const home = a.program.home;
+    for (const [i, seg] of a.program.segments.entries()) {
+      const next = a.program.segments[i + 1];
+      if (next && next.tool === seg.tool) continue;
+      const [up, across] = seg.moves.slice(-2);
+      expect(across!.to).toEqual(home);
+      expect(up!.type).toBe('rapid');
+      expect(up!.to.z).toBe(home.z);
+      // straight up: X and Y as they were
+      const before = seg.moves.at(-3)!.to;
+      expect([up!.to.x, up!.to.y]).toEqual([before.x, before.y]);
+    }
+    // something tall on the table: the travel height goes above it by the clearance
+    const bolt = { name: 'bolt', x0: 30, y0: -30, x1: 40, y1: -20, top: 36 };
+    const b = analyze(Job.parse({ ...job, obstacles: [bolt] }));
+    expect(b.program.home.z).toBe(36 + job.machine.clearance);
+    expect(b.diagnostics.filter((d) => d.code === 'OBSTACLE')).toEqual([]);
+    // something standing where the tool changes are (X0 Y0), higher than the machine can lift over: an error, on the way home
+    const post = { name: 'post', x0: -5, y0: -5, x1: 5, y1: 5, top: 500 };
+    const c = analyze(Job.parse({ ...job, obstacles: [post] }));
+    expect(c.diagnostics.some((d) => d.code === 'OBSTACLE' || d.code === 'OUT_OF_RANGE')).toBe(true);
   });
 });

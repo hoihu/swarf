@@ -16,17 +16,53 @@
 
   const errors = $derived(store.analysis.diagnostics.some((d) => d.severity === 'error'));
   const st = $derived(machine.status?.state ?? 'Unknown');
+  // lines of the program are under way or held: nothing else may be sent
   const busy = $derived(machine.job === 'running' || machine.job === 'paused');
-  const canStart = $derived(machine.connected && !busy && !errors && st === 'Idle');
+  // the program waits at a tool change: the machine is free for touching off
+  const waiting = $derived(machine.job === 'waiting');
+  const canStart = $derived(machine.connected && !busy && !waiting && !errors && st === 'Idle' && !machine.lost);
+
+  // leaving the page while a program runs stops feeding it; the machine would run what it has and stand with the spindle on
+  $effect(() => {
+    if (!busy && !waiting) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  });
+
+  // the simulator: which cutter is in the spindle (for what it runs into)
+  $effect(() => {
+    if (!machine.simulated || machine.job !== 'running' || machine.line < 0) return;
+    const move = store.gcode.lineOfMove.findIndex((l) => l >= machine.line);
+    let n = 0;
+    for (const seg of store.analysis.program.segments) {
+      n += seg.moves.length;
+      if (move < n) {
+        const d = store.job.tools.find((t) => t.id === seg.tool)?.diameter;
+        if (d) simWorld.toolDiameter = d;
+        break;
+      }
+    }
+  });
   const lathe = $derived(store.job.machine.kind === 'lathe');
   const pct = $derived(machine.total ? Math.round((machine.acked / machine.total) * 100) : 0);
   const fmt = (n: number | undefined) => (n === undefined ? '–' : n.toFixed(3));
 
   async function start(): Promise<void> {
+    const first = store.job.tools.find((t) => t.id === store.analysis.program.segments[0]?.tool);
+    const warnings = store.analysis.diagnostics.filter((d) => d.severity === 'warning').length;
     const ok = confirm(
-      `Run "${store.job.name}" on the machine?\n\nCheck first: work zero set, first tool loaded and touched off, the path clear. The program pauses (M0) at every tool change.`,
+      `Run "${store.job.name}" on the machine?\n\n` +
+        `Check first:\n• work zero set where the job has it\n• ${first ? `T${first.id} (${first.name})` : 'the first tool'} loaded and its Z touched off\n• clamps and everything else clear of the path${store.job.obstacles.length ? '' : ' (the job knows of no obstacles: nothing is checked against clamps)'}\n• a hand on the emergency stop\n\n` +
+        `${lathe ? 'The tool first goes along Z, away from the chuck, then out in X.' : 'The tool first rises straight up to the travel height, then goes to X0 Y0.'} The program waits at every later tool change.` +
+        (warnings ? `\n\nThe checks have ${warnings} warning${warnings > 1 ? 's' : ''}.` : ''),
     );
-    if (ok) await machine.run(store.gcode.text);
+    if (!ok) return;
+    // the program as checked just now, not as it was when the tab was opened
+    if (store.analysis.diagnostics.some((d) => d.severity === 'error')) return;
+    machine.crash = '';
+    simWorld.crashes = [];
+    await machine.run(store.gcode.text, true);
   }
 
   async function sendMdi(e: Event): Promise<void> {
@@ -66,7 +102,7 @@
     <span class="badge s-{st.toLowerCase()}">{st}{machine.status?.sub !== undefined ? `:${machine.status.sub}` : ''}</span>
     <span class="muted">{machine.label}</span>
     <span class="grow"></span>
-    <button class="btn" onclick={() => machine.disconnect()} disabled={busy}>Disconnect</button>
+    <button class="btn" onclick={() => machine.disconnect()} disabled={busy || waiting}>Disconnect</button>
   </div>
   {#if machine.simulated && !lathe}
     <div class="simsetup">
@@ -88,14 +124,16 @@
 
   <div class="row">
     <button class="btn pri" onclick={start} disabled={!canStart} title={errors ? 'The job has errors' : st !== 'Idle' ? 'The controller must be idle' : ''}>Run program</button>
-    {#if machine.job === 'paused'}
-      <button class="btn" onclick={() => machine.resume()}>Resume</button>
+    {#if machine.job === 'paused' || waiting}
+      <button class="btn" class:pri={waiting} onclick={() => machine.resume()} disabled={waiting && st !== 'Idle'}>Resume</button>
     {:else}
       <button class="btn" onclick={() => machine.hold()} disabled={!busy}>Hold</button>
     {/if}
-    <button class="btn danger" onclick={() => machine.stop()}>Stop (reset)</button>
+    <button class="btn danger" onclick={() => machine.stop()} title="Nothing more is sent, motion is held, then the controller is reset: spindle off. Not an emergency stop.">Stop</button>
   </div>
-  {#if busy || machine.job === 'done' || machine.job === 'failed' || machine.job === 'stopped'}
+  {#if machine.lost}<p class="diag error">The controller does not answer (cable, power, network?). Nothing can be stopped from here: if the machine is moving, use its emergency stop.</p>{/if}
+  {#if machine.crash}<p class="diag error">{machine.crash} (The simulator goes on; a real machine would not.)</p>{/if}
+  {#if busy || waiting || machine.job === 'done' || machine.job === 'failed' || machine.job === 'stopped'}
     <div class="progress"><i style="width: {pct}%"></i></div>
     <p class="muted small">{machine.acked} / {machine.total} blocks{machine.line >= 0 ? ` · line ${machine.line + 1}` : ''}</p>
   {/if}

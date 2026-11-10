@@ -21,8 +21,10 @@ class LaserScan {
   cloud = $state.raw<V3[] | null>(null);
   #stop = false;
 
+  /** Stop now: the jog under way is cancelled, the laser switched off. */
   cancel(): void {
     this.#stop = true;
+    if (this.busy) void machine.jogCancel();
   }
 
   #block() {
@@ -52,8 +54,10 @@ class LaserScan {
   /** Jog to a machine position and wait until it is there and still. */
   async #moveTo(p: V3): Promise<void> {
     if (this.#stop) throw new Error('Stopped.');
-    await machine.send(`$J=G53 G90 X${p[0].toFixed(3)} Y${p[1].toFixed(3)} Z${p[2].toFixed(3)} F2500`);
+    const r = await machine.request(`$J=G53 G90 X${p[0].toFixed(3)} Y${p[1].toFixed(3)} Z${p[2].toFixed(3)} F2500`);
+    if (!r.ok) throw new Error(r.error === 15 ? 'That move would leave the machine\'s travel (soft limits): start from a place with room around the block.' : (r.message ?? 'The controller refused the move.'));
     for (let i = 0; i < 1200; i++) {
+      if (this.#stop) throw new Error('Stopped.');
       const m = camera.mpos();
       if (m && machine.status?.state === 'Idle' && Math.hypot(m[0] - p[0], m[1] - p[1], m[2] - p[2]) < 0.01) return;
       if (machine.status?.state === 'Alarm') throw new Error('The machine went into alarm.');
@@ -72,6 +76,14 @@ class LaserScan {
     }
     if (!machine.connected || machine.status?.state !== 'Idle') {
       this.error = 'Connect the machine; it must be idle.';
+      return;
+    }
+    if (machine.job === 'running' || machine.job === 'paused') {
+      this.error = 'Not while the program runs.';
+      return;
+    }
+    if ((machine.status?.spindle ?? 0) > 0) {
+      this.error = 'The spindle is on: stop it (M5) first.';
       return;
     }
     this.busy = true;
@@ -137,6 +149,9 @@ class LaserScan {
       const start = camera.mpos();
       if (!wco || !start) throw new Error('No position from the controller.');
       if (start[2] - wco[2] < s.top + 15) throw new Error(`Start higher: at least Z${s.top + 15}, and above any clamp.`);
+      // the sweep stays at this height: everything the job already knows of must be below it
+      const tall = store.job.obstacles.filter((o) => o.top > start[2] - wco[2] - 2);
+      if (tall.length) throw new Error(`Start higher: ${tall[0]!.name} reaches up to Z${tall[0]!.top.toFixed(1)}; the sweep must pass at least 2 mm above everything (Z${(Math.max(...tall.map((o) => o.top)) + 2).toFixed(1)} or more).`);
       // the line moves along the sheet's horizontal normal when the machine does
       const nh = Math.hypot(plane.n[0], plane.n[1]);
       if (nh < 0.2) throw new Error('The laser sheet is too steep to sweep: tilt it more.');

@@ -21,6 +21,10 @@ export const simWorld = {
   setup: 'side' as SetupName,
   /** The simulated controller's real state (machine position, laser output), while connected. */
   truth: null as null | { pos: () => V3; laser: () => boolean },
+  /** How fast the simulated machine runs (1: real time). Read when connecting. */
+  speed: 1,
+  /** What the simulated machine ran into while moving (not probing): the first time for each thing. */
+  crashes: [] as { what: string; at: V3; move: 'rapid' | 'feed' | 'jog' }[],
   plate: null as null | { x: number; y: number; size: number; thickness: number },
   /** Diameter of the tool in the spindle (for contact). */
   toolDiameter: 6,
@@ -69,6 +73,18 @@ export const simWorld = {
    */
   contact(job: Job, mpos: V3): boolean {
     return this.touching(job, mpos) !== null;
+  },
+
+  /**
+   * The simulated machine moved to `mpos` (not probing): did it run into what holds the block?
+   * (Touching the block itself is cutting; the model does not know what has been cut away.)
+   */
+  watch(job: Job, mpos: V3, move: 'rapid' | 'feed' | 'jog'): void {
+    if (!this.origin || job.stock.kind !== 'block') return;
+    const o = this.origin;
+    const holders = this.world(job).solids.filter((s) => !s.stock).map((s) => ({ ...s, conductive: true }));
+    const hit = touches(holders, this.toolDiameter / 2, this.toolLength, mpos[0] - o[0], mpos[1] - o[1], mpos[2] - o[2]);
+    if (hit && !this.crashes.some((c) => c.what === hit.name)) this.crashes.push({ what: hit.name, at: [...mpos] as V3, move });
   },
 
   /** What the tool touches at this machine position, if anything. */

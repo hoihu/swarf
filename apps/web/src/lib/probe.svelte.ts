@@ -48,8 +48,10 @@ class Probe {
     return machine.status?.pins?.includes('P') ?? false;
   }
 
+  /** Stop now: the move under way is held and the controller reset (the routine then ends with that). */
   cancel(): void {
     this.#stop = true;
+    if (this.busy && machine.status?.state !== 'Idle') void machine.stop();
   }
 
   /** Work offset (machine coordinates of work zero), from the controller. */
@@ -138,6 +140,18 @@ class Probe {
     }
     if (store.job.stock.kind !== 'block') {
       this.error = 'Probing is for the mill.';
+      return null;
+    }
+    if (machine.job === 'running' || machine.job === 'paused') {
+      this.error = 'Not while the program runs (at a tool change it waits: then yes).';
+      return null;
+    }
+    if ((machine.status?.spindle ?? 0) > 0) {
+      this.error = 'The spindle is on: stop it (M5) before touching anything with the cutter.';
+      return null;
+    }
+    if (!machine.probeTested) {
+      this.error = 'Test the circuit first: hold the plate (or the clip) against the cutter until the probe input reads closed. With a broken wire the cutter would not stop at the plate.';
       return null;
     }
     if (this.touching) {

@@ -80,6 +80,18 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
       if (nearChuck) once({ severity: 'error', code: 'CHUCK', message: `Tool reaches the chuck at ${fmt(nearChuck, true)} (jaws at Z${lm.chuckZ.toFixed(1)}).`, opId, move: index });
     }
 
+    // below the block is what it sits on: the table, a vise bed, parallels
+    if (!lathe && job.stock.kind === 'block' && move.to.z < job.stock.top - job.stock.z - 1e-6) {
+      const bottom = job.stock.top - job.stock.z;
+      once({
+        severity: 'warning',
+        code: 'BELOW_STOCK',
+        message: `T${tool.id} goes to Z${move.to.z.toFixed(2)}, ${(bottom - move.to.z).toFixed(2)} mm below the block's bottom (Z${bottom.toFixed(2)}): into whatever it sits on. Put a sacrificial plate under it, or parallels clear of this spot.`,
+        opId,
+        move: index,
+      });
+    }
+
     if (move.type === 'rapid') {
       // pulling out of the thread groove just cut: the model has no helix to know it is clear
       const fromThread = prevType === 'thread';
