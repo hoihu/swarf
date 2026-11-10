@@ -177,6 +177,23 @@ describe('streaming', () => {
     expect(states).toEqual(['running', 'waiting', 'running', 'done']);
   });
 
+  it('an alarm or a reset while waiting at a tool change ends the program (the position may be lost)', async () => {
+    for (const [say, end] of [['ALARM:1\r\n', 'failed'], ["\r\nGrblHAL 1.1f ['$' or '$HELP' for help]\r\n", 'stopped']] as const) {
+      const g = new FakeGrbl();
+      const states: JobState[] = [];
+      const s = new Streamer(g, { job: (st) => states.push(st) }, { pollMs: 3 });
+      await s.run('G0 X1\nM0\nG0 X2\nM30');
+      await until(s, ['waiting'], states);
+      g.emit(say);
+      expect(s.jobState).toBe(end);
+      g.state = 'Idle';
+      await s.resume();
+      await new Promise((r) => setTimeout(r, 20));
+      await s.close();
+      expect(g.executed).toEqual(['G0 X1']);
+    }
+  });
+
   it('stop while nothing moves resets at once and drops the job', async () => {
     const g = new FakeGrbl();
     const states: JobState[] = [];

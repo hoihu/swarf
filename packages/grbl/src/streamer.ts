@@ -384,7 +384,8 @@ export class Streamer {
         // whoever waits for an answer gets the alarm (the controller may not answer the line after it)
         for (const r of this.#replies.splice(0)) r?.({ ok: false, alarm: m.code, message: `ALARM:${m.code}: ${ALARMS[m.code] ?? 'see the grblHAL alarm codes'}` });
         this.#mdi = 0;
-        if (this.busy) {
+        // also while waiting at a tool change: after an alarm the position may be lost
+        if (this.busy || this.jobState === 'waiting') {
           this.#queue = [];
           this.#inflight = [];
           this.#used = 0;
@@ -401,7 +402,7 @@ export class Streamer {
         this.#used = 0;
         this.#mdi = 0;
         for (const r of this.#replies.splice(0)) r?.({ ok: false, message: 'The controller reset.' });
-        if (this.busy) {
+        if (this.busy || this.jobState === 'waiting') {
           this.#queue = [];
           this.#setJob('stopped', 'The controller reset.');
         }
