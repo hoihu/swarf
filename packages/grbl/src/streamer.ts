@@ -21,6 +21,12 @@ export const RT = {
   feed100: '\x90',
   feedPlus10: '\x91',
   feedMinus10: '\x92',
+  /** Spindle speed override: back to 100 %, ±10 %, ±1 % (10 to 200 %). */
+  spindle100: '\x99',
+  spindlePlus10: '\x9a',
+  spindleMinus10: '\x9b',
+  spindlePlus1: '\x9c',
+  spindleMinus1: '\x9d',
   /** Stops a jog ($J=) at once, without a reset. */
   jogCancel: '\x85',
 } as const;
@@ -268,7 +274,7 @@ export class Streamer {
     await this.#t.write(RT.reset);
   }
 
-  async override(cmd: (typeof RT)['feed100' | 'feedPlus10' | 'feedMinus10' | 'jogCancel']): Promise<void> {
+  async override(cmd: (typeof RT)['feed100' | 'feedPlus10' | 'feedMinus10' | 'jogCancel' | 'spindle100' | 'spindlePlus10' | 'spindleMinus10' | 'spindlePlus1' | 'spindleMinus1']): Promise<void> {
     await this.#t.write(cmd);
   }
 

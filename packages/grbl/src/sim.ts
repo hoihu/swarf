@@ -110,7 +110,13 @@ export class SimGrbl implements Transport {
       this.#queue = this.#queue.filter((m) => m === 'M0' || !m.jog);
       return;
     }
-    if (data.length === 1 && data.charCodeAt(0) >= 0x80) return; // overrides: ignored
+    if (data.length === 1 && data.charCodeAt(0) >= 0x99 && data.charCodeAt(0) <= 0x9d) {
+      // spindle speed override
+      const c = data.charCodeAt(0);
+      this.spindleOverride = c === 0x99 ? 100 : Math.max(10, Math.min(200, this.spindleOverride + (c === 0x9a ? 10 : c === 0x9b ? -10 : c === 0x9c ? 1 : -1)));
+      return;
+    }
+    if (data.length === 1 && data.charCodeAt(0) >= 0x80) return; // other overrides: ignored
     if (data === '?') return this.#emit(`${this.#report()}\r\n`);
     if (data === '!') {
       this.#hold = true;
@@ -125,6 +131,7 @@ export class SimGrbl implements Transport {
       return;
     }
     if (data === '\x18') {
+      this.spindleOverride = 100;
       this.#queue = [];
       this.#held = [];
       this.#hold = this.#m0 = false;
@@ -157,11 +164,14 @@ export class SimGrbl implements Transport {
     return !!m && m !== 'M0' && !!m.probe;
   }
 
+  /** Spindle speed override, percent. */
+  spindleOverride = 100;
+
   #report(): string {
     const x = (v: V3): string => [this.lathe ? v[0] * 2 : v[0], v[1], v[2]].map(fmt).join(',');
     const pins = this.contact(this.pos) ? '|Pn:P' : '';
     const acc = this.flood || this.mist ? `|A:${this.flood ? 'F' : ''}${this.mist ? 'M' : ''}` : '';
-    return `<${this.state}|MPos:${x(this.pos)}|FS:${this.#queue.length ? this.#feed : 0},${this.spindle}|WCO:${x(this.wco)}${pins}${acc}>`;
+    return `<${this.state}|MPos:${x(this.pos)}|FS:${this.#queue.length ? this.#feed : 0},${Math.round((this.spindle * this.spindleOverride) / 100)}|WCO:${x(this.wco)}|Ov:100,100,${this.spindleOverride}${pins}${acc}>`;
   }
 
   /** One line: the reply ('ok', 'error:n' or the answer of a $ command); null while a probe runs (answered when it ends). */

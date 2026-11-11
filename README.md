@@ -145,6 +145,34 @@ A real machine stops when it hits something; the simulated one says so and goes 
 crash: the tool ran into the left strap…". The tests run whole programs this way, tool changes
 included (`apps/web/test/simrun.test.ts`, in a browser `scripts/check-run.cjs`).
 
+## Listen to the cut
+
+**Listen** in the Machine tab opens the microphone (the laptop's will do; the browser asks) and
+shows what it hears up to 6 kHz. A cutter that cuts cleanly sounds at the rate its teeth meet
+the work and at multiples of it; the panel draws those as lines, from the spindle speed the
+controller reports and the teeth of the tool that is in (one edge on the lathe). Chatter is the
+tool or the work ringing at a pitch of its own: a strong, narrow peak between the lines that
+stays put for a second or so.
+
+When it hears one it says so with the pitch, and offers the spindle speeds at which the teeth
+fall in step with the ring (60 × pitch ÷ teeth ÷ 1, 2, 3 …), nearest first, within the machine's
+range and half to one and a half times the programmed speed. A button sets that speed with the
+controller's **spindle override** while the program runs; "Back to 100 %" undoes it.
+
+- A hobby spindle seldom turns at what was asked: the turning rate is corrected by up to 5 % to
+  where the teeth's multiples really are, when at least two of them agree.
+- "This is the machine in air" (spindle running, nothing cutting) learns the tones of the
+  spindle, a pump or the drive, and leaves them out.
+- The feed is not changed: slowing the spindle makes each chip thicker. If the ring only moves
+  to another pitch, the cut is too heavy for the setup: less depth or width, a shorter tool,
+  better holding.
+
+Tested on made-up sound (clean cuts, rings, a spindle 4 % slow, a pump, a lathe:
+`apps/web/test/chatter.test.ts`) and in a browser with a sound file as the microphone and the
+simulated controller (`scripts/check-listen.cjs`). It has not heard a real cut. A phone or
+laptop microphone, a noisy shop, an interrupted cut or a ring that happens to sit on a multiple
+of the tooth rate can all fool it, both ways.
+
 ## Zero by touching (mill)
 
 With the cutter wired to grblHAL's probe input, the Machine tab touches off with G38.2 (fast, back
@@ -266,6 +294,7 @@ whole flow without hardware and is how it is tested.
 | Pictures | a photo of a part or a hand sketch with dimensions, attached to a chat message: the assistant reads the written dimensions and proposes stock and operations |
 | Review | "Worth a look": what a machinist would stop at before running (order, slender tools and parts, holding, thin floors), computed with numbers; Review asks the assistant to weigh it |
 | Camera checks | the cutter in the spindle after a change (diameter against the tool the job wants, tip against the zero), the bar in the chuck (diameter, stick-out, raw face against the job's stock) |
+| Chatter | the microphone tells a ring between the teeth's own tones from a clean cut, and offers the spindle speeds in step with it as spindle override |
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
 
 Threading needs grblHAL in lathe mode with an index + pulse encoder ($32=2, $38, PID tuned), and

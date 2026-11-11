@@ -97,7 +97,8 @@ class Machine {
       this.label = t.label;
       this.#s = new Streamer(t, {
         status: (s) => {
-          this.status = s;
+          // (the overrides come only with some reports: keep the last ones)
+          this.status = s.ov || !this.status?.ov ? s : { ...s, ov: this.status.ov };
           if (s.pins?.includes('P')) this.probeTested = true;
         },
         probe: (p) => (this.probe = p),
@@ -198,6 +199,8 @@ class Machine {
 
   feed = (cmd: 'feed100' | 'feedPlus10' | 'feedMinus10') => this.#s?.override(RT[cmd]);
   jogCancel = () => this.#s?.override(RT.jogCancel);
+  /** Spindle speed override (the controller keeps it between 10 and 200 %). */
+  spindleOv = (cmd: 'spindle100' | 'spindlePlus10' | 'spindleMinus10' | 'spindlePlus1' | 'spindleMinus1') => this.#s?.override(RT[cmd]);
 }
 
 export const machine = new Machine();

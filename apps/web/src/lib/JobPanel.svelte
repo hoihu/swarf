@@ -4,6 +4,7 @@
   import MachinePanel from './MachinePanel.svelte';
   import CameraPanel from './camera/CameraPanel.svelte';
   import ProbePanel from './ProbePanel.svelte';
+  import ListenPanel from './listen/ListenPanel.svelte';
   import MeasuredNote from './MeasuredNote.svelte';
   import { machine } from './machine.svelte.ts';
   import { issuesByField, machineFields, opFields, toolFieldsFor } from './form.ts';
@@ -396,6 +397,7 @@
     {:else}
       <MachinePanel />
       {#if machine.connected && job.machine.kind === 'mill'}<ProbePanel />{/if}
+      <ListenPanel />
       <CameraPanel />
     {/if}
   </div>

@@ -293,6 +293,31 @@ describe('simulated controller', () => {
     await sim.close();
   });
 
+  it('spindle speed override: ±10 and ±1 %, reported, cleared by a reset', async () => {
+    const sim = new SimGrbl({ speed: 200 });
+    const s = new Streamer(sim, {}, { pollMs: 5 });
+    await wait(20);
+    await s.send('M3 S6000');
+    await wait(40);
+    expect(s.last?.spindle).toBe(6000);
+    expect(s.last?.ov).toEqual([100, 100, 100]);
+    await s.override(RT.spindleMinus10);
+    await s.override(RT.spindleMinus1);
+    await s.override(RT.spindleMinus1);
+    await wait(40);
+    expect(s.last?.ov).toEqual([100, 100, 88]);
+    expect(s.last?.spindle).toBe(5280);
+    await s.override(RT.spindle100);
+    await s.override(RT.spindlePlus10);
+    await wait(40);
+    expect(s.last?.spindle).toBe(6600);
+    await s.stop();
+    await wait(60);
+    expect(sim.spindleOverride).toBe(100);
+    await s.close();
+    await sim.close();
+  });
+
   it('lathe: X as a diameter in words and reports', async () => {
     const sim = new SimGrbl({ lathe: true, wco: [-30, 0, -120], speed: 500 });
     const s = new Streamer(sim, {}, { pollMs: 5 });
