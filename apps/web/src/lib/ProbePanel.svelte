@@ -2,6 +2,7 @@
   import { machine } from './machine.svelte.ts';
   import { probe } from './probe.svelte.ts';
   import { store } from './store.svelte.ts';
+  import MeasuredNote from './MeasuredNote.svelte';
 
   const KEY = 'swarf.probe';
   const saved = (() => {
@@ -17,6 +18,25 @@
   const tool = $derived(endmills.find((t) => t.id === toolId) ?? endmills[0]);
   const diameter = $derived(tool?.diameter ?? 6);
   const ready = $derived(machine.connected && machine.status?.state === 'Idle' && !probe.busy);
+
+  const measured = $derived(store.job.measured);
+  const keptTop = $derived((measured?.top.length ?? 0) > 0);
+  const turn = $derived(probe.corner ? Math.round(probe.corner.angle * 100) / 100 : 0);
+
+  /** Keep the touched top with the job, for operations that follow it. */
+  function keepTop(): void {
+    if (!probe.surface) return;
+    store.set({ ...store.job, measured: { angle: measured?.angle ?? 0, top: probe.surface.points.map((p) => ({ x: p.x, y: p.y, z: p.z })) } });
+  }
+  /** Turn the toolpath with the block as the corner routine found it. */
+  function keepAngle(): void {
+    store.set({ ...store.job, measured: { angle: turn, top: measured?.top ?? [] } });
+  }
+  /** Z zero moved: a top kept before is in the old zero. */
+  async function setZ(which: 'highest' | 'mean'): Promise<void> {
+    await probe.setZ(which);
+    if (keptTop && !probe.error) keepTop();
+  }
 
   function remember(): void {
     try {
@@ -48,6 +68,7 @@
   <div class="row">
     <button class="btn" disabled={!ready} onclick={() => probe.zeroZ(0, diameter)}>Touch the top, set Z</button>
     <button class="btn" disabled={!ready} onclick={() => probe.checkSurface(diameter)}>Check the top (3 × 3)</button>
+    <button class="btn" disabled={!ready} onclick={() => probe.checkSurface(diameter, 6, 4)} title="24 points, for engraving that follows an uneven top">finer (6 × 4)</button>
     <button class="btn" disabled={!ready} onclick={() => probe.findCorner(diameter)}>Find the front-left corner</button>
   </div>
   <p class="muted small">Check the top: start above the top; it touches nine points and tells how flat and level it is. Corner: start above the corner, within about 5 mm; it touches the top, the left side and the front side twice, sets X, Y and Z zero there and tells whether the block sits square.</p>
@@ -58,11 +79,26 @@
   {#if probe.result}<p class="small ok">{probe.result}</p>{/if}
   {#if probe.surface && !probe.busy}
     <div class="row">
-      <button class="btn" disabled={!ready} onclick={() => probe.setZ('highest')}>Z zero on the highest point</button>
-      <button class="btn" disabled={!ready} onclick={() => probe.setZ('mean')}>on the average</button>
+      <button class="btn" disabled={!ready} onclick={() => setZ('highest')}>Z zero on the highest point</button>
+      <button class="btn" disabled={!ready} onclick={() => setZ('mean')}>on the average</button>
     </div>
     <p class="muted small">Highest point before facing (nothing is cut in the air), the average to measure from an uneven top.</p>
+    <div class="row">
+      <button class="btn" onclick={keepTop}>{keptTop ? 'Keep this top instead' : 'Keep this top for engraving'} ({probe.surface.points.length} points)</button>
+    </div>
+    <p class="muted small">An engraving with "Follow the measured top" then keeps its depth against the top as touched, instead of a flat one. Between the points the top is estimated: touch more of them (6 × 4) on a top that is not just tilted.</p>
   {/if}
+  {#if probe.corner && !probe.busy && Math.abs(turn) >= 0.05 && Math.abs(turn) !== Math.abs(measured?.angle ?? 0)}
+    {#if Math.abs(turn) <= 5}
+      <div class="row">
+        <button class="btn" onclick={keepAngle}>Turn the toolpath with the block ({turn.toFixed(2)}°)</button>
+      </div>
+      <p class="muted small">Instead of squaring the block: the G-code is turned about the corner by the angle measured. Clamps stay where they are, so leave them room.</p>
+    {:else}
+      <p class="muted small">Turned by more than 5°: that is not a block sitting a little askew. Square it and find the corner again.</p>
+    {/if}
+  {/if}
+  <MeasuredNote />
   {#if probe.error}<p class="diag error">{probe.error}</p>{/if}
 </section>
 

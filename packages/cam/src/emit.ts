@@ -6,6 +6,7 @@
  * M30. No cutter compensation, canned cycles, macros or tool length offsets: the generator does
  * all of that, so the preview shows exactly what the machine will do.
  */
+import { alignPieces, alignmentLines } from './align.ts';
 import { walk, type Program } from './program.ts';
 import type { Job } from './schema.ts';
 
@@ -37,7 +38,9 @@ const comment = (s: string) => `(${s.replace(/[()]/g, '')})`;
  * said, and the tool rises straight up before it goes anywhere. `lineOfMove` still counts every
  * move of the program; those left out have line -1.
  */
-export function emit(job: Job, program: Program, o: { fromSegment?: number } = {}): Emitted {
+export function emit(job: Job, drawn: Program, o: { fromSegment?: number } = {}): Emitted {
+  // the block as it was measured on the machine: turned, its top followed (align.ts)
+  const { program, pieces } = alignPieces(job, drawn);
   const from = o.fromSegment ?? 0;
   const lathe = program.kind === 'lathe';
   const dia = lathe && job.machine.xMode === 'diameter';
@@ -49,6 +52,7 @@ export function emit(job: Job, program: Program, o: { fromSegment?: number } = {
   lines.push(comment(`${job.machine.name}, ${lathe ? 'lathe' : 'mill'}, mm`));
   lines.push(comment(stockLine(job)));
   if (lathe) lines.push(comment(`X is a ${dia ? 'diameter' : 'radius'}; Z0 = finished front face`));
+  for (const l of alignmentLines(job)) lines.push(comment(`measured: ${l}`));
   if (from > 0) lines.push(comment(`starting again at ${program.segments[from]?.opId ?? '?'}: everything before it is taken as done`));
   // the modes the program relies on: said at the start and again after every tool change (touching
   // off by hand may have left others); G97 so that S is rpm, not a surface speed left from before
@@ -158,5 +162,15 @@ export function emit(job: Job, program: Program, o: { fromSegment?: number } = {
   lines.push('');
   lines.push('M5');
   lines.push('M30');
-  return { text: lines.join('\n') + '\n', lineOfMove };
+  // a drawn move that went out in pieces: the line of its last piece
+  let byMove = lineOfMove;
+  if (pieces) {
+    byMove = [];
+    let k = 0;
+    for (const n of pieces) {
+      k += n;
+      byMove.push(lineOfMove[k - 1] ?? -1);
+    }
+  }
+  return { text: lines.join('\n') + '\n', lineOfMove: byMove };
 }

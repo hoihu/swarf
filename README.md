@@ -158,6 +158,30 @@ obstacles; one where the way down is blocked (a strap over the edge) is left out
 with the height it touched at, and a point far off the others (a chip) is reported and left out
 of the figures.
 
+### Using what was measured
+
+Two of the measurements can be kept with the job and are then applied when the G-code is written:
+
+- **The block's angle.** After "Find the front-left corner", if the front edge is turned against
+  X, "Turn the toolpath with the block" keeps the angle (up to 5°). The whole program is turned by
+  it about X0 Y0, arcs staying arcs, instead of you squaring the block.
+- **The top.** After "Check the top" (3 × 3, or the finer 6 × 4), "Keep this top for engraving"
+  keeps the touched points. An engraving (text, or a drawing's lines) with "Follow the measured
+  top" switched on then keeps its depth against that surface: its cuts go out in pieces of at
+  most 1 mm, each raised or lowered by what the top is off there. Between the points the top is
+  estimated (a plane through all of them, corrected near each point by what it was off).
+
+The preview and the checks go on showing the block as drawn; the G-code's head, the G-code tab
+and the setup sheet say what is applied, and the checks note how far the turned moves land from
+where they looked (clamps and travel were checked unturned). The measurements belong to one
+clamping: "Forget" them when the block comes out. An operation that is to follow a top that was
+not touched, or was touched somewhere else, gets a note; a top standing higher than the travel
+height is an error.
+
+On the simulated mill with a block turned 0.8° and tilted 0.4 mm per 100 mm, an engraving asked
+0.2 mm deep came out 0.187 to 0.189 mm under the real top everywhere; cut flat it would have
+been 0.13 to 0.42 mm (`scripts/check-measured.cjs`).
+
 ## A camera on the work area
 
 The Machine tab's **Camera** section draws the toolpath, the raw stock and the work zero over the

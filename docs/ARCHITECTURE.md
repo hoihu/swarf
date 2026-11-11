@@ -35,6 +35,10 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   operation (no G96/G95: the speed is set for the largest diameter the operation cuts).
 - **Checks** (`cam/src/check.ts`): travel, chuck, rapids into material, depth of cut, plunging.
   Errors block the agent from finishing (fix budget 4) and the G-code download.
+- **The block as measured** (`cam/src/align.ts`): `Job.measured` (angle, touched top) is applied
+  in `emit()`: the program turned about the zero, followed cuts in short pieces at the surface's
+  height. Checks and preview stay on the block as drawn; `alignmentChecks` says what that leaves
+  open.
 - **Files and the sheet** (`cam/src/jobfile.ts`, `sheet.ts`): a job file and a tool library file
   are JSON read back through the schema; `setupSheet(job, analysis)` gives the setup sheet as
   data (per-tool and per-operation times from the planner, reach, travel), which
@@ -58,7 +62,7 @@ Code, Copilot CLI, Codex CLI or OpenCode headless, multi-start threads, lathe ar
 chamfers, external and internal threading as G33 passes, boring, lathe profiles, contour tabs, WebSocket streaming, a review card per assistant turn, DXF/SVG import with contours and pockets of any outline, lathe profiles from drawings, arc fitting):
 - A thread pull-out (G33 with X moving), internal profiles.
 - Camera: bar diameter and stickout on the lathe (silhouette, better with a backlight), the tool after a change.
-- Probing: rotate the toolpath by the measured angle; probe a height map for engraving on uneven stock; bores and bosses as datums; the corner routine to keep clear of known obstacles (it touches the sides 6 mm out, where low edge clamps sit).
+- Probing: bores and bosses as datums; the corner routine to keep clear of known obstacles (it touches the sides 6 mm out, where low edge clamps sit).
 
 Tier 3 (only by reusing libraries): STEP import (build123d / OpenCascade), adaptive clearing,
 3D finishing.

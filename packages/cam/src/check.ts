@@ -5,6 +5,7 @@
  */
 import { generate, retract, type Diagnostic } from './generate.ts';
 import { walk, type Program } from './program.ts';
+import { alignmentChecks } from './align.ts';
 import { plannedSeconds } from './planner.ts';
 import type { Job, Tool, Vec3 } from './schema.ts';
 import { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
@@ -162,7 +163,7 @@ export function analyze(job: Job): Analysis {
   for (const s of gen.program.segments) moves += s.moves.length;
   return {
     program: gen.program,
-    diagnostics: [...gen.diagnostics, ...sim.diagnostics],
+    diagnostics: [...gen.diagnostics, ...sim.diagnostics, ...alignmentChecks(job, gen.program)],
     material: sim.material,
     seconds: plannedSeconds(gen.program, job.machine),
     moves,

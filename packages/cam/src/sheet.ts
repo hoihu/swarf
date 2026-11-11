@@ -3,6 +3,7 @@
  * where the zero is, how the work is held, the tools in the order they are called for with how
  * far each must reach, the operations with speeds and times. All from the job and its analysis.
  */
+import { alignmentLines } from './align.ts';
 import type { Analysis } from './check.ts';
 import { MATERIALS } from './materials.ts';
 import { plannedSeconds } from './planner.ts';
@@ -195,6 +196,7 @@ export function setupSheet(job: Job, analysis: Analysis): Sheet {
     zero.push('X0 Y0: the front-left corner of the block');
     zero.push(`Z0: the finished top${st.top > 0 ? `; the raw top is at ${z(st.top)} (${n2(st.top)} mm to face off)` : ''}`);
     zero.push(`The underside is at ${z(st.top - st.z)}`);
+    for (const l of alignmentLines(job)) zero.push(`Measured: ${l}`);
     for (const o of job.obstacles) holding.push(`${o.name}: X${n1(Math.min(o.x0, o.x1))} to ${n1(Math.max(o.x0, o.x1))}, Y${n1(Math.min(o.y0, o.y1))} to ${n1(Math.max(o.y0, o.y1))}, top at ${z(o.top)}`);
     if (!job.obstacles.length) holding.push('No clamps or jaws entered: the checks do not know what holds the block');
     holding.push(`The tool waits at ${z(p.home.z)} before the program, at tool changes and after it`);

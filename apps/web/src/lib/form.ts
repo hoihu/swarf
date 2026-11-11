@@ -60,6 +60,7 @@ const LABELS: Record<string, [string, string?]> = {
   cy: ['Centre Y', 'mm'],
   zBottom: ['Bottom Z', 'mm'],
   zTop: ['Top Z', 'mm'],
+  follow: ['Follow the measured top', ''],
   side: ['Side'],
   points: ['Points'],
   entry: ['Entry'],

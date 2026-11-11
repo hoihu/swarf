@@ -330,6 +330,7 @@ export const MillContour = z.object({
   tabs: z.number().int().min(0).max(16).default(0).describe('Holding tabs per outer loop, so a cut-out part stays in place'),
   tabWidth: pos.default(4),
   tabHeight: pos.default(1),
+  follow: z.boolean().default(false).describe('Follow the top as it was measured on the machine (the probed points kept with the job): the depth is kept against the real surface, for engraving on stock that is not flat'),
 });
 
 export const MillPocket = z.object({
@@ -404,6 +405,7 @@ export const MillEngrave = z.object({
   angle: z.number().default(0).describe('Turned by this many degrees (counter-clockwise)'),
   spacing: z.number().min(0.5).max(4).default(1).describe('Letter spacing (1: normal)'),
   zTop: mm.optional(),
+  follow: z.boolean().default(false).describe('Follow the top as it was measured on the machine (the probed points kept with the job): the depth is kept against the real surface, for engraving on stock that is not flat'),
 });
 
 export const MillThread = z.object({
@@ -496,6 +498,19 @@ export const OP_TOOLS: Record<OpType, ToolType[]> = {
   mill_thread: ['threadmill'],
 };
 
+/**
+ * What was measured on the machine for this setup (mill), applied when the G-code is written: the
+ * block as it really sits, not as it was drawn. It belongs to one clamping: forget it when the
+ * block is taken out.
+ */
+export const Measured = z.object({
+  /** The block's front edge against the machine's X, degrees (counter-clockwise from above): the toolpath is turned by it about X0 Y0. */
+  angle: z.number().min(-5).max(5).default(0),
+  /** The top as touched, work coordinates: operations with `follow` keep their depth against it. */
+  top: z.array(z.object({ x: mm, y: mm, z: mm })).max(400).default([]),
+});
+export type Measured = z.infer<typeof Measured>;
+
 export const Job = z.object({
   name: z.string(),
   machine: Machine,
@@ -512,6 +527,7 @@ export const Job = z.object({
   material: z.string().optional(),
   /** How the work is held and anything else to remember at the machine, free text; printed on the setup sheet. */
   notes: z.string().optional(),
+  measured: Measured.optional(),
 });
 export type Job = z.infer<typeof Job>;
 export type JobInput = z.input<typeof Job>;

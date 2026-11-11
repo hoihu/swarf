@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EXAMPLES,
+  alignProgram, surfaceAt, isAligned,
   jobFile, openJobFile, libraryFile, openLibraryFile, keepTool, dropTool, takeTool, inLibrary, setupSheet, cutLines, toolSummary,
   Job,
   LatheMaterial,
@@ -1184,5 +1185,122 @@ describe('setup sheet', () => {
     expect(toolSummary({ id: 1, name: 'x', type: 'endmill', diameter: 6, flutes: 2, fluteLength: 15 })).toBe('endmill Ø6, 2 flutes, flutes 15 long');
     expect(toolSummary({ id: 4, name: 'x', type: 'chamfer', diameter: 6, angle: 60 })).toBe('pointed cutter 60° Ø6');
     expect(toolSummary({ id: 5, name: 'x', type: 'boring', diameter: 10, fluteLength: 30, internal: true })).toBe('boring Ø10, reach 30');
+  });
+});
+
+describe('the block as measured on the machine', () => {
+  const engrave = (patch: Partial<JobInput> = {}, follow = true) =>
+    withOps('mill', [{ type: 'mill_engrave', tool: 4, text: 'AB', x: 10, y: 10, height: 8, depth: 0.2, follow }], { stock: { kind: 'block', x: 80, y: 50, z: 15, top: 0 }, ...patch });
+  const xyz = (text: string) => {
+    // the positions the G-code visits (modal axes)
+    const at = { x: 0, y: 0, z: 0 };
+    const out: (typeof at & { g: string })[] = [];
+    let g = '';
+    for (const line of text.split('\n')) {
+      if (!/^(G[0-3] |[XYZ])/.test(line)) continue;
+      const m = /^G([0-3])\b/.exec(line);
+      if (m) g = m[1]!;
+      for (const [, a, v] of line.matchAll(/([XYZ])(-?[\d.]+)/g)) at[a!.toLowerCase() as 'x'] = Number(v);
+      out.push({ ...at, g });
+    }
+    return out;
+  };
+
+  it('a surface through touched points: exact at them, the plane far away', () => {
+    const tilt = (x: number, y: number) => 0.1 + 0.002 * x - 0.001 * y;
+    const pts = [0, 40, 80].flatMap((x) => [0, 25, 50].map((y) => ({ x, y, z: tilt(x, y) })));
+    const s = surfaceAt(pts)!;
+    expect(s(40, 25)).toBeCloseTo(tilt(40, 25), 9);
+    expect(s(13, 31)).toBeCloseTo(tilt(13, 31), 9);
+    expect(s(200, -100)).toBeCloseTo(tilt(200, -100), 6);
+    // a bump at one point stays local
+    const bumped = pts.map((p) => (p.x === 40 && p.y === 25 ? { ...p, z: p.z + 0.3 } : p));
+    const b = surfaceAt(bumped)!;
+    expect(b(40, 25)).toBeCloseTo(tilt(40, 25) + 0.3, 9);
+    expect(Math.abs(b(0, 0) - tilt(0, 0))).toBeLessThan(1e-9);
+    expect(b(38, 25) - tilt(38, 25)).toBeGreaterThan(0.2);
+    expect(surfaceAt(pts.slice(0, 2))).toBeNull();
+    expect(surfaceAt([{ x: 0, y: 0, z: 0 }, { x: 1, y: 1, z: 0 }, { x: 2, y: 2, z: 0 }])).toBeNull();
+  });
+
+  it('nothing measured, nothing changed', () => {
+    const job = EXAMPLES.mill();
+    const a = analyze(job);
+    expect(isAligned(job)).toBe(false);
+    expect(alignProgram(job, a.program)).toBe(a.program);
+    expect(emit({ ...job, measured: { angle: 0, top: [] } }, a.program).text).toBe(emit(job, a.program).text);
+  });
+
+  it('turns the whole toolpath about the zero by the measured angle, arcs staying arcs', () => {
+    const job = EXAMPLES.mill();
+    const turned = Job.parse({ ...job, measured: { angle: 0.5 } });
+    const a = analyze(job);
+    const plain = emit(job, a.program);
+    const out = emit(turned, analyze(turned).program);
+    expect(out.text).toMatch(/\(measured: toolpath turned 0\.50 deg about X0 Y0/);
+    expect(out.lineOfMove).toHaveLength(plain.lineOfMove.length);
+    const p = xyz(plain.text);
+    const q = xyz(out.text);
+    expect(q).toHaveLength(p.length);
+    const c = Math.cos((0.5 * Math.PI) / 180);
+    const s = Math.sin((0.5 * Math.PI) / 180);
+    for (let i = 0; i < p.length; i++) {
+      expect(q[i]!.x).toBeCloseTo(p[i]!.x * c - p[i]!.y * s, 2);
+      expect(q[i]!.y).toBeCloseTo(p[i]!.x * s + p[i]!.y * c, 2);
+      expect(q[i]!.z).toBe(p[i]!.z);
+    }
+    // the G-code parses, arcs and all, and ends where it should
+    const parsed = parseGcode(out.text, 'mill');
+    expect(parsed.warnings).toEqual([]);
+    expect(parsed.moves.filter((m) => m.move.type === 'arc').length).toBe(parseGcode(plain.text, 'mill').moves.filter((m) => m.move.type === 'arc').length);
+    // the checks say that they looked at the block as drawn
+    expect(analyze(turned).diagnostics.map((d) => d.code)).toContain('TURNED');
+    expect(hasErrors(analyze(turned).diagnostics)).toBe(false);
+  });
+
+  it('keeps an engraving at its depth against the touched top', () => {
+    // a top that rises 0.4 mm over the block's length, with a 0.15 mm hump in the middle
+    const top = (x: number, y: number) => 0.005 * x + 0.15 * Math.exp(-((x - 30) ** 2 + (y - 15) ** 2) / 200);
+    const pts = [0, 10, 20, 30, 40, 50, 60, 70, 80].flatMap((x) => [0, 10, 20, 30, 40, 50].map((y) => ({ x, y, z: top(x, y) })));
+    const job = engrave({ measured: { angle: 0, top: pts } });
+    const a = analyze(job);
+    expect(hasErrors(a.diagnostics)).toBe(false);
+    const out = emit(job, a.program);
+    expect(out.text).toMatch(/\(measured: op1 follows the top as touched at 54 points\)/);
+    expect(out.lineOfMove).toHaveLength(a.moves);
+    const cuts = xyz(out.text).filter((p) => p.g === '1' && p.z < 0.6);
+    expect(cuts.length).toBeGreaterThan(30);
+    // every cutting position is 0.2 mm under the real top (the hump between points 10 mm apart is guessed: within 0.04)
+    const bottoms = cuts.filter((p) => p.z < top(p.x, p.y) - 0.1);
+    expect(bottoms.length).toBeGreaterThan(20);
+    for (const p of bottoms) expect(Math.abs(top(p.x, p.y) - 0.2 - p.z)).toBeLessThan(0.04);
+    // and no piece of a cut is longer than a millimetre
+    const all = xyz(out.text);
+    for (let i = 1; i < all.length; i++) {
+      if (all[i]!.g === '1' && all[i - 1]!.g === '1') expect(Math.hypot(all[i]!.x - all[i - 1]!.x, all[i]!.y - all[i - 1]!.y)).toBeLessThan(1.01);
+    }
+    // without the flag the same job is cut flat
+    const flat = engrave({ measured: { angle: 0, top: pts } }, false);
+    const zs = new Set(xyz(emit(flat, analyze(flat).program).text).filter((p) => p.g === '1').map((p) => p.z));
+    expect(zs.size).toBeLessThanOrEqual(2);
+  });
+
+  it('says so when an operation is to follow a top that was never touched, or touched elsewhere, or stands too high', () => {
+    expect(codes(engrave())).toContain('FOLLOW_NO_TOP');
+    const corner = [{ x: 60, y: 30, z: 0 }, { x: 80, y: 30, z: 0 }, { x: 60, y: 50, z: 0 }, { x: 80, y: 50, z: 0.01 }];
+    expect(codes(engrave({ measured: { angle: 0, top: corner } }))).toContain('FOLLOW_OUTSIDE');
+    const high = [0, 80].flatMap((x) => [0, 50].map((y) => ({ x, y, z: 1.8 })));
+    const a = analyze(engrave({ measured: { angle: 0, top: high } }));
+    expect(a.diagnostics.find((d) => d.code === 'FOLLOW_HIGH')?.severity).toBe('error');
+    expect(() => Job.parse({ ...EXAMPLES.mill(), measured: { angle: 12 } })).toThrow();
+  });
+
+  it('turned and followed at once: the top is looked up where the tool really is', () => {
+    const top = (x: number, y: number) => 0.004 * x - 0.003 * y;
+    const pts = [-10, 20, 50, 90].flatMap((x) => [-5, 20, 55].map((y) => ({ x, y, z: top(x, y) })));
+    const job = engrave({ measured: { angle: 2, top: pts } });
+    const cuts = xyz(emit(job, analyze(job).program).text).filter((p) => p.g === '1' && p.z < top(p.x, p.y) - 0.1);
+    expect(cuts.length).toBeGreaterThan(10);
+    for (const p of cuts) expect(p.z).toBeCloseTo(top(p.x, p.y) - 0.2, 2);
   });
 });

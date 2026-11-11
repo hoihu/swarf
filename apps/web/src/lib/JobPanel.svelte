@@ -4,6 +4,7 @@
   import MachinePanel from './MachinePanel.svelte';
   import CameraPanel from './camera/CameraPanel.svelte';
   import ProbePanel from './ProbePanel.svelte';
+  import MeasuredNote from './MeasuredNote.svelte';
   import { machine } from './machine.svelte.ts';
   import { issuesByField, machineFields, opFields, toolFieldsFor } from './form.ts';
   import { store } from './store.svelte.ts';
@@ -376,6 +377,7 @@
       {#if store.analysis.diagnostics.some((d) => d.severity === 'error')}
         <p class="diag error">The job has errors; fix them before running this on the machine.</p>
       {/if}
+      <MeasuredNote />
       <pre class="gcode">{#each gcodeLines as line, i (i)}<span class="ln">{i + 1}</span><span class:cm={line.startsWith('(')}>{line}</span>
 {/each}</pre>
     {:else}

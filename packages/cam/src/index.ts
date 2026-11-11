@@ -20,3 +20,4 @@ export { MATERIALS, MaterialId, cutKind, defaultToolMaterial, type CutKind, type
 export { textStrokes, type TextStrokes } from './font.ts';
 export { jobFile, openJobFile, libraryFile, openLibraryFile, keepTool, dropTool, takeTool, inLibrary, Library, LibraryTool } from './jobfile.ts';
 export { setupSheet, cutLines, toolSummary, type Sheet, type SheetOp, type SheetTool } from './sheet.ts';
+export { alignProgram, alignmentLines, alignmentChecks, isAligned, surfaceAt } from './align.ts';
