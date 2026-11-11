@@ -132,10 +132,22 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
       if (plunge && tool.type === 'endmill' && tool.centerCutting === false && material.hit(move.to, tool)) {
         once({ severity: 'error', code: 'PLUNGE', message: `T${tool.id} is not centre-cutting but plunges into material at ${fmt(move.to, false)}.`, opId, move: index });
       }
+      // a thread mill goes down a hole that is already there
+      if (plunge && tool.type === 'threadmill' && material.hit(move.to, tool)) {
+        once({ severity: 'error', code: 'THREAD_NO_HOLE', message: `T${tool.id} goes down into solid material at ${fmt(move.to, false)}: drill the core hole first (for an internal thread, its diameter less the pitch).`, opId, move: index });
+      }
       const depth = material.cutPath(pts, tool);
       const limit = tool.fluteLength ?? Infinity;
       if (depth > limit + 0.05) once({ severity: 'error', code: 'TOO_DEEP', message: `Cut is ${depth.toFixed(2)} mm deep; T${tool.id}'s flutes are ${limit} mm.`, opId, move: index });
-      else if (!plunge && depth > docOf(tool) * 1.5 + 0.05)
+      else if (tool.type === 'chamfer') {
+        // a pointed cutter buried more than half its cone while it travels: it is cutting a groove,
+        // not an edge (straight down is a spot: that is what its cone is for)
+        if (plunge) continue;
+        const cone = ((tool.diameter ?? 6) / 2 - (tool.tipDiameter ?? 0) / 2) / Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
+        if (depth > cone / 2 + 0.05) once({ severity: 'warning', code: 'DOC_HIGH', message: `T${tool.id} is ${depth.toFixed(2)} mm deep in material, more than half its cone (${(cone / 2).toFixed(2)} mm): for a chamfer, cut the wall beside the edge first; for engraving, go shallower.`, opId, move: index });
+      } else if (tool.type === 'threadmill') {
+        // its depth of cut is the thread's, set by the passes
+      } else if (!plunge && depth > docOf(tool) * 1.5 + 0.05)
         once({ severity: 'warning', code: 'DOC_HIGH', message: `Side cut is ${depth.toFixed(2)} mm deep; T${tool.id} in ${MATERIALS[job.workMaterial].name.toLowerCase()} should take about ${docOf(tool)} mm per pass.`, opId, move: index });
     }
   }

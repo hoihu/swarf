@@ -121,6 +121,8 @@ describe('programs on the simulated mill', () => {
       }
       await wait(5);
     }
+    // (the lines acknowledged run ahead of the machine: wait until the cutter is down in the pocket)
+    for (let i = 0; i < 2000 && sim.pos[2] - sim.wco[2] >= 0.5; i++) await wait(2);
     // well into the pocket, cutter down in it, spindle on: stop
     expect(sim.pos[2] - sim.wco[2]).toBeLessThan(0.5);
     expect(sim.spindle).toBeGreaterThan(0);

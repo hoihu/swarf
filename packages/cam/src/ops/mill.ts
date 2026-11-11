@@ -9,6 +9,7 @@ import { CamError, levels, v, type Move } from '../program.ts';
 import type { Operation, Shape } from '../schema.ts';
 import { dedupe, offsetRegion, orient, type Loop, type Pt } from '../geom2d.ts';
 import { millSafeZ, type OpContext } from './context.ts';
+import { textStrokes } from '../font.ts';
 
 type MillOp = Extract<Operation, { type: `mill_${string}` }>;
 
@@ -23,8 +24,8 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
   const out: Move[] = [];
   const rapid = (x: number, y: number, z: number) => out.push({ type: 'rapid', to: v(x, y, z) });
   const feed = (x: number, y: number, z: number, f = cut.feed) => out.push({ type: 'feed', to: v(x, y, z), f });
-  const arc = (x: number, y: number, z: number, cx: number, cy: number, cw: boolean) =>
-    out.push({ type: 'arc', to: v(x, y, z), center: v(cx, cy, z), cw, f: cut.feed });
+  const arc = (x: number, y: number, z: number, cx: number, cy: number, cw: boolean, f = cut.feed) =>
+    out.push({ type: 'arc', to: v(x, y, z), center: v(cx, cy, z), cw, f });
 
   // up to the safe plane first
   rapid(ctx.from.x, ctx.from.y, Math.max(ctx.from.z, safeZ));
@@ -177,6 +178,57 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
   const climb = !('direction' in op) || op.direction === 'climb';
   /** A loop the way round the user asked for (loops are built for climb milling), from the same start. */
   const way = (l: Loop): Loop => (climb ? l : [l[0]!, ...l.slice(1).reverse()]);
+
+  /** Pocket the region inside closed loops (loops inside loops are islands): rings from the wall inwards, level by level. */
+  const pocketLoops = (closed: Loop[], op: { zTop?: number | undefined; zBottom: number; stepDown?: number | undefined; stepover: number; entry: 'ramp' | 'plunge'; rampAngle: number }) => {
+    {
+      const zTop = zTopOf(op);
+      checkDepth(zTop, op.zBottom);
+      const g = { closed };
+      // (no allowance where it would leave the levels no room at all)
+      const a = allow > 0 && offsetRegion(g.closed, -(r + allow)).length ? allow : 0;
+      // rings from the wall inwards, every stepover; cut from the inside out, the wall last
+      const rings: Loop[][] = [];
+      for (let k = 0; ; k++) {
+        const ring = offsetRegion(g.closed, -(r + a + k * op.stepover * d));
+        if (!ring.length) break;
+        rings.push(orient(ring, false));
+        if (k > 2000) throw new CamError('the pocket needs too many passes; use a bigger tool or stepover');
+      }
+      if (!rings.length) throw new CamError(`the pocket is too small for the Ø${d} tool`);
+      const order = [...rings].reverse().flat();
+      let zPrev = zTop + 0.2;
+      for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
+        let at: Pt = [ctx.from.x, ctx.from.y];
+        for (const l0 of order) {
+          const l = way(startNear(l0, at));
+          // above everything (islands stand up to the top), down through what is already cleared
+          approach(l[0]![0], l[0]![1], zTop);
+          feed(l[0]![0], l[0]![1], zPrev, cut.plunge);
+          cutLoop(l, zPrev, zl, { ramp: op.entry === 'ramp', angle: op.rampAngle });
+          rapid(l[0]![0], l[0]![1], zTop + 1);
+          at = l[0]!;
+        }
+        zPrev = zl;
+      }
+      if (a > 0) {
+        // the finishing pass along every wall (the outline and the islands) at full depth
+        let at: Pt = [ctx.from.x, ctx.from.y];
+        for (const l0 of orient(offsetRegion(g.closed, -r), false)) {
+          const l = way(startNear(l0, at));
+          approach(l[0]![0], l[0]![1], zTop);
+          cutLoop(l, op.zBottom, op.zBottom, { ramp: false, angle: op.rampAngle });
+          rapid(l[0]![0], l[0]![1], zTop + 1);
+          at = l[0]!;
+        }
+      }
+      rapid(ctx.from.x, ctx.from.y, safeZ);
+    }
+  };
+
+  // pointed cutters: half the angle at the point, and the flat at the tip
+  const tanHalf = Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
+  const tipR = (tool.tipDiameter ?? 0) / 2;
 
   switch (op.type) {
     case 'mill_face': {
@@ -383,48 +435,182 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
     }
 
     case 'mill_pocket': {
-      const zTop = zTopOf(op);
-      checkDepth(zTop, op.zBottom);
       const g = shapeOf(op.shape);
       if (!g.closed.length) throw new CamError(`shape ${op.shape} has no closed outline to pocket`);
-      // (no allowance where it would leave the levels no room at all)
-      const a = allow > 0 && offsetRegion(g.closed, -(r + allow)).length ? allow : 0;
-      // rings from the wall inwards, every stepover; cut from the inside out, the wall last
-      const rings: Loop[][] = [];
-      for (let k = 0; ; k++) {
-        const ring = offsetRegion(g.closed, -(r + a + k * op.stepover * d));
-        if (!ring.length) break;
-        rings.push(orient(ring, false));
-        if (k > 2000) throw new CamError('the pocket needs too many passes; use a bigger tool or stepover');
+      pocketLoops(g.closed, op);
+      return out;
+    }
+
+    case 'mill_slot': {
+      const zTop = zTopOf(op);
+      checkDepth(zTop, op.zBottom);
+      const len = Math.hypot(op.x1 - op.x0, op.y1 - op.y0);
+      const w = op.width ?? d;
+      if (w < d - 1e-9) throw new CamError(`the slot (${w} mm) is narrower than the Ø${d} tool`);
+      if (w > d + 1e-6) {
+        // wider than the tool: a pocket with round ends
+        const [ux, uy] = len > 1e-9 ? [(op.x1 - op.x0) / len, (op.y1 - op.y0) / len] : [1, 0];
+        const a0 = Math.atan2(uy, ux);
+        const outline: Loop = [];
+        const n = 24;
+        for (let k = 0; k <= n; k++) outline.push([op.x1 + (w / 2) * Math.cos(a0 - Math.PI / 2 + (Math.PI * k) / n), op.y1 + (w / 2) * Math.sin(a0 - Math.PI / 2 + (Math.PI * k) / n)]);
+        for (let k = 0; k <= n; k++) outline.push([op.x0 + (w / 2) * Math.cos(a0 + Math.PI / 2 + (Math.PI * k) / n), op.y0 + (w / 2) * Math.sin(a0 + Math.PI / 2 + (Math.PI * k) / n)]);
+        pocketLoops([outline], op);
+        return out;
       }
-      if (!rings.length) throw new CamError(`the pocket is too small for the Ø${d} tool`);
-      const order = [...rings].reverse().flat();
+      // the tool's own width: back and forth down the middle
+      approach(op.x0, op.y0, zTop);
       let zPrev = zTop + 0.2;
+      feed(op.x0, op.y0, zPrev, cut.plunge);
       for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
-        let at: Pt = [ctx.from.x, ctx.from.y];
-        for (const l0 of order) {
-          const l = way(startNear(l0, at));
-          // above everything (islands stand up to the top), down through what is already cleared
-          approach(l[0]![0], l[0]![1], zTop);
-          feed(l[0]![0], l[0]![1], zPrev, cut.plunge);
-          cutLoop(l, zPrev, zl, { ramp: op.entry === 'ramp', angle: op.rampAngle });
-          rapid(l[0]![0], l[0]![1], zTop + 1);
-          at = l[0]!;
-        }
+        if (op.entry === 'ramp' && len > r * 0.5) rampDown(op.x0, op.y0, op.x1, op.y1, zPrev, zl, op.rampAngle);
+        else feed(op.x0, op.y0, zl, cut.plunge);
+        // one pass along and back cleans the ramps out
+        feed(op.x1, op.y1, zl);
+        feed(op.x0, op.y0, zl);
         zPrev = zl;
       }
-      if (a > 0) {
-        // the finishing pass along every wall (the outline and the islands) at full depth
-        let at: Pt = [ctx.from.x, ctx.from.y];
-        for (const l0 of orient(offsetRegion(g.closed, -r), false)) {
-          const l = way(startNear(l0, at));
-          approach(l[0]![0], l[0]![1], zTop);
-          cutLoop(l, op.zBottom, op.zBottom, { ramp: false, angle: op.rampAngle });
-          rapid(l[0]![0], l[0]![1], zTop + 1);
-          at = l[0]!;
+      rapid(op.x0, op.y0, safeZ);
+      return out;
+    }
+
+    case 'mill_spot': {
+      const zTop = zTopOf(op);
+      if (op.diameter > d + 1e-9) throw new CamError(`a Ø${op.diameter} spot is wider than the Ø${d} tool`);
+      const depth = Math.max(0, (op.diameter / 2 - tipR) / tanHalf);
+      for (const p of op.points) {
+        rapid(p.x, p.y, safeZ);
+        rapid(p.x, p.y, zTop + 1);
+        feed(p.x, p.y, zTop - depth, cut.plunge);
+        rapid(p.x, p.y, safeZ);
+      }
+      return out;
+    }
+
+    case 'mill_chamfer': {
+      const zTop = zTopOf(op);
+      // The cone's surface runs through the edge's two new corners: `size` in from the edge on the
+      // top face, and that over tan down the wall. Its point is lower still by tipClear, which
+      // puts the tool's axis that much (times tan) off the wall.
+      const leg = op.size / tanHalf;
+      const most = (r - tipR) / tanHalf;
+      if (leg > most + 1e-9) throw new CamError(`a ${op.size} mm chamfer needs more cone than the Ø${d} tool has (${(most * tanHalf).toFixed(2)} mm at most)`);
+      const zt = Math.min(leg + op.tipClear, most);
+      const off = tipR + (zt - leg) * tanHalf;
+      const z = zTop - zt;
+      const sign = op.side === 'outside' ? 1 : -1;
+      let loops: Loop[];
+      const given = [op.shape !== undefined, op.w !== undefined || op.h !== undefined, op.diameter !== undefined].filter(Boolean).length;
+      if (given !== 1) throw new CamError('say which edge: a shape, or a rectangle (x, y, w, h), or a circle (cx, cy, diameter)');
+      if (op.shape !== undefined) {
+        const g = shapeOf(op.shape);
+        if (!g.closed.length) throw new CamError(`shape ${op.shape} has no closed outline to chamfer`);
+        loops = orient(offsetRegion(g.closed, sign * off), op.side === 'outside');
+        if (!loops.length) throw new CamError('the outline is too small to get the tool into');
+      } else if (op.diameter !== undefined) {
+        if (op.cx === undefined || op.cy === undefined) throw new CamError('a circle needs cx and cy');
+        const rr = op.diameter / 2 + sign * off;
+        if (rr < 0.05) {
+          // a hole no wider than the tool's point runs off its axis: straight down the middle
+          // until the cone is `size` wider than the hole
+          const depth = (op.diameter / 2 + op.size - tipR) / tanHalf;
+          if (depth > most + 1e-9) throw new CamError(`the Ø${d} tool is too small to chamfer a Ø${op.diameter} hole by ${op.size}`);
+          rapid(op.cx, op.cy, safeZ);
+          rapid(op.cx, op.cy, zTop + 1);
+          feed(op.cx, op.cy, zTop - depth, cut.plunge);
+          rapid(op.cx, op.cy, safeZ);
+          return out;
+        }
+        const n = Math.max(24, Math.ceil(rr * 4));
+        const circle: Loop = Array.from({ length: n }, (_, k) => [op.cx! + rr * Math.cos((2 * Math.PI * k) / n), op.cy! + rr * Math.sin((2 * Math.PI * k) / n)]);
+        loops = orient([circle], op.side === 'outside');
+      } else {
+        if (op.x === undefined || op.y === undefined || op.w === undefined || op.h === undefined) throw new CamError('a rectangle needs x, y, w and h');
+        const [bx0, bx1, by0, by1] = [op.x - sign * off, op.x + op.w + sign * off, op.y - sign * off, op.y + op.h + sign * off];
+        if (bx1 - bx0 < 0.1 || by1 - by0 < 0.1) throw new CamError('the rectangle is too small to get the tool into');
+        loops = [op.side === 'outside' ? [[bx0, by0], [bx0, by1], [bx1, by1], [bx1, by0]] : [[bx0, by0], [bx1, by0], [bx1, by1], [bx0, by1]]];
+      }
+      let at: Pt = [ctx.from.x, ctx.from.y];
+      for (const l0 of loops) {
+        const l = way(startNear(l0, at));
+        approach(l[0]![0], l[0]![1], zTop);
+        cutLoop(l, z, z, { ramp: false, angle: 3 });
+        rapid(l[0]![0], l[0]![1], safeZ);
+        at = l[0]!;
+      }
+      return out;
+    }
+
+    case 'mill_engrave': {
+      const zTop = zTopOf(op);
+      const t = textStrokes(op.text, op.height, op.spacing);
+      if (!t.paths.length) throw new CamError(`nothing to engrave: the font has none of "${op.text}"`);
+      if (t.missing.length) throw new CamError(`the engraving font has no ${[...new Set(t.missing)].map((c) => `"${c}"`).join(', ')}: capitals, digits and - + = _ . , : ! ? / \\ ( ) # * % ° Ø ' " < > × only`);
+      if (tool.type === 'endmill' && op.depth > (cut.doc ?? Infinity) + 1e-9) throw new CamError(`${op.depth} mm is more than T${tool.id} takes in one pass (${cut.doc} mm): engrave shallower`);
+      const [ca, sa] = [Math.cos((op.angle * Math.PI) / 180), Math.sin((op.angle * Math.PI) / 180)];
+      const z = zTop - op.depth;
+      const hop = zTop + 1;
+      let first = true;
+      for (const path of t.paths) {
+        const pts = path.map(([px, py]): Pt => [op.x + px * ca - py * sa, op.y + px * sa + py * ca]);
+        if (first) approach(pts[0]![0], pts[0]![1], zTop);
+        else rapid(pts[0]![0], pts[0]![1], hop);
+        first = false;
+        feed(pts[0]![0], pts[0]![1], z, cut.plunge);
+        for (const [px, py] of pts.slice(1)) feed(px, py, z);
+        rapid(pts.at(-1)![0], pts.at(-1)![1], hop);
+      }
+      const last = t.paths.at(-1)!.at(-1)!;
+      rapid(op.x + last[0] * ca - last[1] * sa, op.y + last[0] * sa + last[1] * ca, safeZ);
+      return out;
+    }
+
+    case 'mill_thread': {
+      const zTop = zTopOf(op);
+      checkDepth(zTop, op.zBottom);
+      const internal = op.side === 'internal';
+      // ISO metric: the flanks are 0.5413 P deep in a nut, 0.6134 P on a bolt
+      const H = (internal ? 0.5413 : 0.6134) * op.pitch;
+      const R = op.diameter / 2;
+      if (internal && r > R - H - 0.1) throw new CamError(`the Ø${d} thread mill does not fit the Ø${(2 * (R - H)).toFixed(2)} core hole of M${op.diameter}×${op.pitch}`);
+      // With the spindle turning clockwise (M3), climb milling goes counter-clockwise inside a
+      // hole and clockwise around a boss. A right-hand thread rises counter-clockwise: so inside
+      // it is cut from the bottom up, outside from the top down; a left-hand thread the other way.
+      const ccw = internal;
+      const up = internal === (op.hand === 'right');
+      const turns = Math.ceil((zTop - op.zBottom) / op.pitch + 0.5);
+      const [zA, zB] = up ? [op.zBottom, op.zBottom + turns * op.pitch] : [op.zBottom + turns * op.pitch, op.zBottom];
+      // where the tool waits between passes: on the axis of the hole, or clear of the boss
+      const park = internal ? 0 : R + r + 2;
+      rapid(op.cx + park, op.cy, safeZ);
+      rapid(op.cx + park, op.cy, Math.max(zA, zTop + 1));
+      for (let i = 1; i <= op.passes; i++) {
+        // equal chips: the depth grows as the root of the pass number
+        const depth = H * Math.sqrt(i / op.passes);
+        const rp = internal ? R - r - (H - depth) : R + r - depth;
+        // the feed is the cutting edge's; the tool's axis goes round a smaller (inside) circle
+        const f = Math.max(1, Math.round(cut.feed * (internal ? rp / (rp + r) : 1)));
+        if (internal) feed(op.cx, op.cy, zA, cut.plunge);
+        else rapid(op.cx + park, op.cy, zA);
+        // in along half a circle (inside), or straight in (outside)
+        if (internal) arc(op.cx + rp, op.cy, zA, op.cx + rp / 2, op.cy, !ccw, f);
+        else feed(op.cx + rp, op.cy, zA, f);
+        let z = zA;
+        const dz = ((zB - zA) / turns) / 2;
+        for (let k = 0; k < turns; k++) {
+          z += dz;
+          arc(op.cx - rp, op.cy, z, op.cx, op.cy, !ccw, f);
+          z += dz;
+          arc(op.cx + rp, op.cy, z, op.cx, op.cy, !ccw, f);
+        }
+        if (internal) arc(op.cx, op.cy, zB, op.cx + rp / 2, op.cy, !ccw, f);
+        else feed(op.cx + park, op.cy, zB, f);
+        if (i < op.passes) {
+          if (internal) rapid(op.cx, op.cy, Math.max(zA, zB) + 0);
+          else rapid(op.cx + park, op.cy, Math.max(zA, zB, zTop + 1));
         }
       }
-      rapid(ctx.from.x, ctx.from.y, safeZ);
+      rapid(op.cx + park, op.cy, safeZ);
       return out;
     }
 

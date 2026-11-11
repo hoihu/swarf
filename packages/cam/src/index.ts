@@ -17,3 +17,4 @@ export { importDrawing } from './importers/index.ts';
 export { fitArcs } from './arcfit.ts';
 export { profileFromDrawing } from './importers/lathe.ts';
 export { MATERIALS, MaterialId, cutKind, defaultToolMaterial, type CutKind, type ToolMaterial } from './materials.ts';
+export { textStrokes, type TextStrokes } from './font.ts';

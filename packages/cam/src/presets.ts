@@ -51,6 +51,7 @@ export const MILL_TOOLS: Tool[] = [
   { id: 1, name: 'Endmill Ø6 3F carbide', type: 'endmill', diameter: 6, flutes: 3, fluteLength: 15, centerCutting: true },
   { id: 2, name: 'Endmill Ø10 3F carbide', type: 'endmill', diameter: 10, flutes: 3, fluteLength: 22, centerCutting: true },
   { id: 3, name: 'Drill Ø5 HSS', type: 'drill', diameter: 5, fluteLength: 40 },
+  { id: 4, name: 'Chamfer mill Ø6 90° carbide', type: 'chamfer', diameter: 6, flutes: 2, angle: 90 },
 ];
 
 const latheExample: JobInput = {

@@ -138,7 +138,7 @@
 
   function cutText(t: Tool): string {
     const c = cuttingData(t, job.workMaterial);
-    const feed = t.type === 'endmill' ? `${c.feed} mm/tooth` : t.type === 'threading' ? '' : `${c.feed} mm/rev`;
+    const feed = t.type === 'endmill' || t.type === 'chamfer' || t.type === 'threadmill' ? `${c.feed} mm/tooth` : t.type === 'threading' ? '' : `${c.feed} mm/rev`;
     return [`vc ${c.vc} m/min`, feed].filter(Boolean).join(', ');
   }
 
@@ -146,7 +146,7 @@
   function toolPlaceholders(t: Tool): Record<string, string> {
     const c = cuttingData({ ...t, vc: undefined, chipload: undefined, feedPerRev: undefined, maxDoc: undefined }, job.workMaterial);
     const p: Record<string, string> = { vc: String(c.vc), toolMaterial: defaultToolMaterial(t.type) === 'hss' ? 'HSS' : 'carbide' };
-    if (t.type === 'endmill') p.chipload = String(c.feed);
+    if (t.type === 'endmill' || t.type === 'chamfer' || t.type === 'threadmill') p.chipload = String(c.feed);
     else if (t.type !== 'threading') p.feedPerRev = String(c.feed);
     if (t.type !== 'drill' && t.type !== 'threading') p.maxDoc = String(c.doc);
     return p;

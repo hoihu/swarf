@@ -304,10 +304,10 @@
     const id = t?.tool ?? program.segments[0]?.tool ?? 0;
     const spec = job.tools.find((x) => x.id === id);
     const d = spec?.diameter ?? 6;
-    const key = `${lathe}:${spec?.type}:${d}:${look.coolant}`;
+    const key = `${lathe}:${spec?.type}:${d}:${spec?.angle}:${look.coolant}`;
     if (key !== toolKey) {
       dispose(tool);
-      const made: THREE.Object3D = lathe ? latheToolMesh() : millToolMesh(spec?.type === 'drill' ? 'drill' : 'endmill', d, spec?.fluteLength, spec?.flutes ?? 3);
+      const made: THREE.Object3D = lathe ? latheToolMesh() : millToolMesh(spec?.type === 'drill' || spec?.type === 'chamfer' || spec?.type === 'threadmill' ? spec.type : 'endmill', d, spec?.fluteLength, spec?.flutes ?? 3, spec?.angle ?? 90);
       // the coolant hose comes down beside the cutter and looks at its tip
       nozzle = null;
       if (look.coolant) {

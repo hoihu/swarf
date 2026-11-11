@@ -56,6 +56,8 @@ export function cutKind(toolType: string): CutKind {
     case 'drill':
       return 'drilling';
     case 'endmill':
+    case 'chamfer':
+    case 'threadmill':
       return 'milling';
     default:
       return 'turning';

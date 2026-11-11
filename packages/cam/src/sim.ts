@@ -160,6 +160,17 @@ export class LatheMaterial {
 
 // ---------------------------------------------------------------- mill
 
+/**
+ * How far above its tip a cutter's cutting surface is at a distance from its axis (given
+ * squared): nothing for a flat end mill; a pointed cutter rises as a cone from its tip flat.
+ */
+function lifter(tool: Tool): (d2: number) => number {
+  if (tool.type !== 'chamfer') return () => 0;
+  const tip = (tool.tipDiameter ?? 0) / 2;
+  const slope = 1 / Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
+  return (d2) => Math.max(0, Math.sqrt(d2) - tip) * slope;
+}
+
 export class MillMaterial {
   readonly cell: number;
   readonly nx: number;
@@ -182,8 +193,8 @@ export class MillMaterial {
     this.h = new Float32Array(this.nx * this.ny).fill(stock.top);
   }
 
-  /** Calls fn for every cell whose centre lies within `radius` of p. */
-  private each(p: Vec3, radius: number, fn: (k: number) => void): void {
+  /** Calls fn for every cell whose centre lies within `radius` of p (with its distance from p, squared). */
+  private each(p: Vec3, radius: number, fn: (k: number, d2: number) => void): void {
     if (radius <= 0) return;
     const c = this.cell;
     const i0 = Math.max(0, Math.floor((p.x - radius) / c));
@@ -195,7 +206,8 @@ export class MillMaterial {
       const dy = (j + 0.5) * c - p.y;
       for (let i = i0; i <= i1; i++) {
         const dx = (i + 0.5) * c - p.x;
-        if (dx * dx + dy * dy <= r2) fn(j * this.nx + i);
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= r2) fn(j * this.nx + i, d2);
       }
     }
   }
@@ -204,8 +216,9 @@ export class MillMaterial {
   engagement(p: Vec3, tool: Tool): number {
     let worst = 0;
     // shrunk by one cell: the wall the tool runs along is not material it cuts
-    this.each(p, (tool.diameter ?? 1) / 2 - this.cell, (k) => {
-      const above = this.h[k]! - Math.max(p.z, this.bottom);
+    const lift = lifter(tool);
+    this.each(p, (tool.diameter ?? 1) / 2 - this.cell, (k, d2) => {
+      const above = this.h[k]! - Math.max(p.z + lift(d2), this.bottom);
       if (this.h[k]! > this.bottom + EPS && above > worst) worst = above;
     });
     return worst;
@@ -223,9 +236,10 @@ export class MillMaterial {
     // previous one would otherwise only ever see the sliver it adds)
     let worst = 0;
     for (const p of points) worst = Math.max(worst, this.engagement(p, tool));
+    const lift = lifter(tool);
     for (const p of points) {
-      const z = Math.max(p.z, this.bottom);
-      this.each(p, radius, (k) => {
+      this.each(p, radius, (k, d2) => {
+        const z = Math.max(p.z + lift(d2), this.bottom);
         if (this.h[k]! > z) this.h[k] = z;
       });
     }

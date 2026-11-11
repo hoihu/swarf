@@ -9,7 +9,7 @@ import { generateLathe, latheSpeedDiameter } from './ops/lathe.ts';
 import { generateMill } from './ops/mill.ts';
 import { latheSafe, millSafeZ } from './ops/context.ts';
 import { CamError, v, type Move, type Program, type Segment } from './program.ts';
-import { OP_MACHINE, OP_TOOLS, type Job, type Operation, type Vec3 } from './schema.ts';
+import { OP_MACHINE, OP_TOOLS, type Job, type Operation, type Tool, type Vec3 } from './schema.ts';
 
 export interface Diagnostic {
   severity: 'error' | 'warning';
@@ -97,7 +97,33 @@ export function opLabel(op: Operation): string {
       return `Pocket ${op.shape} to Z${op.zBottom}`;
     case 'mill_drill':
       return `Drill ${op.points.length} hole(s) to Z${op.zBottom}`;
+    case 'mill_slot':
+      return `Slot ${op.width ?? 'tool'} wide, X${op.x0} Y${op.y0} to X${op.x1} Y${op.y1}, to Z${op.zBottom}`;
+    case 'mill_spot':
+      return `Spot ${op.points.length} hole(s) Ø${op.diameter}`;
+    case 'mill_chamfer':
+      return `Chamfer ${op.size} mm, ${op.side === 'inside' ? 'inside ' : ''}${op.shape ?? (op.diameter !== undefined ? `Ø${op.diameter}` : `${op.w}×${op.h}`)}`;
+    case 'mill_engrave':
+      return `Engrave "${op.text.length > 24 ? `${op.text.slice(0, 23)}…` : op.text}"`;
+    case 'mill_thread':
+      return `Thread mill ${op.side === 'external' ? 'external ' : ''}M${op.diameter}×${op.pitch}${op.hand === 'left' ? ' LH' : ''} to Z${op.zBottom}`;
   }
+}
+
+/**
+ * What sets the surface speed on the mill: the cutter's diameter; for a pointed cutter the
+ * diameter it cuts at (a V-bit engraving 0.2 mm deep cuts at well under a millimetre).
+ */
+function millSpeedDiameter(op: Operation, tool: Tool): number {
+  const d = tool.diameter ?? 6;
+  if (tool.type !== 'chamfer') return d;
+  const tan = Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
+  const tip = tool.tipDiameter ?? 0;
+  const at = (depth: number) => Math.min(d, Math.max(1, tip + 2 * depth * tan));
+  if (op.type === 'mill_engrave') return at(op.depth);
+  if (op.type === 'mill_spot') return Math.min(d, Math.max(1, op.diameter));
+  if (op.type === 'mill_chamfer') return at(op.size / tan + op.tipClear);
+  return d;
 }
 
 export function generate(job: Job): Generated {
@@ -127,7 +153,7 @@ export function generate(job: Job): Generated {
       err('TOOL_TYPE', `T${tool.id} is a ${tool.type} tool; ${op.type} needs ${OP_TOOLS[op.type].join(' or ')}.`);
       continue;
     }
-    const speedD = kind === 'lathe' ? latheSpeedDiameter(op as never, job, tool.diameter) : (tool.diameter ?? 6);
+    const speedD = kind === 'lathe' ? latheSpeedDiameter(op as never, job, tool.diameter) : millSpeedDiameter(op, tool);
     const cut = cutting(tool, job.machine, speedD, { rpm: op.rpm, feed: op.feed }, job.workMaterial);
     if (op.type === 'lathe_thread') {
       if (!job.machine.spindleSync) {

@@ -22,6 +22,17 @@ type Json = Record<string, unknown>;
 
 const LABELS: Record<string, [string, string?]> = {
   tool: ['Tool'],
+  text: ['Text'],
+  height: ['Letter height', 'mm'],
+  spacing: ['Letter spacing'],
+  tipClear: ['Point below the chamfer', 'mm'],
+  tipDiameter: ['Flat at the tip', 'mm'],
+  hand: ['Hand'],
+  passes: ['Passes'],
+  x0: ['From X', 'mm'],
+  y0: ['From Y', 'mm'],
+  x1: ['To X', 'mm'],
+  y1: ['To Y', 'mm'],
   label: ['Name'],
   rpm: ['Spindle', 'rpm'],
   feed: ['Feed', 'mm/min'],

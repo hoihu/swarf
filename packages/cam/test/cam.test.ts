@@ -6,6 +6,7 @@ import {
   MillMaterial,
   analyze,
   resumeFrom,
+  textStrokes,
   hasErrors,
   emit,
   levels,
@@ -896,5 +897,174 @@ describe('starting again in the middle', () => {
     const bad2 = Job.parse({ ...job, operations: [...job.operations.slice(0, 2), { type: 'mill_pocket_rect', tool: 1, x: 40, y: 5, w: 20, h: 12, zBottom: -3, zTop: -1 }] });
     const a2 = analyze(bad2);
     expect(hasErrors(resumeFrom(bad2, a2.program, 1).diagnostics)).toBe(true);
+  });
+});
+
+describe('more mill operations', () => {
+  const tools = [
+    { id: 1, name: 'Endmill Ø6', type: 'endmill' as const, diameter: 6, flutes: 3, fluteLength: 18 },
+    { id: 3, name: 'Drill Ø6.8', type: 'drill' as const, diameter: 6.8 },
+    { id: 4, name: 'Chamfer mill Ø6 90°', type: 'chamfer' as const, diameter: 6, flutes: 2, angle: 90 },
+    { id: 5, name: 'Thread mill Ø5', type: 'threadmill' as const, diameter: 5, flutes: 3, fluteLength: 14 },
+  ];
+  const run = (ops: OperationInput[]) => analyze(withOps('mill', ops, { tools }));
+  const errors = (a: ReturnType<typeof analyze>) => a.diagnostics.filter((d) => d.severity === 'error').map((d) => `${d.code}: ${d.message}`);
+  /** The material's top at a point. */
+  const at = (a: ReturnType<typeof analyze>, x: number, y: number) => {
+    const m = a.material as MillMaterial;
+    return m.h[Math.min(m.ny - 1, Math.floor(y / m.cell)) * m.nx + Math.min(m.nx - 1, Math.floor(x / m.cell))]!;
+  };
+  const cuts = (a: ReturnType<typeof analyze>) => a.program.segments.flatMap((s) => s.moves).filter((m) => m.type !== 'rapid');
+
+  it('a slot the tool\'s own width: down the middle, ramping along it; a wider one: a pocket with round ends', () => {
+    const narrow = run([{ type: 'mill_slot', tool: 1, x0: 15, y0: 20, x1: 55, y1: 20, zBottom: -4 }]);
+    expect(errors(narrow)).toEqual([]);
+    // every cutting move on the line between the two ends
+    for (const m of cuts(narrow)) {
+      expect(m.to.y).toBeCloseTo(20, 9);
+      expect(m.to.x).toBeGreaterThanOrEqual(15 - 1e-9);
+      expect(m.to.x).toBeLessThanOrEqual(55 + 1e-9);
+    }
+    expect(at(narrow, 35, 20)).toBeCloseTo(-4, 5);
+    expect(at(narrow, 13, 20)).toBeCloseTo(-4, 5); // the round end
+    expect(at(narrow, 11, 20)).toBeCloseTo(0.5, 5);
+    expect(at(narrow, 35, 24)).toBeCloseTo(0.5, 5);
+    // 12 wide, at an angle
+    const wide = run([{ type: 'mill_slot', tool: 1, x0: 15, y0: 12, x1: 55, y1: 32, width: 12, zBottom: -3, finish: 0.2 }]);
+    expect(errors(wide)).toEqual([]);
+    const dist = (x: number, y: number) => {
+      const t = Math.min(1, Math.max(0, ((x - 15) * 40 + (y - 12) * 20) / (40 * 40 + 20 * 20)));
+      return Math.hypot(x - 15 - t * 40, y - 12 - t * 20);
+    };
+    const m = wide.material as MillMaterial;
+    let wrong = 0;
+    for (let j = 0; j < m.ny; j++)
+      for (let i = 0; i < m.nx; i++) {
+        const [x, y] = [(i + 0.5) * m.cell, (j + 0.5) * m.cell];
+        const cut = m.h[j * m.nx + i]! < 0;
+        // inside the slot (by more than a cell) it is cut to depth, outside it is not touched
+        if (dist(x, y) < 6 - m.cell && !cut) wrong++;
+        if (dist(x, y) > 6 + m.cell && cut) wrong++;
+      }
+    expect(wrong).toBe(0);
+    expect(errors(run([{ type: 'mill_slot', tool: 1, x0: 15, y0: 20, x1: 55, y1: 20, width: 4, zBottom: -2 }]))[0]).toMatch(/narrower than the Ø6 tool/);
+  });
+
+  it('a spot: a cone as wide at the surface as asked', () => {
+    const a = run([{ type: 'mill_spot', tool: 4, points: [{ x: 20, y: 20 }, { x: 40, y: 20 }], diameter: 5 }]);
+    expect(errors(a)).toEqual([]);
+    // 90°: as deep as half its width
+    const down = cuts(a).map((m) => m.to.z);
+    expect(down.map((z) => +z.toFixed(9))).toEqual([-2, -2]);
+    expect(at(a, 20.1, 20.1)).toBeLessThan(0.5 - 2.2);
+    expect(at(a, 21.5, 20)).toBeCloseTo(0.5 - 1, 0);
+    expect(at(a, 23, 20)).toBeCloseTo(0.5, 5);
+    expect(errors(run([{ type: 'mill_spot', tool: 4, points: [{ x: 20, y: 20 }], diameter: 8 }]))[0]).toMatch(/wider than the Ø6 tool/);
+    expect(errors(run([{ type: 'mill_spot', tool: 1, points: [{ x: 20, y: 20 }], diameter: 3 }]))[0]).toMatch(/TOOL_TYPE/);
+  });
+
+  it('a chamfer along an edge: the corner goes, the size asked for, the face beside it stays', () => {
+    const contour: OperationInput = { type: 'mill_contour_rect', tool: 1, x: 15, y: 10, w: 40, h: 25, zBottom: -5, side: 'outside' };
+    const a = run([contour, { type: 'mill_chamfer', tool: 4, x: 15, y: 10, w: 40, h: 25, size: 1 }]);
+    expect(errors(a)).toEqual([]);
+    expect(a.diagnostics.filter((d) => d.code === 'DOC_HIGH')).toEqual([]);
+    // across the left edge (X15), on the part: at the edge 1 mm down, half a millimetre in 0.5 down, 1.3 in untouched
+    const cell = (a.material as MillMaterial).cell;
+    expect(at(a, 15 + cell / 2, 22)).toBeGreaterThan(0.5 - 1 - 0.01);
+    expect(at(a, 15 + cell / 2, 22)).toBeLessThan(0.5 - 1 + cell + 0.01);
+    // (the model's cells are a few tenths wide: within one of them)
+    expect(Math.abs(at(a, 15.5, 22) - 0)).toBeLessThan(cell + 0.02);
+    expect(at(a, 16.3, 22)).toBeCloseTo(0.5, 5);
+    // the tool's point runs 1 mm below the chamfer and 1 mm off the wall
+    const z = cuts(a).filter((m) => Math.abs(m.to.z - (0.5 - 2)) < 1e-9);
+    expect(z.length).toBeGreaterThanOrEqual(4);
+    expect(Math.min(...z.map((m) => m.to.x))).toBeCloseTo(15 - 1, 9);
+    // the same edge without the wall cut first: the cone is buried, and the check says so
+    const buried = run([{ type: 'mill_chamfer', tool: 4, x: 15, y: 10, w: 40, h: 25, size: 1 }]);
+    expect(buried.diagnostics.some((d) => d.code === 'DOC_HIGH' && /cut the wall beside the edge first/.test(d.message))).toBe(true);
+    // a hole's edge: around inside it; a hole smaller than the tool's reach: straight down the middle
+    const hole = run([{ type: 'mill_pocket_circle', tool: 1, cx: 35, cy: 22, diameter: 14, zBottom: -4 }, { type: 'mill_chamfer', tool: 4, cx: 35, cy: 22, diameter: 14, side: 'inside', size: 0.5 }]);
+    expect(errors(hole)).toEqual([]);
+    expect(Math.abs(at(hole, 35 + 7 + 0.25, 22) - 0.25)).toBeLessThan(cell + 0.02);
+    expect(at(hole, 35 + 7 + 0.8, 22)).toBeCloseTo(0.5, 5);
+    const small = run([{ type: 'mill_chamfer', tool: 4, cx: 35, cy: 22, diameter: 2, side: 'inside', size: 0.5 }]);
+    expect(errors(small)).toEqual([]);
+    expect(cuts(small).map((m) => [m.to.x, m.to.y, +m.to.z.toFixed(9)])).toEqual([[35, 22, -1]]);
+    // too big for the tool, or no edge named
+    expect(errors(run([{ type: 'mill_chamfer', tool: 4, x: 15, y: 10, w: 40, h: 25, size: 4 }]))[0]).toMatch(/needs more cone/);
+    expect(errors(run([{ type: 'mill_chamfer', tool: 4, size: 1 }]))[0]).toMatch(/say which edge/);
+  });
+
+  it('engraving: the strokes of the text at the depth asked for, where asked, turned as asked', () => {
+    const a = run([{ type: 'mill_engrave', tool: 4, text: 'M8 Nr.12', x: 10, y: 20, height: 5, depth: 0.2 }]);
+    expect(errors(a)).toEqual([]);
+    const pts = cuts(a).map((m) => m.to);
+    expect(pts.every((p) => Math.abs(p.z - 0.3) < 1e-9)).toBe(true);
+    const w = textStrokes('M8 Nr.12', 5).width;
+    expect(Math.min(...pts.map((p) => p.x))).toBeCloseTo(10, 6);
+    expect(Math.max(...pts.map((p) => p.x))).toBeCloseTo(10 + w, 6);
+    expect(Math.min(...pts.map((p) => p.y))).toBeCloseTo(20, 6);
+    expect(Math.max(...pts.map((p) => p.y))).toBeCloseTo(25, 6);
+    // a V-bit 0.2 deep turns as fast as the spindle goes (it cuts at well under a millimetre)
+    expect(a.program.segments[0]!.rpm).toBe(EXAMPLES.mill().machine.maxRpm);
+    // turned a quarter: along Y instead
+    const b = run([{ type: 'mill_engrave', tool: 4, text: 'M8 Nr.12', x: 40, y: 5, height: 5, depth: 0.2, angle: 90 }]);
+    const q = cuts(b).map((m) => m.to);
+    expect(Math.max(...q.map((p) => p.y))).toBeCloseTo(5 + w, 6);
+    expect(Math.min(...q.map((p) => p.x))).toBeCloseTo(35, 6);
+    // every character the font claims has strokes; small letters are smaller; umlauts have their dots
+    for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-+=_.,:!?/()#*%°Ø<>×') expect(textStrokes(ch, 6).paths.length, ch).toBeGreaterThan(0);
+    const top = (t: string) => Math.max(...textStrokes(t, 6).paths.flat().map((p) => p[1]));
+    expect(top('a')).toBeCloseTo(6 * 0.72, 9);
+    expect(top('Ü')).toBeGreaterThan(6.5);
+    expect(textStrokes('é', 6).paths).toEqual(textStrokes('e', 6).paths);
+    expect(errors(run([{ type: 'mill_engrave', tool: 4, text: 'A@B', x: 10, y: 20 }]))[0]).toMatch(/font has no "@"/);
+  });
+
+  it('thread milling: in a drilled hole from the bottom up, one pitch a turn, to the nominal diameter', () => {
+    const drill: OperationInput = { type: 'mill_drill', tool: 3, points: [{ x: 30, y: 25 }], zBottom: -12, peck: 3 };
+    const a = run([drill, { type: 'mill_thread', tool: 5, cx: 30, cy: 25, diameter: 8, pitch: 1.25, zBottom: -10 }]);
+    expect(errors(a)).toEqual([]);
+    const seg = a.program.segments[1]!;
+    const arcs = seg.moves.filter((m) => m.type === 'arc');
+    // counter-clockwise, rising
+    expect(arcs.every((m) => m.type === 'arc' && !m.cw)).toBe(true);
+    const helix = arcs.filter((m) => m.type === 'arc' && Math.abs(m.center.x - 30) < 1e-9);
+    for (let i = 1; i < helix.length; i++) if (helix[i]!.to.z > helix[i - 1]!.to.z) expect(helix[i]!.to.z - helix[i - 1]!.to.z).toBeCloseTo(1.25 / 2, 9);
+    // two passes; the last with the tool's axis at (8 − 5) / 2 from the hole's
+    const radii = [...new Set(helix.map((m) => +Math.hypot(m.to.x - 30, m.to.y - 25).toFixed(4)))];
+    expect(radii).toHaveLength(2);
+    expect(Math.max(...radii)).toBeCloseTo(1.5, 4);
+    // from below the thread's end to above the top
+    expect(Math.min(...helix.map((m) => m.to.z))).toBeLessThanOrEqual(-10 + 1.25 / 2 + 1e-9);
+    expect(Math.max(...helix.map((m) => m.to.z))).toBeGreaterThan(0.5);
+    // it reads back as G3 with a Z word
+    const text = emit(withOps('mill', [], { tools }), a.program).text;
+    expect(text).toMatch(/^G3 X[\d.]+ Y[\d.]+ Z-[\d.]+ I-?[\d.]+ J/m);
+    // left-hand: from the top down; no hole: an error; a cutter too big for the core hole: an error
+    const lh = run([drill, { type: 'mill_thread', tool: 5, cx: 30, cy: 25, diameter: 8, pitch: 1.25, zBottom: -10, hand: 'left' }]);
+    expect(errors(lh)).toEqual([]);
+    const lz = lh.program.segments[1]!.moves.filter((m) => m.type === 'arc' && Math.abs(m.center.x - 30) < 1e-9).map((m) => m.to.z);
+    expect(lz[1]!).toBeLessThan(lz[0]!);
+    expect(errors(run([{ type: 'mill_thread', tool: 5, cx: 30, cy: 25, diameter: 8, pitch: 1.25, zBottom: -10 }])).some((e) => e.startsWith('THREAD_NO_HOLE'))).toBe(true);
+    expect(errors(run([drill, { type: 'mill_thread', tool: 5, cx: 30, cy: 25, diameter: 6, pitch: 1, zBottom: -8 }]))[0]).toMatch(/does not fit/);
+  });
+
+  it('thread milling a boss: clockwise from the top down, the tool outside it', () => {
+    // a Ø12 boss left standing by a contour around it
+    const ring = Array.from({ length: 72 }, (_, i): [number, number] => [30 + 6 * Math.cos((2 * Math.PI * i) / 72), 25 + 6 * Math.sin((2 * Math.PI * i) / 72)]);
+    const boss = { id: 'b', name: 'boss', at: { x: 0, y: 0 }, paths: [{ closed: true, pts: ring }] };
+    const a = analyze(withOps('mill', [
+      { type: 'mill_contour', tool: 1, shape: 'b', side: 'outside', zBottom: -8 },
+      { type: 'mill_contour', tool: 1, shape: 'b', side: 'outside', zBottom: -8, finish: 0, label: 'wider', feed: 300 },
+      { type: 'mill_thread', tool: 5, cx: 30, cy: 25, diameter: 12, pitch: 1.75, zBottom: -6, side: 'external' },
+    ], { tools, shapes: [boss] }));
+    const seg = a.program.segments.at(-1)!;
+    const helix = seg.moves.filter((m) => m.type === 'arc');
+    expect(helix.every((m) => m.type === 'arc' && m.cw)).toBe(true);
+    expect(helix[1]!.to.z).toBeLessThan(helix[0]!.to.z);
+    // 0.6134 P deep at the last pass
+    const radii = helix.map((m) => Math.hypot(m.to.x - 30, m.to.y - 25));
+    expect(Math.min(...radii)).toBeCloseTo(6 + 2.5 - 0.6134 * 1.75, 4);
   });
 });

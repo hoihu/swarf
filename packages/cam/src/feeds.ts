@@ -48,6 +48,8 @@ export function cuttingData(tool: Tool, material: MaterialId = 'aluminium'): Cut
   const vc = tool.vc ?? Math.round(m.vc[kind][tm] * bar);
   let feed: number;
   if (tool.type === 'endmill') feed = tool.chipload ?? round3(m.mill * d * (hss ? 0.7 : 1));
+  // a point, or one row of teeth on a long neck: half an end mill's chip
+  else if (tool.type === 'chamfer' || tool.type === 'threadmill') feed = tool.chipload ?? round3(m.mill * d * 0.5 * (hss ? 0.7 : 1));
   else if (tool.type === 'drill') feed = tool.feedPerRev ?? round3(m.drill * d);
   else if (tool.type === 'grooving') feed = tool.feedPerRev ?? m.grooveFeed;
   else feed = tool.feedPerRev ?? round3(m.turnFeed * bar);
@@ -55,10 +57,12 @@ export function cuttingData(tool: Tool, material: MaterialId = 'aluminium'): Cut
   if (tool.type === 'endmill') doc = Math.min(round3(m.millDoc * d * (hss ? 0.7 : 1)), tool.fluteLength ?? Infinity);
   else doc = round3(m.turnDoc * (tool.internal ? 0.5 : 1));
   if (tool.maxDoc !== undefined) doc = Math.min(doc, tool.maxDoc);
-  return { vc, feed, doc, fromTool: { vc: tool.vc !== undefined, feed: (tool.type === 'endmill' ? tool.chipload : tool.feedPerRev) !== undefined, doc: tool.maxDoc !== undefined } };
+  return { vc, feed, doc, fromTool: { vc: tool.vc !== undefined, feed: (rotating(tool) ? tool.chipload : tool.feedPerRev) !== undefined, doc: tool.maxDoc !== undefined } };
 }
 
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
+/** Cutters with teeth around them: the feed is per tooth. */
+const rotating = (tool: Tool) => tool.type === 'endmill' || tool.type === 'chamfer' || tool.type === 'threadmill';
 
 /**
  * @param diameter what sets the surface speed: the tool diameter on the mill, the largest
@@ -87,7 +91,7 @@ export function cutting(
 
   let feed: number;
   if (override.feed !== undefined) feed = override.feed;
-  else if (tool.type === 'endmill') feed = data.feed * (tool.flutes ?? 2) * rpm;
+  else if (rotating(tool)) feed = data.feed * (tool.flutes ?? 2) * rpm;
   else feed = data.feed * rpm;
   if (feed > machine.maxFeed) {
     notes.push(`feed ${Math.round(feed)} mm/min limited to the machine's ${machine.maxFeed}`);

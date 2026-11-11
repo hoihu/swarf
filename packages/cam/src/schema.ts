@@ -44,7 +44,11 @@ export const Machine = z.object({
 });
 export type Machine = z.infer<typeof Machine>;
 
-export const ToolType = z.enum(['turning', 'boring', 'grooving', 'threading', 'drill', 'endmill']);
+/**
+ * `chamfer`: a pointed cutter (a chamfer mill, a V-bit, a spot drill, an engraver), with its
+ * `angle`. `threadmill`: a single-form thread mill (one row of teeth; any pitch).
+ */
+export const ToolType = z.enum(['turning', 'boring', 'grooving', 'threading', 'drill', 'endmill', 'chamfer', 'threadmill']);
 export type ToolType = z.infer<typeof ToolType>;
 
 export const Tool = z.object({
@@ -65,6 +69,10 @@ export const Tool = z.object({
   /** Usable flute length (endmill, drill); reach (boring bar, internal threading bar). */
   fluteLength: pos.optional(),
   flutes: z.number().int().min(1).optional(),
+  /** Pointed cutters (chamfer): the included angle at the point, degrees (default 90). */
+  angle: z.number().min(20).max(160).optional(),
+  /** Pointed cutters: the flat at the very tip, mm across (default 0: a sharp point). */
+  tipDiameter: z.number().min(0).optional(),
   /** Endmill can plunge straight down. */
   centerCutting: z.boolean().optional(),
   /**
@@ -342,6 +350,76 @@ export const MillDrill = z.object({
   peck: pos.optional(),
 });
 
+export const MillSlot = z.object({
+  type: z.literal('mill_slot'),
+  ...common,
+  x0: mm.describe('Centre of one end'),
+  y0: mm,
+  x1: mm.describe('Centre of the other end'),
+  y1: mm,
+  width: pos.optional().describe('Slot width (default: the tool diameter, one pass down the middle)'),
+  ...depthFields,
+  stepover: z.number().gt(0).max(1).default(0.45),
+  entry: z.enum(['ramp', 'plunge']).default('ramp').describe('How the tool gets down to each level'),
+  rampAngle,
+  ...wallFinish,
+});
+
+const holes = z.array(z.object({ x: mm, y: mm })).min(1);
+
+export const MillSpot = z.object({
+  type: z.literal('mill_spot'),
+  ...common,
+  points: holes,
+  diameter: pos.describe('How wide the spot is at the surface. A little more than the hole to be drilled leaves it with a chamfer'),
+  zTop: mm.optional(),
+});
+
+export const MillChamfer = z.object({
+  type: z.literal('mill_chamfer'),
+  ...common,
+  size: pos.describe('Chamfer width, mm (measured on the top face)'),
+  shape: z.string().optional().describe('The edge to chamfer: a shape id (an imported drawing), or a rectangle (x, y, w, h), or a circle (cx, cy, diameter)'),
+  x: mm.optional(),
+  y: mm.optional(),
+  w: pos.optional(),
+  h: pos.optional(),
+  cx: mm.optional(),
+  cy: mm.optional(),
+  diameter: pos.optional(),
+  side: z.enum(['outside', 'inside']).default('outside').describe('outside: the edge of a part (the tool runs around it); inside: the edge of a pocket or hole'),
+  zTop: mm.optional().describe('Height of the edge (default: stock top, or 0 after facing)'),
+  tipClear: z.number().min(0).max(10).default(1).describe('How far below the chamfer the point of the tool runs (its very tip does not cut well)'),
+  direction: wallFinish.direction,
+});
+
+export const MillEngrave = z.object({
+  type: z.literal('mill_engrave'),
+  ...common,
+  text: z.string().min(1).max(200),
+  x: mm.describe('Start of the baseline'),
+  y: mm,
+  height: pos.default(6).describe('Height of the capitals, mm'),
+  depth: pos.max(3).default(0.2).describe('How deep the strokes are cut'),
+  angle: z.number().default(0).describe('Turned by this many degrees (counter-clockwise)'),
+  spacing: z.number().min(0.5).max(4).default(1).describe('Letter spacing (1: normal)'),
+  zTop: mm.optional(),
+});
+
+export const MillThread = z.object({
+  type: z.literal('mill_thread'),
+  ...common,
+  cx: mm,
+  cy: mm,
+  diameter: pos.describe('Nominal thread diameter (M8: 8)'),
+  pitch: pos,
+  zBottom: mm.describe('Where the thread ends (negative)'),
+  zTop: mm.optional(),
+  side: z.enum(['internal', 'external']).default('internal').describe('internal: in a hole already drilled to the core diameter; external: on a boss already milled to the nominal diameter'),
+  hand: z.enum(['right', 'left']).default('right'),
+  passes: z.number().int().min(1).max(8).default(2).describe('Radial passes to full depth'),
+});
+
 export const Operation = z.discriminatedUnion('type', [
   LatheFace,
   LatheTurn,
@@ -359,6 +437,11 @@ export const Operation = z.discriminatedUnion('type', [
   MillContour,
   MillPocket,
   MillDrill,
+  MillSlot,
+  MillSpot,
+  MillChamfer,
+  MillEngrave,
+  MillThread,
 ]);
 export type Operation = z.infer<typeof Operation>;
 export type OperationInput = z.input<typeof Operation>;
@@ -381,6 +464,11 @@ export const OP_MACHINE: Record<OpType, MachineKind> = {
   mill_contour: 'mill',
   mill_pocket: 'mill',
   mill_drill: 'mill',
+  mill_slot: 'mill',
+  mill_spot: 'mill',
+  mill_chamfer: 'mill',
+  mill_engrave: 'mill',
+  mill_thread: 'mill',
 };
 
 /** Which tool types each operation can use. */
@@ -401,6 +489,11 @@ export const OP_TOOLS: Record<OpType, ToolType[]> = {
   mill_contour: ['endmill'],
   mill_pocket: ['endmill'],
   mill_drill: ['drill', 'endmill'],
+  mill_slot: ['endmill'],
+  mill_spot: ['chamfer'],
+  mill_chamfer: ['chamfer'],
+  mill_engrave: ['chamfer', 'endmill'],
+  mill_thread: ['threadmill'],
 };
 
 export const Job = z.object({

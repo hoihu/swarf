@@ -103,9 +103,45 @@ function fluted(diameter: number, length: number, flutes: number, point: number)
 }
 
 /** The cutter as it hangs in the spindle: flutes, shank, collet nut. `spin`: the part that turns. */
-export function millToolMesh(type: 'endmill' | 'drill', diameter: number, fluteLength: number | undefined, flutes = 3): THREE.Group & { userData: { spin: THREE.Object3D } } {
+export function millToolMesh(type: 'endmill' | 'drill' | 'chamfer' | 'threadmill', diameter: number, fluteLength: number | undefined, flutes = 3, angle = 90): THREE.Group & { userData: { spin: THREE.Object3D } } {
   const g = new THREE.Group();
   const spin = new THREE.Group();
+  if (type === 'chamfer' || type === 'threadmill') {
+    const metal = new THREE.MeshStandardMaterial({ color: '#9ea5ab', metalness: 0.95, roughness: 0.22, flatShading: type === 'chamfer' });
+    const r = diameter / 2;
+    let top: number;
+    if (type === 'chamfer') {
+      // a cone from the point up to the full diameter (with flats, so its turning shows), then the shank
+      const h = r / Math.tan(((angle / 2) * Math.PI) / 180);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, Math.max(3, flutes) * 2).rotateX(Math.PI).translate(0, h / 2, 0), metal);
+      cone.castShadow = true;
+      spin.add(cone);
+      top = h;
+    } else {
+      // one row of teeth on a thinner neck
+      const head = new THREE.Mesh(fluted(diameter, diameter * 0.35, Math.max(3, flutes), 0), metal);
+      head.castShadow = true;
+      spin.add(head);
+      const neckLen = Math.max(diameter, fluteLength ?? diameter * 2.5);
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.62, r * 0.62, neckLen, 24), metal);
+      neck.position.y = diameter * 0.35 + neckLen / 2;
+      spin.add(neck);
+      top = diameter * 0.35 + neckLen;
+    }
+    const shankLen = Math.max(8, diameter * 1.6);
+    const shank = new THREE.Mesh(new THREE.CylinderGeometry(r, r, shankLen, 32), new THREE.MeshStandardMaterial({ color: '#9ea5ab', metalness: 0.95, roughness: 0.22 }));
+    shank.position.y = top + shankLen / 2;
+    shank.castShadow = true;
+    spin.add(shank);
+    const nutR = Math.max(diameter * 1.25, 9);
+    const nut = new THREE.Mesh(new THREE.CylinderGeometry(nutR * 0.82, nutR, nutR * 1.1, 6), steel('#596167', 0.4));
+    nut.position.y = top + shankLen + nutR * 0.55;
+    spin.add(nut);
+    g.add(spin);
+    g.userData.spin = spin;
+    g.userData.top = top + shankLen;
+    return g as never;
+  }
   const cut = Math.max(diameter * 1.5, Math.min(fluteLength ?? diameter * 3, diameter * 6));
   const carbide = new THREE.MeshStandardMaterial({ color: type === 'drill' ? '#c9a94a' : '#9ea5ab', metalness: 0.95, roughness: 0.22 });
   const body = new THREE.Mesh(fluted(diameter, cut, type === 'drill' ? 2 : flutes, type === 'drill' ? 0.6 : 0), carbide);

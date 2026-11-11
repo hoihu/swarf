@@ -26,8 +26,18 @@ export const OP_TEMPLATES: Record<MachineKind, { type: OpType; name: string; mak
     { type: 'mill_contour', name: 'Contour a drawing', needsShape: true, make: (job) => ({ type: 'mill_contour', tool: 1, shape: job.shapes[0]?.id ?? '', side: 'outside', zBottom: -3 }) },
     { type: 'mill_pocket', name: 'Pocket a drawing', needsShape: true, make: (job) => ({ type: 'mill_pocket', tool: 1, shape: job.shapes[0]?.id ?? '', zBottom: -3 }) },
     { type: 'mill_drill', name: 'Drill holes', make: () => ({ type: 'mill_drill', tool: 3, points: [{ x: 10, y: 10 }], zBottom: -5 }) },
+    { type: 'mill_slot', name: 'Slot', make: (job) => ({ type: 'mill_slot', tool: toolOf(job, 'endmill', 1), x0: 10, y0: 15, x1: 40, y1: 15, zBottom: -3 }) },
+    { type: 'mill_spot', name: 'Spot holes', make: (job) => ({ type: 'mill_spot', tool: toolOf(job, 'chamfer', 4), points: [{ x: 10, y: 10 }], diameter: 3 }) },
+    { type: 'mill_chamfer', name: 'Chamfer an edge', make: (job) => ({ type: 'mill_chamfer', tool: toolOf(job, 'chamfer', 4), x: 5, y: 5, w: 40, h: 30, size: 0.5, side: 'outside' }) },
+    { type: 'mill_engrave', name: 'Engrave text', make: (job) => ({ type: 'mill_engrave', tool: toolOf(job, 'chamfer', 4), text: 'SWARF', x: 10, y: 10, height: 6, depth: 0.2 }) },
+    { type: 'mill_thread', name: 'Thread mill', make: (job) => ({ type: 'mill_thread', tool: toolOf(job, 'threadmill', 5), cx: 20, cy: 20, diameter: 8, pitch: 1.25, zBottom: -8 }) },
   ],
 };
+
+/** The job's first tool of a kind (else a number to start from: the checks say what is missing). */
+function toolOf(job: Job, type: Job['tools'][number]['type'], fallback: number): number {
+  return job.tools.find((t) => t.type === type)?.id ?? fallback;
+}
 
 export function minutes(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)} s`;
