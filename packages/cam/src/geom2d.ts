@@ -106,6 +106,26 @@ export function orient(loops: Loop[], regionOnRight: boolean): Loop[] {
   });
 }
 
+/** What two regions (even-odd) have in common. */
+export function intersect(a: Loop[], b: Loop[]): Loop[] {
+  if (!a.length || !b.length) return [];
+  return fromPaths(boolean(ClipperLib.ClipType.ctIntersection, toPaths(a), toPaths(b), ClipperLib.PolyFillType.pftEvenOdd));
+}
+
+/** Is the point in the region the loops enclose (even-odd)? */
+export function inRegion(p: Pt, loops: Loop[]): boolean {
+  let n = 0;
+  for (const l of loops) if (pointInLoop(p, l)) n++;
+  return n % 2 === 1;
+}
+
+/** The area of the region the loops enclose (even-odd, loops not crossing). */
+export function regionArea(loops: Loop[]): number {
+  let a = 0;
+  for (const l of loops) a += (depthOf(l, loops) % 2 === 1 ? -1 : 1) * Math.abs(area(l));
+  return a;
+}
+
 export function bbox(paths: Pt[][]): { minX: number; minY: number; maxX: number; maxY: number } | null {
   let minX = Infinity;
   let minY = Infinity;

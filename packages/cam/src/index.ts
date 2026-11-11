@@ -12,7 +12,7 @@ export { buildProfile, offsetProfile, tipPath, zAtRadius, type P2 } from './ops/
 export { diffJobs, isEmptyDiff, type JobDiff } from './diff.ts';
 export { importDxf, type Imported } from './importers/dxf.ts';
 export { importSvg, parsePathData, parseTransform } from './importers/svg.ts';
-export { offsetRegion, orient, normalize, area, bbox, pointInLoop, type Loop, type Pt } from './geom2d.ts';
+export { offsetRegion, orient, normalize, area, bbox, pointInLoop, inRegion, intersect, regionArea, type Loop, type Pt } from './geom2d.ts';
 export { importDrawing } from './importers/index.ts';
 export { fitArcs } from './arcfit.ts';
 export { profileFromDrawing } from './importers/lathe.ts';
@@ -22,3 +22,4 @@ export { jobFile, openJobFile, libraryFile, openLibraryFile, keepTool, dropTool,
 export { setupSheet, cutLines, toolSummary, type Sheet, type SheetOp, type SheetTool } from './sheet.ts';
 export { alignProgram, alignmentLines, alignmentChecks, isAligned, surfaceAt } from './align.ts';
 export { reviewJob, type Finding } from './review.ts';
+export { adaptivePlans, deepest, type AdaptivePlan } from './ops/adaptive.ts';

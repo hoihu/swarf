@@ -63,5 +63,6 @@ chamfers, external and internal threading as G33 passes, boring, lathe profiles,
 - A thread pull-out (G33 with X moving), internal profiles.
 - Probing: bores and bosses as datums; the corner routine to keep clear of known obstacles (it touches the sides 6 mm out, where low edge clamps sit).
 
-Tier 3 (only by reusing libraries): STEP import (build123d / OpenCascade), adaptive clearing,
-3D finishing.
+Tier 3 (only by reusing libraries): STEP import (build123d / OpenCascade), 3D finishing.
+Adaptive clearing exists in a simple form (`cam/src/ops/adaptive.ts`: fronts grown from the
+entry with Clipper offsets); constant engagement angle and blended links are not done.

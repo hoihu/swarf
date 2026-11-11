@@ -295,6 +295,7 @@ whole flow without hardware and is how it is tested.
 | Review | "Worth a look": what a machinist would stop at before running (order, slender tools and parts, holding, thin floors), computed with numbers; Review asks the assistant to weigh it |
 | Camera checks | the cutter in the spindle after a change (diameter against the tool the job wants, tip against the zero), the bar in the chuck (diameter, stick-out, raw face against the job's stock) |
 | Chatter | the microphone tells a ring between the teeth's own tones from a clean cut, and offers the spindle speeds in step with it as spindle override |
+| Adaptive clearing | pockets with `strategy: adaptive`: a small bite over the whole depth of the flutes, spreading from a helix, instead of rings level by level |
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
 
 Threading needs grblHAL in lathe mode with an index + pulse encoder ($32=2, $38, PID tuned), and
@@ -303,6 +304,34 @@ reach speed, since grblHAL does not correct the sync while accelerating. There i
 the end of a pass: end at a groove, or the thread runs out on the shank.
 
 Not yet: profiles from DXF for the mill. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Adaptive clearing
+
+Pockets (rectangular, circular, a drawing's outline with islands) take a **strategy**:
+
+- **rings** (the default): passes parallel to the wall, level by level. The first pass of every
+  level is a slot as wide as the cutter, and in each inside corner the cutter is wrapped in
+  material.
+- **adaptive**: the cutter comes down in a helix where the pocket has most room, to the full
+  depth of a level, and the cleared area then grows by one bite at a time. Each pass runs along
+  the edge of (what is cleared, grown by the bite), kept inside the pocket; where that edge is
+  the wall and nothing is left there, it is skipped, and the cutter crosses what is cleared to
+  where the pass goes on. So there is never more than the bite beside the cutter, and it takes
+  it over the whole depth: `load` is the bite as a fraction of the diameter (0.15 by default),
+  a level is as deep as the flutes (two diameters at most; `stepDown` sets it). The thin chip is
+  fed faster for the same chip thickness (×1.4 at 0.15, at most ×2, up to the machine's feed).
+
+The example pocket (40 × 20, 8 deep, Ø6 in aluminium): 154 s in rings of three levels, 102 s
+adaptive in one, and the widest strip any pass takes is 2.6 mm instead of 6. `finish` works as
+before: the walls keep the allowance and get one pass at full depth at the end.
+
+What it is not: commercial adaptive clearing keeps the angle of engagement constant and blends
+every move. This is the simple form, fronts that spread like ripples. The helix on the way down
+is still a slot (at the ramp angle), a new ring is entered at a slant over four bites, and the
+strip is somewhat wider than the bite on the tight first rings. A pocket that leaves the cutter
+less than 0.4 diameters to move sideways is refused: use rings there. The depth-per-pass note
+of the checks is not applied to adaptive pockets (depth is the point); the flutes' length still
+is. Whether your machine likes a full-flute cut at 15 % is for a test piece to say, not for me.
 
 ## From a photo or a sketch
 

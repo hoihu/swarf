@@ -9,6 +9,7 @@ import { CamError, levels, v, type Move } from '../program.ts';
 import type { Operation, Shape } from '../schema.ts';
 import { dedupe, offsetRegion, orient, type Loop, type Pt } from '../geom2d.ts';
 import { millSafeZ, type OpContext } from './context.ts';
+import { adaptivePlans, clearWay } from './adaptive.ts';
 import { textStrokes } from '../font.ts';
 
 type MillOp = Extract<Operation, { type: `mill_${string}` }>;
@@ -226,6 +227,95 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
     }
   };
 
+  /**
+   * Pocket the region inside closed loops with a small bite at full depth (adaptive.ts): down in
+   * a helix where there is most room, then front after front, each no more than the bite wide.
+   * Levels as deep as the flutes allow (or `stepDown`).
+   */
+  const adaptivePocket = (closed: Loop[], op: { zTop?: number | undefined; zBottom: number; stepDown?: number | undefined; load: number; rampAngle: number }) => {
+    const zTop = zTopOf(op);
+    checkDepth(zTop, op.zBottom);
+    const bite = op.load * d;
+    const a = allow > 0 && offsetRegion(closed, -(r + allow)).length ? allow : 0;
+    const region = offsetRegion(closed, -(r + a));
+    if (!region.length) throw new CamError(`the pocket is too small for the Ø${d} tool`);
+    const plans = adaptivePlans(region, bite, d);
+    // a thin chip may be fed faster for the same chip thickness (to twice the feed at most)
+    const thin = Math.min(2, 1 / Math.sqrt(1 - (1 - 2 * op.load) ** 2));
+    const f = Math.min(job.machine.maxFeed, Math.round(cut.feed * thin));
+    // as deep as the flutes cut, and not more than two diameters at once
+    const step = op.stepDown ?? Math.min(zTop - op.zBottom, tool.fluteLength ?? 2 * d, 2 * d);
+    const dir = (p: { pts: Pt[]; closed: boolean }): Pt[] => (climb ? p.pts : [...p.pts].reverse());
+    for (const plan of plans) {
+      const [cx, cy] = plan.entry.c;
+      const rh = plan.entry.rh;
+      let zPrev = zTop + 0.2;
+      for (const zl of levels(zTop, op.zBottom, step)) {
+        approach(cx + rh, cy, zTop);
+        // (down through what the level above cleared, then on in a helix)
+        helixDown(cx, cy, rh, zPrev, zl, op.rampAngle);
+        let at: Pt = [cx + rh, cy];
+        for (const front of plan.fronts) {
+          const todo = [...front.passes];
+          while (todo.length) {
+            // the nearest pass next; a closed one starts at its nearest point
+            let bi = 0;
+            let bd = Infinity;
+            let bs = 0;
+            todo.forEach((p, i) => {
+              const pts = dir(p);
+              const cand = p.closed ? pts.map((_, k) => k) : [0];
+              for (const k of cand) {
+                const dd = Math.hypot(pts[k]![0] - at[0], pts[k]![1] - at[1]);
+                if (dd < bd) [bd, bi, bs] = [dd, i, k];
+              }
+            });
+            const p = todo.splice(bi, 1)[0]!;
+            let pts = dir(p);
+            if (p.closed) {
+              // onto a new ring at a slant, not square into it: start a few bites further along
+              let go = 0;
+              const n = pts.length;
+              while (go < 4 * bite) {
+                const q = pts[(bs + 1) % n]!;
+                go += Math.hypot(q[0] - pts[bs]![0], q[1] - pts[bs]![1]);
+                bs = (bs + 1) % n;
+                if (go > 1e6) break;
+              }
+              pts = [...pts.slice(bs), ...pts.slice(0, bs), pts[bs]!];
+            }
+            const s0 = pts[0]!;
+            if (bd > 1e-6) {
+              if (clearWay(at, s0, front.open)) feed(s0[0], s0[1], zl, f);
+              else {
+                // across uncut material: up, over, and down where it is already cleared
+                rapid(at[0], at[1], zTop + 1);
+                approach(s0[0], s0[1], zTop);
+                feed(s0[0], s0[1], zl, f);
+              }
+            }
+            for (const q of pts.slice(1)) feed(q[0], q[1], zl, f);
+            at = pts.at(-1)!;
+          }
+        }
+        rapid(at[0], at[1], zTop + 1);
+        zPrev = zl;
+      }
+    }
+    if (a > 0) {
+      // the finishing pass along every wall (the outline and the islands) at full depth
+      let at: Pt = [ctx.from.x, ctx.from.y];
+      for (const l0 of orient(offsetRegion(closed, -r), false)) {
+        const l = way(startNear(l0, at));
+        approach(l[0]![0], l[0]![1], zTop);
+        cutLoop(l, op.zBottom, op.zBottom, { ramp: false, angle: op.rampAngle });
+        rapid(l[0]![0], l[0]![1], zTop + 1);
+        at = l[0]!;
+      }
+    }
+    rapid(ctx.from.x, ctx.from.y, safeZ);
+  };
+
   // pointed cutters: half the angle at the point, and the flat at the tip
   const tanHalf = Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
   const tipR = (tool.tipDiameter ?? 0) / 2;
@@ -258,6 +348,10 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       const zTop = zTopOf(op);
       checkDepth(zTop, op.zBottom);
       if (op.w < d - 1e-9 || op.h < d - 1e-9) throw new CamError(`pocket ${op.w}×${op.h} is smaller than the Ø${d} tool`);
+      if (op.strategy === 'adaptive') {
+        adaptivePocket([[[op.x, op.y], [op.x + op.w, op.y], [op.x + op.w, op.y + op.h], [op.x, op.y + op.h]]], op);
+        return out;
+      }
       // (no allowance where the pocket is hardly wider than the tool)
       const a = Math.min(op.w, op.h) - d > 4 * allow ? allow : 0;
       const [fx0, fx1, fy0, fy1] = [op.x + r, op.x + op.w - r, op.y + r, op.y + op.h - r];
@@ -300,6 +394,11 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       checkDepth(zTop, op.zBottom);
       const RF = op.diameter / 2 - r;
       if (RF < -1e-9) throw new CamError(`hole Ø${op.diameter} is smaller than the Ø${d} tool`);
+      if (op.strategy === 'adaptive') {
+        const n = 180;
+        adaptivePocket([Array.from({ length: n }, (_, k) => [op.cx + (op.diameter / 2) * Math.cos((2 * Math.PI * k) / n), op.cy + (op.diameter / 2) * Math.sin((2 * Math.PI * k) / n)] as Pt)], op);
+        return out;
+      }
       const a = RF > 4 * allow ? allow : 0;
       const R = RF - a;
       const rings = R < 1e-6 ? [] : levels(0, R, op.stepover * d);
@@ -437,7 +536,8 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
     case 'mill_pocket': {
       const g = shapeOf(op.shape);
       if (!g.closed.length) throw new CamError(`shape ${op.shape} has no closed outline to pocket`);
-      pocketLoops(g.closed, op);
+      if (op.strategy === 'adaptive') adaptivePocket(g.closed, op);
+      else pocketLoops(g.closed, op);
       return out;
     }
 

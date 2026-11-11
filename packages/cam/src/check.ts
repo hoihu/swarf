@@ -3,7 +3,7 @@
  * deeper than the tool can take. Runs the material model move by move, so it also yields the
  * finished part for the preview.
  */
-import { generate, retract, type Diagnostic } from './generate.ts';
+import { generate, retract, withIds, type Diagnostic } from './generate.ts';
 import { walk, type Program } from './program.ts';
 import { alignmentChecks } from './align.ts';
 import { plannedSeconds } from './planner.ts';
@@ -28,6 +28,8 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
   const docOf = (tool: Tool) => cuttingData(tool, job.workMaterial).doc;
   const diagnostics: Diagnostic[] = [];
   const lathe = program.kind === 'lathe';
+  /** Operations that take a small bite over the depth of the flutes (adaptive clearing). */
+  const lightOps = new Set(withIds(job.operations).filter((o) => 'strategy' in o && o.strategy === 'adaptive').map((o) => o.id!));
   const material = job.stock.kind === 'bar' ? new LatheMaterial(job.stock) : new MillMaterial(job.stock);
   if ((lathe && !(material instanceof LatheMaterial)) || (!lathe && !(material instanceof MillMaterial))) return { material: null, diagnostics };
 
@@ -148,6 +150,8 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
         if (depth > cone / 2 + 0.05) once({ severity: 'warning', code: 'DOC_HIGH', message: `T${tool.id} is ${depth.toFixed(2)} mm deep in material, more than half its cone (${(cone / 2).toFixed(2)} mm): for a chamfer, cut the wall beside the edge first; for engraving, go shallower.`, opId, move: index });
       } else if (tool.type === 'threadmill') {
         // its depth of cut is the thread's, set by the passes
+      } else if (lightOps.has(opId)) {
+        // a small bite beside the cutter over the depth of its flutes: the depth is the point (TOO_DEEP still holds)
       } else if (!plunge && depth > docOf(tool) * 1.5 + 0.05)
         once({ severity: 'warning', code: 'DOC_HIGH', message: `Side cut is ${depth.toFixed(2)} mm deep; T${tool.id} in ${MATERIALS[job.workMaterial].name.toLowerCase()} should take about ${docOf(tool)} mm per pass.`, opId, move: index });
     }

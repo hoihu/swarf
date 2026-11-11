@@ -263,6 +263,8 @@ export const MillPocketRect = z.object({
   entry: z.enum(['ramp', 'plunge']).default('ramp').describe('How the tool gets down to each level'),
   rampAngle,
   ...wallFinish,
+  strategy: z.enum(['rings', 'adaptive']).default('rings').describe('rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets'),
+  load: z.number().min(0.05).max(0.4).default(0.15).describe('adaptive: the bite beside the cutter, as a fraction of its diameter'),
 });
 
 export const MillPocketCircle = z.object({
@@ -276,6 +278,8 @@ export const MillPocketCircle = z.object({
   entry: z.enum(['helix', 'plunge']).default('helix').describe('How the tool gets down to each level'),
   rampAngle,
   ...wallFinish,
+  strategy: z.enum(['rings', 'adaptive']).default('rings').describe('rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets'),
+  load: z.number().min(0.05).max(0.4).default(0.15).describe('adaptive: the bite beside the cutter, as a fraction of its diameter'),
 });
 
 export const MillContourRect = z.object({
@@ -340,6 +344,8 @@ export const MillPocket = z.object({
   ...depthFields,
   stepover: z.number().gt(0).max(1).default(0.45),
   ...shapeEntry,
+  strategy: z.enum(['rings', 'adaptive']).default('rings').describe('rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets'),
+  load: z.number().min(0.05).max(0.4).default(0.15).describe('adaptive: the bite beside the cutter, as a fraction of its diameter'),
 });
 
 export const MillDrill = z.object({
