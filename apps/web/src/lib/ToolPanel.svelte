@@ -33,7 +33,6 @@
 
 {#if machine.connected}
   <section class="toolpanel" aria-label="Tool changes">
-    <h4>Tool changes</h4>
     <div class="line">
       <label class="small">The zero is right for
         <select value={tooling.active ?? ''} onchange={(e) => tooling.setActive(e.currentTarget.value === '' ? null : Number(e.currentTarget.value))} disabled={!idle || tooling.pending !== null}>
@@ -110,8 +109,7 @@
 
 <style>
   .bad { color: var(--err); font-weight: 600; }
-  .toolpanel { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
-  h4 { margin: 0 0 8px; font-size: 13px; }
+  .toolpanel { margin: 0; }
   .line, .ways { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
   .change { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: var(--accent-soft, rgba(240, 180, 0, 0.12)); }
   .change p { margin: 0 0 6px; font-size: 13px; }

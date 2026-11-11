@@ -11,10 +11,10 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   const dialogs = [];
   p.on('dialog', (d) => { dialogs.push(d.message()); void d.accept(); });
   await p.goto('http://localhost:4173/');
-  await p.evaluate(() => localStorage.clear()); await p.reload();
-  await p.getByRole('tab', { name: 'Stock' }).click();
-  await p.getByRole('button', { name: 'Mill example' }).click();
-  await p.getByRole('tab', { name: 'Machine' }).click();
+  await p.evaluate(() => { localStorage.clear(); localStorage.setItem('swarf.sections', 'all'); }); await p.reload();
+  await p.getByRole('button', { name: 'File' }).click();
+  await p.getByRole('menuitem', { name: 'Mill example' }).click();
+  await p.getByRole('button', { name: /^Machine/ }).click();
   await p.evaluate(() => { window.__swarfSimWorld.speed = 40; });
   await p.getByRole('button', { name: /Connect a simulated/ }).click();
   await p.waitForFunction(() => window.__swarfMachine?.status?.wpos, null, { polling: 200, timeout: 20000 });

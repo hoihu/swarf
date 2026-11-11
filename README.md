@@ -16,6 +16,23 @@ npm test           # CAM core and agent loop
 npm run typecheck
 ```
 
+## Finding your way
+
+The header switches between the two places the app is used:
+
+- **Job**, at the desk: the job on the left (Operations, Setup, Tools, G-code), the preview in
+  the middle, the assistant on the right.
+- **Machine**, at the machine: the controller on the left (connect, position, run, overrides,
+  moving by hand, console), the preview in the middle, and **Setting up** on the right: tool
+  changes, zero by touching, the camera, listening to the cut. Each of those folds away and
+  says where it stands while shut ("T2 is in", "circuit tested", "chatter"); a tool change the
+  program is waiting for opens its part by itself. The dot beside Machine shows the
+  controller's state from anywhere.
+
+**File** holds what concerns the job as a whole: a new job or an example, open and save, the
+setup sheet, the G-code download. On a phone the three panes are one at a time, switched at the
+bottom.
+
 ## Who answers the chat
 
 - **A coding agent on this computer** (no API key, your own login and plan): Claude Code, GitHub
@@ -91,7 +108,7 @@ against a pretend controller.
   to jog, touch off and set the new tool's Z. **Resume** goes on: the program says its modes
   again (G21 G90 G94 G54, the plane; G97 on the lathe) and the tool first rises straight up to
   the travel height from wherever touching off left it, before it moves across.
-- **Tool lengths.** "Tool changes" in the Machine tab carries the work zero over to the new
+- **Tool lengths.** "Tool changes" (Machine → Setting up) carries the work zero over to the new
   tool, by moving the zero (G10 L20) by how the new tool's tip sits against the old one's; no
   tool length offset in the controller is used. Three ways:
   - *Stored offsets*, for tools that come back to the same place every time (a quick-change tool
@@ -119,7 +136,7 @@ against a pretend controller.
   the job is marked failed and the tab says that nothing can be stopped from here.
 - Closing or reloading the page while a program runs asks first.
 
-**Move by hand** (in the Machine tab): a button per axis and direction, in steps of 0.01, 0.1, 1
+**Move by hand** (Machine, on the left): a button per axis and direction, in steps of 0.01, 0.1, 1
 or 10 mm or for as long as the button is held; optionally the arrow keys (Page Up/Down for Z).
 Holding does not send one long move to be cancelled on release: it feeds a tenth of a second of
 travel at a time and keeps a quarter of a second queued, so if the cancel is ever lost (cable,
@@ -147,7 +164,7 @@ included (`apps/web/test/simrun.test.ts`, in a browser `scripts/check-run.cjs`).
 
 ## Listen to the cut
 
-**Listen** in the Machine tab opens the microphone (the laptop's will do; the browser asks) and
+**Listen to the cut** (Machine → Setting up) opens the microphone (the laptop's will do; the browser asks) and
 shows what it hears up to 6 kHz. A cutter that cuts cleanly sounds at the rate its teeth meet
 the work and at multiples of it; the panel draws those as lines, from the spindle speed the
 controller reports and the teeth of the tool that is in (one edge on the lathe). Chatter is the
@@ -175,7 +192,7 @@ of the tooth rate can all fool it, both ways.
 
 ## Zero by touching (mill)
 
-With the cutter wired to grblHAL's probe input, the Machine tab touches off with G38.2 (fast, back
+With the cutter wired to grblHAL's probe input, "Zero by touching" (Machine → Setting up) touches off with G38.2 (fast, back
 off, slow; positioning near the work as guarded G38.3 moves): **Z on a touch plate** of known
 thickness; on conductive stock with a clip, **the top at 3 × 3 points** (how flat and level it is,
 then Z zero on the highest point or the average) and **the front-left corner** (top, left side,
@@ -212,7 +229,7 @@ been 0.13 to 0.42 mm (`scripts/check-measured.cjs`).
 
 ## A camera on the work area
 
-The Machine tab's **Camera** section draws the toolpath, the raw stock and the work zero over the
+**Camera** (Machine → Setting up) draws the toolpath, the raw stock and the work zero over the
 live picture of a webcam pointed at the work area, so a wrong work zero, a clamp in the way or too
 little stock shows before the spindle starts. Calibration, in two steps (OpenCV in the browser,
 loaded only here):
@@ -229,7 +246,7 @@ loaded only here):
 
 3. **Check the setup** (mill): the camera finds the block's four top edges near where the job has
    them and reports where its front-left corner really is (the job's X0 Y0), its length and width
-   and whether it sits square, with **Use this size** for the Stock tab. It needs Z zero on the
+   and whether it sits square, with **Use this size** for the job's stock. It needs Z zero on the
    block's top and reads to about 0.1–0.3 mm. On the simulated camera: within 0.1 mm of the truth.
 
 4. **Line laser** (mill): a line laser on the spindle head, switched by the flood output (M8/M9),
@@ -299,7 +316,7 @@ whole flow without hardware and is how it is tested.
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
 
 Threading needs grblHAL in lathe mode with an index + pulse encoder ($32=2, $38, PID tuned), and
-"Spindle sync" switched on under Stock → Machine settings. Passes start far enough out for Z to
+"Spindle sync" switched on under Setup → Machine settings. Passes start far enough out for Z to
 reach speed, since grblHAL does not correct the sync while accelerating. There is no pull-out at
 the end of a pass: end at a groove, or the thread runs out on the shank.
 
@@ -372,8 +389,7 @@ is. The list is rules of thumb: a part can be fine with a flag and bad without o
 
 ## Files, your tools, and the sheet for the machine
 
-**The job as a file.** The job is kept in the browser while you work; Save (in the header, or
-Stock → Job file) downloads it as `<name>.swarf.json`, Open reads one back. The job you had goes
+**The job as a file.** The job is kept in the browser while you work; Save (in the File menu) downloads it as `<name>.swarf.json`, Open reads one back. The job you had goes
 on the undo stack. A file that does not fit the schema is refused with the field that is wrong,
 and nothing opens while a program is under way on the machine.
 
@@ -386,10 +402,9 @@ holder is measured once. "Save the library as a file" and "Add tools from a file
 another browser. Offsets are against that machine's reference tool: they mean nothing on another
 machine, and are wrong after the reference tool is reground or moved in its holder.
 
-**The setup sheet.** G-code → Setup sheet shows one page and prints it (or saves a PDF) through
+**The setup sheet.** File → Setup sheet shows one page and prints it (or saves a PDF) through
 the browser's dialog: stock and material, the zero in words, the clamps and jaws the job knows of
-(on the lathe, where the jaws are and how close the tools come), your setup notes (Stock → Setup
-notes, or tell the assistant), the tools in the order the program stops for them with a box to
+(on the lathe, where the jaws are and how close the tools come), your setup notes (Setup → How it is held, or tell the assistant), the tools in the order the program stops for them with a box to
 tick, how far each goes and the least stick-out that keeps the holder above the stock and the
 clamps, stored offsets, then every operation with rpm, feed, deepest point and time. The drawing
 is the job from above (mill) or from the side (lathe) with the zero and the cuts. Errors from the

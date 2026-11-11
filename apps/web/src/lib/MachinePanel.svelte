@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { emit, hasErrors, resumeFrom, walk } from '@swarf/cam';
   import JogPanel from './JogPanel.svelte';
-  import ToolPanel from './ToolPanel.svelte';
+  import Section from './Section.svelte';
   import { tooling } from './tooling.svelte.ts';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
@@ -173,7 +173,7 @@
     if (!waiting) return void machine.resume();
     // at a tool change: has the zero been carried over to the new tool?
     if (tooling.pending !== null) {
-      if (!confirm(`The zero has not been carried over to T${tooling.pending} yet (see "Tool changes" below): its length is not accounted for.\n\nGo on anyway?`)) return;
+      if (!confirm(`The zero has not been carried over to T${tooling.pending} yet (see "Tool changes" under Setting up): its length is not accounted for.\n\nGo on anyway?`)) return;
       tooling.touchedOff(false);
     }
     // The program goes on with "Z to the travel height, then across". From below that is straight
@@ -207,7 +207,7 @@
 </script>
 
 {#if !machine.connected}
-  <div class="empty">
+  <div class="empty pad">
     <p>Connect the grblHAL controller to run the job from here.</p>
     {#if machine.supported}
       <button class="btn pri" onclick={() => machine.connect()}>Connect over USB</button>
@@ -225,6 +225,7 @@
     {#if machine.message}<p class="diag error">{machine.message}</p>{/if}
   </div>
 {:else}
+  <div class="pad">
   <div class="state">
     <span class="badge s-{st.toLowerCase()}">{st}{machine.status?.sub !== undefined ? `:${machine.status.sub}` : ''}</span>
     <span class="muted">{machine.label}</span>
@@ -238,7 +239,7 @@
           {#each SETUPS as s (s.name)}<option value={s.name}>{s.label}</option>{/each}
         </select>
       </label>
-      <p class="muted small">{SETUPS.find((s) => s.name === simSetup)?.about} The block itself sits a little off from the job, turned and tilted a touch, as a real one would.</p>
+      <p class="muted small">{SETUPS.find((s) => s.name === simSetup)?.about}</p>
     </div>
   {/if}
 
@@ -246,7 +247,7 @@
     {#each lathe ? [['X', 0], ['Z', 2]] : [['X', 0], ['Y', 1], ['Z', 2]] as [axis, i] (axis)}
       <div><span class="ax">{axis}</span><span class="v">{fmt(machine.status?.wpos?.[i as number])}</span></div>
     {/each}
-    <div class="small"><span class="ax">F</span>{machine.status?.feed ?? '–'} <span class="ax">S</span>{machine.status?.spindle ?? '–'}{#if machine.status?.ov} · feed {machine.status.ov[0]}%{/if}</div>
+    <div class="small"><span class="ax">F</span>{machine.status?.feed ?? '–'} <span class="ax">S</span>{machine.status?.spindle ?? '–'}</div>
   </div>
 
   {#if starts.length > 1}
@@ -280,29 +281,48 @@
   {/if}
   {#if machine.message}<p class="diag {machine.job === 'failed' || st === 'Alarm' ? 'error' : machine.job === 'done' ? 'ok' : 'warning'}">{machine.message}</p>{/if}
 
-  <div class="row">
-    <button class="btn" onclick={() => machine.feed('feedMinus10')}>Feed −10%</button>
-    <button class="btn" onclick={() => machine.feed('feed100')}>100%</button>
-    <button class="btn" onclick={() => machine.feed('feedPlus10')}>Feed +10%</button>
+  <div class="ovs">
+    <div class="ov" role="group" aria-label="Feed override">
+      <span>Feed</span>
+      <button class="btn" aria-label="Feed −10%" onclick={() => machine.feed('feedMinus10')}>−</button>
+      <button class="btn val" title="Back to 100 %" aria-label="Feed 100%" onclick={() => machine.feed('feed100')}>{machine.status?.ov?.[0] ?? 100} %</button>
+      <button class="btn" aria-label="Feed +10%" onclick={() => machine.feed('feedPlus10')}>+</button>
+    </div>
+    <div class="ov" role="group" aria-label="Spindle override">
+      <span>Spindle</span>
+      <button class="btn" aria-label="Spindle −10%" onclick={() => machine.spindleOv('spindleMinus10')}>−</button>
+      <button class="btn val" title="Back to 100 %" aria-label="Spindle 100%" onclick={() => machine.spindleOv('spindle100')}>{machine.status?.ov?.[2] ?? 100} %</button>
+      <button class="btn" aria-label="Spindle +10%" onclick={() => machine.spindleOv('spindlePlus10')}>+</button>
+    </div>
   </div>
-  <JogPanel />
-  <ToolPanel />
-
-  <div class="row">
-    <button class="btn" onclick={() => machine.send('$X')} disabled={busy}>Unlock</button>
-    <button class="btn" onclick={() => machine.send('$H')} disabled={busy}>Home</button>
   </div>
-
-  <div class="console" bind:this={log}>
-    {#each machine.console as l, i (i)}<div class={l.dir}>{l.dir === 'out' ? '> ' : ''}{l.text}</div>{/each}
-  </div>
-  <form class="mdi" onsubmit={sendMdi}>
-    <input bind:value={mdi} placeholder="Command, e.g. G0 X0 Z5" aria-label="Command" disabled={busy} spellcheck="false" autocomplete="off" />
-    <button class="btn" type="submit" disabled={busy || !mdi.trim()}>Send</button>
-  </form>
+  <Section id="jog" title="Move by hand" open>
+    <JogPanel />
+  </Section>
+  <Section id="console" title="Console" status={st === 'Alarm' ? 'alarm: unlock or home' : ''} tone={st === 'Alarm' ? 'err' : ''} force={st === 'Alarm'}>
+    <div class="row">
+      <button class="btn" onclick={() => machine.send('$X')} disabled={busy}>Unlock</button>
+      <button class="btn" onclick={() => machine.send('$H')} disabled={busy}>Home</button>
+    </div>
+    <div class="console" bind:this={log}>
+      {#each machine.console as l, i (i)}<div class={l.dir}>{l.dir === 'out' ? '> ' : ''}{l.text}</div>{/each}
+    </div>
+    <form class="mdi" onsubmit={sendMdi}>
+      <input bind:value={mdi} placeholder="Command, e.g. G0 X0 Z5" aria-label="Command" disabled={busy} spellcheck="false" autocomplete="off" />
+      <button class="btn" type="submit" disabled={busy || !mdi.trim()}>Send</button>
+    </form>
+  </Section>
 {/if}
 
 <style>
+  .ovs { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 10px 0 0; }
+  .ov { display: inline-flex; align-items: center; gap: 0; font-size: 12.5px; color: var(--ink-2); }
+  .ov span { margin-right: 8px; }
+  .ov .btn { border-radius: 0; margin-left: -1px; padding: 3px 9px; }
+  .ov .btn:first-of-type { border-radius: 6px 0 0 6px; margin-left: 0; }
+  .ov .btn:last-of-type { border-radius: 0 6px 6px 0; }
+  .ov .val { min-width: 58px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .pad { padding: 12px 14px 14px; }
   .empty p { margin: 0 0 8px; }
   .empty .mdi { margin: 14px 0 6px; }
   .empty code { font-family: var(--mono); font-size: 11.5px; }

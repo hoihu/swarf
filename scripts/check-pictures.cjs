@@ -8,7 +8,7 @@ const PIC = process.argv[2]; const OUT = process.argv[3] ?? require('os').tmpdir
   const p = await b.newPage({ viewport: { width: 1500, height: 900 }, deviceScaleFactor: 1 });
   p.on('pageerror', (e) => console.log('pageerror:', e.message.slice(0, 300)));
   await p.goto('http://localhost:4173/');
-  await p.evaluate(() => localStorage.clear()); await p.reload();
+  await p.evaluate(() => { localStorage.clear(); localStorage.setItem('swarf.sections', 'all'); }); await p.reload();
   await p.locator('.compose input[type=file]').setInputFiles(PIC);
   await p.waitForSelector('.thumb img');
   const size = await p.evaluate(() => new Promise((r) => { const i = new Image(); i.onload = () => r([i.naturalWidth, i.naturalHeight, Math.round(document.querySelector('.thumb img').src.length / 1024) + ' kB as text']); i.src = document.querySelector('.thumb img').src; }));

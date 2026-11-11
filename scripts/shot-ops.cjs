@@ -8,9 +8,9 @@ const OUT = process.argv[2] ?? require('os').tmpdir();
   const p = await b.newPage({ viewport: { width: 1500, height: 950 }, deviceScaleFactor: 1 });
   p.on('pageerror', (e) => console.log('pageerror:', e.message.slice(0, 300)));
   await p.goto('http://localhost:4173/');
-  await p.evaluate(() => localStorage.clear()); await p.reload();
-  await p.getByRole('tab', { name: 'Stock' }).click();
-  await p.getByRole('button', { name: 'Mill example' }).click();
+  await p.evaluate(() => { localStorage.clear(); localStorage.setItem('swarf.sections', 'all'); }); await p.reload();
+  await p.getByRole('button', { name: 'File' }).click();
+  await p.getByRole('menuitem', { name: 'Mill example' }).click();
   await p.waitForTimeout(500);
   const diags = await p.evaluate(() => {
     const s = window.__swarfStore;

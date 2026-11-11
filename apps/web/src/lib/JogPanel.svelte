@@ -142,7 +142,6 @@
 {/snippet}
 
 <section class="jogpanel" aria-label="Move by hand">
-  <h4>Move by hand</h4>
   <div class="pads">
     {#if lathe}
       <div class="pad lathe">
@@ -174,8 +173,8 @@
 
   <div class="zero">
     {#each axes as a (a)}
-      <label class="small">{a}{a === 'X' && dia ? ' Ø' : ''} here is
-        <input type="number" step="0.01" bind:value={setTo[a]} disabled={!free} />
+      <label class="small" title="Tell the controller that the tool now stands at this {a} (sets the work zero from here)">{a}{a === 'X' && dia ? ' Ø' : ''} here is
+        <input type="number" step="0.01" bind:value={setTo[a]} disabled={!free} aria-label="{a} here is" />
         <button class="btn" disabled={!free || st !== 'Idle'} onclick={() => setZero(a)}>Set</button>
       </label>
     {/each}
@@ -191,8 +190,7 @@
 </section>
 
 <style>
-  .jogpanel { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
-  h4 { margin: 0 0 8px; font-size: 13px; }
+  .jogpanel { margin: 0; }
   .pads { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
   .pad { display: grid; grid-template-columns: repeat(3, 46px); grid-auto-rows: 40px; gap: 4px; }
   .zpad { display: grid; grid-template-columns: 46px; grid-auto-rows: 40px; gap: 4px; align-content: space-between; height: 128px; }
@@ -209,7 +207,9 @@
   .muted { color: var(--ink-3); margin: 6px 0 0; }
   .warn { color: var(--warn); }
   .zero, .spin { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 10px; }
-  .zero input, .spin input { width: 74px; border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 6px; font-family: var(--mono); font-size: 12px; background: var(--panel); }
+  .zero { gap: 6px 10px; }
+  .zero .btn, .spin .btn { padding: 3px 9px; }
+  .zero input, .spin input { width: 62px; border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 6px; font-family: var(--mono); font-size: 12px; background: var(--panel); }
   select { border: 1px solid var(--line-2); border-radius: 6px; padding: 2px 4px; font-size: 12px; background: var(--panel); }
   .diag { margin: 8px 0 0; padding: 6px 9px; border-radius: 6px; font-size: 12.5px; }
   .diag.error { background: var(--err-soft); color: var(--err); }

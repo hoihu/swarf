@@ -11,13 +11,23 @@
   import { machine } from './lib/machine.svelte.ts';
   import { files } from './lib/files.svelte.ts';
   import SetupSheet from './lib/SetupSheet.svelte';
+  import FileMenu from './lib/FileMenu.svelte';
+  import { ui, type Mode } from './lib/ui.svelte.ts';
+  import MachinePanel from './lib/MachinePanel.svelte';
+  import AtMachine from './lib/AtMachine.svelte';
   import { onMount } from 'svelte';
 
   onMount(() => bridge.start());
 
   let settings = $state(false);
-  /** Which pane a phone shows. */
-  let pane = $state<'job' | 'view' | 'chat'>('view');
+  const mode = $derived(ui.mode);
+  const go = (m: Mode) => ui.go(m);
+  /** Which pane a phone shows: the left one, the preview, the right one. */
+  let pane = $state<'left' | 'view' | 'right'>('view');
+  const mst = $derived(machine.status?.state ?? '');
+  const machineSays = $derived(
+    !machine.connected ? '' : machine.job === 'running' ? 'running' : machine.job === 'waiting' ? 'tool change' : machine.job === 'paused' ? 'held' : mst === 'Alarm' ? 'alarm' : mst.toLowerCase(),
+  );
 
   const errors = $derived(store.analysis.diagnostics.filter((d) => d.severity === 'error').length);
   const warnings = $derived(store.analysis.diagnostics.filter((d) => d.severity === 'warning').length);
@@ -37,6 +47,13 @@
       <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><path d="M6 21c4-1 5-6 9-6s4 5 8 5 3-4 3-4" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" /><path d="M8 25c3 0 4-2 7-2s4 2 8 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".55" /></svg>
       swarf
     </span>
+    <div class="modes" role="group" aria-label="Where you are working">
+      <button class:on={mode === 'job'} aria-pressed={mode === 'job'} onclick={() => go('job')}>Job</button>
+      <button class:on={mode === 'machine'} aria-pressed={mode === 'machine'} onclick={() => go('machine')}>
+        Machine{#if machineSays}<i class="m-{machineSays.replace(' ', '-')}" title="The controller: {machineSays}"></i><span class="says">{machineSays}</span>{/if}
+      </button>
+    </div>
+    <FileMenu />
     <input class="name" value={store.job.name} aria-label="Job name" onchange={(e) => store.set({ ...store.job, name: (e.currentTarget as HTMLInputElement).value || 'Job' })} />
     <span class="facts">
       <span>{store.job.machine.kind === 'lathe' ? 'Lathe' : 'Mill'}</span>
@@ -53,10 +70,7 @@
         <i></i>{bridge.status === 'connected' ? bridge.agent ? `${bridge.agent} connected` : 'swarf server connected' : bridge.status === 'denied' ? 'Server refused' : bridge.status === 'offline' ? 'Server offline' : 'Connecting…'}
       </span>
     {/if}
-    <label class="btn ghost file" title="Open a job file (.swarf.json)">Open<input type="file" accept=".json,application/json" onchange={(e) => files.openJobFrom(e)} hidden /></label>
-    <button class="btn ghost file" title="Save this job as a file" onclick={() => files.saveJob()}>Save</button>
     <button class="btn ghost" onclick={() => store.undo()} disabled={!store.history.length}>Undo</button>
-    <button class="btn ghost" onclick={() => (settings = true)}>Assistant</button>
   </header>
 
   {#if files.message}
@@ -66,19 +80,22 @@
     </div>
   {/if}
 
-  <main class="panes" data-pane={pane}>
-    <div class="pane-job"><JobPanel /></div>
+  <!-- both sets of side panes stay alive (a running program's bookkeeping lives in the machine's); the mode shows one -->
+  <main class="panes" data-pane={pane} data-mode={mode}>
+    <div class="pane-left for-job"><JobPanel /></div>
+    <div class="pane-left for-machine"><div class="scroll"><MachinePanel /></div></div>
     <div class="pane-view">
       <Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} spindle={machine.status?.spindle ?? 0} />
       {#if camera.running && camera.view === 'camera'}<CameraView />{/if}
     </div>
-    <div class="pane-chat"><Chat onSettings={() => (settings = true)} /></div>
+    <div class="pane-right for-job"><Chat onSettings={() => (settings = true)} /></div>
+    <div class="pane-right for-machine"><AtMachine /></div>
   </main>
 
   <nav class="switch" aria-label="Panes">
-    <button class:on={pane === 'job'} onclick={() => (pane = 'job')}>Job</button>
+    <button class:on={pane === 'left'} onclick={() => (pane = 'left')}>{mode === 'job' ? 'Job' : 'Machine'}</button>
     <button class:on={pane === 'view'} onclick={() => (pane = 'view')}>Preview</button>
-    <button class:on={pane === 'chat'} onclick={() => (pane = 'chat')}>Assistant</button>
+    <button class:on={pane === 'right'} onclick={() => (pane = 'right')}>{mode === 'job' ? 'Assistant' : 'Setting up'}</button>
   </nav>
 </div>
 
@@ -104,37 +121,53 @@
   .link-state.offline i, .link-state.denied i { background: #ff8f86; }
   .btn.ghost { background: transparent; color: var(--on-iron); border-color: rgba(255, 255, 255, 0.2); }
   .btn.ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
-  label.btn { cursor: pointer; }
   .said { display: flex; align-items: center; gap: 10px; padding: 6px 14px; background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: 13px; flex: none; }
   .said.bad { background: var(--err-soft); color: var(--err); }
   .said span { flex: 1; min-width: 0; }
   .said button { border: 0; background: none; color: inherit; font-size: 18px; line-height: 1; padding: 0 4px; }
-  .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 340px) 1fr minmax(320px, 380px); }
+  .modes { display: inline-flex; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 7px; padding: 2px; gap: 2px; flex: none; }
+  .modes button { border: 0; background: none; color: var(--on-iron-2); font-weight: 700; padding: 4px 13px; border-radius: 5px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .modes button:hover { color: var(--on-iron); }
+  .modes button.on { background: var(--accent); color: var(--on-accent); }
+  .modes i { width: 8px; height: 8px; border-radius: 50%; background: #7fcf92; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.4); }
+  .modes i.m-running, .modes i.m-run, .modes i.m-jog, .modes i.m-home { background: #7db7ff; }
+  .modes i.m-tool-change, .modes i.m-held, .modes i.m-hold, .modes i.m-door { background: #f0c76a; }
+  .modes i.m-alarm { background: #ff8f86; }
+  .modes .says { font-weight: 500; font-size: 12px; }
+  .modes button.on .says { color: inherit; }
+  .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(320px, 360px) 1fr minmax(320px, 380px); }
   .panes > div { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+  .panes[data-mode='job'] > .for-machine, .panes[data-mode='machine'] > .for-job { display: none; }
   .pane-view { position: relative; }
-  .pane-job { border-right: 1px solid var(--line); }
-  .pane-chat { border-left: 1px solid var(--line); }
+  .pane-left { border-right: 1px solid var(--line); background: var(--panel); }
+  .pane-right { border-left: 1px solid var(--line); }
+  .scroll { flex: 1; overflow: auto; }
   .switch { display: none; }
 
-  @media (max-width: 980px) {
+  @media (max-width: 1100px) {
     .facts span:not(.st) { display: none; }
+  }
+  @media (max-width: 980px) {
     .link-state { font-size: 0; gap: 0; }
+    .modes .says { display: none; }
     .panes { grid-template-columns: 1fr; }
     .panes > div { display: none; }
-    .panes[data-pane='job'] .pane-job, .panes[data-pane='view'] .pane-view, .panes[data-pane='chat'] .pane-chat { display: flex; }
-    .pane-job, .pane-chat { border: 0; }
+    .panes[data-mode='job'][data-pane='left'] > .pane-left.for-job, .panes[data-mode='machine'][data-pane='left'] > .pane-left.for-machine,
+    .panes[data-pane='view'] > .pane-view,
+    .panes[data-mode='job'][data-pane='right'] > .pane-right.for-job, .panes[data-mode='machine'][data-pane='right'] > .pane-right.for-machine { display: flex; }
+    .pane-left, .pane-right { border: 0; }
     .switch { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); background: var(--panel); padding-bottom: env(safe-area-inset-bottom); flex: none; }
     .switch button { border: 0; background: none; padding: 12px 0; font-weight: 600; color: var(--ink-3); border-top: 2px solid transparent; margin-top: -1px; }
     .switch button.on { color: var(--ink); border-top-color: var(--accent); }
   }
-  @media (max-width: 560px) {
+  @media (max-width: 620px) {
     .top { gap: 8px; padding: 8px 10px; }
-    .name { width: 10ch; padding: 4px; }
+    .name { width: 9ch; padding: 4px; flex: 1 1 auto; }
     .brand { font-size: 0; gap: 0; }
-    .facts { font-size: 12px; flex: 0 1 auto; min-width: 0; }
+    .facts { display: none; }
     .grow { display: none; }
     .btn.ghost { padding: 5px 9px; }
-    /* (Open and Save are also in the Stock tab) */
-    .btn.file { display: none; }
+    .modes button { padding: 4px 9px; }
+    .undo-word { display: none; }
   }
 </style>

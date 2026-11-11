@@ -9,12 +9,12 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   const p = await b.newPage({ viewport: { width: 1500, height: 950 } });
   p.on('pageerror', (e) => log('pageerror:', e.message.slice(0, 300)));
   await p.goto('http://localhost:4173/');
-  await p.evaluate(() => localStorage.clear()); await p.reload();
-  await p.getByRole('tab', { name: 'Stock' }).click();
-  await p.getByRole('button', { name: 'Empty mill job' }).click();
+  await p.evaluate(() => { localStorage.clear(); localStorage.setItem('swarf.sections', 'all'); }); await p.reload();
+  await p.getByRole('button', { name: 'File' }).click();
+  await p.getByRole('menuitem', { name: 'New mill job' }).click();
   await p.evaluate(() => { const s = window.__swarfStore; const j = JSON.parse(JSON.stringify(s.job)); s.set(window.__swarfJob.parse({ ...j, stock: { ...j.stock, top: 0 }, operations: [{ type: 'mill_engrave', tool: 4, text: 'SWARF 2026', x: 8, y: 20, height: 8, depth: 0.2, follow: true }] })); });
   log('before anything is measured:', JSON.stringify(await p.evaluate(() => window.__swarfStore.analysis.diagnostics.map((d) => d.code))));
-  await p.getByRole('tab', { name: 'Machine' }).click();
+  await p.getByRole('button', { name: /^Machine/ }).click();
   await p.getByRole('button', { name: /Connect a simulated/ }).click();
   await p.waitForFunction(() => window.__swarfMachine?.status?.wpos, null, { polling: 200, timeout: 20000 });
   // a block that sits more askew and more tilted than the simulator's usual one

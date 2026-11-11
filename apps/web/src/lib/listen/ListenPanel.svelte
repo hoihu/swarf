@@ -63,8 +63,7 @@
 </script>
 
 <section class="listen">
-  <h3>Listen to the cut</h3>
-  <p class="muted small">A microphone near the machine (the laptop's will do) tells a clean cut from chatter: chatter rings at a pitch of its own, between the multiples of the rate the teeth meet the work. When it hears one, it works out the spindle speeds at which the teeth fall in step with the ring, where it usually dies down.</p>
+  <details class="how"><summary>How this works</summary><p class="muted small">A microphone near the machine (the laptop's will do) tells a clean cut from chatter: chatter rings at a pitch of its own, between the multiples of the rate the teeth meet the work. When it hears one, it works out the spindle speeds at which the teeth fall in step with the ring, where it usually dies down.</p></details>
   <div class="row">
     {#if listening.on}
       <button class="btn" onclick={() => listening.stop()}>Stop listening</button>
@@ -117,8 +116,9 @@
 </section>
 
 <style>
-  .listen { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-  h3 { margin: 0; font-size: 14px; }
+  .how summary { cursor: pointer; color: var(--link); font-size: 12.5px; font-weight: 600; }
+  .how p { margin-top: 6px; }
+  .listen { display: flex; flex-direction: column; gap: 8px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .small { font-size: 12.5px; margin: 0; }
   .muted { color: var(--ink-3); }

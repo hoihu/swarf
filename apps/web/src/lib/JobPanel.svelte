@@ -1,19 +1,15 @@
 <script lang="ts">
-  import { EXAMPLES, Job, MATERIALS, Machine, OP_TOOLS, cuttingData, defaultToolMaterial, type MaterialId, Operation, Tool, bbox, emptyJob, importDrawing, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
+  import { Job, MATERIALS, Machine, OP_TOOLS, cuttingData, defaultToolMaterial, type MaterialId, Operation, Tool, bbox, importDrawing, opLabel, withIds, type OpType, type Stock } from '@swarf/cam';
   import SchemaForm from './SchemaForm.svelte';
-  import MachinePanel from './MachinePanel.svelte';
-  import CameraPanel from './camera/CameraPanel.svelte';
-  import ProbePanel from './ProbePanel.svelte';
-  import ListenPanel from './listen/ListenPanel.svelte';
   import MeasuredNote from './MeasuredNote.svelte';
-  import { machine } from './machine.svelte.ts';
   import { issuesByField, machineFields, opFields, toolFieldsFor } from './form.ts';
   import { store } from './store.svelte.ts';
   import { OP_TEMPLATES } from './ops.ts';
+  import { ui } from './ui.svelte.ts';
   import { download as saveAs, fileName, files } from './files.svelte.ts';
   import { inLibrary, reviewJob, toolSummary } from '@swarf/cam';
 
-  type Tab = 'ops' | 'stock' | 'tools' | 'gcode' | 'machine';
+  type Tab = 'ops' | 'stock' | 'tools' | 'gcode';
   let tab = $state<Tab>('ops');
 
   const job = $derived(store.job);
@@ -22,6 +18,15 @@
   const jobLevel = $derived(diags.filter((d) => !d.opId));
 
   const look = $derived(reviewJob(job, store.analysis));
+
+  // another job (File menu, the assistant): half-typed values belong to the old one
+  $effect(() => {
+    void store.epoch;
+    draft = null;
+    toolDraft = null;
+    machineDraft = null;
+    toolOpen = null;
+  });
 
   // ---- operation editing: a form per operation, applied as soon as it is valid
   /** The selected operation's values while they do not validate yet. */
@@ -106,10 +111,6 @@
   }
   const num = (e: Event) => Number((e.currentTarget as HTMLInputElement).value);
 
-  function start(kind: 'lathe' | 'mill', example: boolean): void {
-    store.replace(example ? EXAMPLES[kind]() : emptyJob(kind));
-    draft = null;
-  }
 
   // ---- machine settings
   let machineDraft = $state<{ value: Record<string, unknown>; errors: Record<string, string> } | null>(null);
@@ -194,11 +195,10 @@
 
 <section class="panel">
   <div class="tabs" role="tablist">
-    {#each [['ops', 'Operations'], ['stock', 'Stock'], ['tools', 'Tools'], ['gcode', 'G-code'], ['machine', 'Machine']] as [id, name] (id)}
+    {#each [['ops', 'Operations'], ['stock', 'Setup'], ['tools', 'Tools'], ['gcode', 'G-code']] as [id, name] (id)}
       <button role="tab" aria-selected={tab === id} class:on={tab === id} onclick={() => (tab = id as Tab)}>
         {name}
         {#if id === 'ops' && diags.some((d) => d.severity === 'error')}<span class="dot err" title="Has errors"></span>{/if}
-        {#if id === 'machine' && machine.connected}<span class="dot on" title="Controller connected"></span>{/if}
       </button>
     {/each}
   </div>
@@ -285,24 +285,6 @@
         </div>
       </details>
     {:else if tab === 'stock'}
-      <h3>Machine</h3>
-      <p class="muted">{job.machine.name}: {job.machine.kind}, {job.machine.minRpm}–{job.machine.maxRpm} rpm, feed up to {job.machine.maxFeed} mm/min.</p>
-      <details class="add">
-        <summary>Machine settings</summary>
-        <SchemaForm fields={machineFields(job.machine.kind)} value={machineDraft?.value ?? (job.machine as Record<string, unknown>)} errors={machineDraft?.errors ?? {}} onchange={editMachine} />
-      </details>
-      <div class="grid">
-        <button class="btn" onclick={() => start('lathe', true)}>Lathe example</button>
-        <button class="btn" onclick={() => start('mill', true)}>Mill example</button>
-        <button class="btn" onclick={() => start('lathe', false)}>Empty lathe job</button>
-        <button class="btn" onclick={() => start('mill', false)}>Empty mill job</button>
-      </div>
-      <h3>Job file</h3>
-      <div class="row">
-        <label class="btn">Open a job<input type="file" accept=".json,application/json" onchange={(e) => files.openJobFrom(e)} hidden /></label>
-        <button class="btn" onclick={() => files.saveJob()}>Save this job</button>
-      </div>
-      <p class="muted small">The job is kept in this browser as you work. A file ({fileName(job.name, '.swarf.json')}) keeps it for later, or for another computer: machine, stock, tools, operations and drawings.</p>
       <h3>Stock</h3>
       {#if job.stock.kind === 'bar'}
         <label>Bar diameter <input type="number" step="0.5" min="1" value={job.stock.diameter} onchange={(e) => setStock({ diameter: num(e) })} /> mm</label>
@@ -323,9 +305,30 @@
       </label>
       <label class="wide">Grade <input type="text" value={job.material ?? ''} placeholder={MATERIALS[job.workMaterial].examples.split(',')[0]} onchange={(e) => store.set({ ...job, material: (e.currentTarget as HTMLInputElement).value || undefined })} /></label>
       <p class="muted">The material sets cutting speed, feed and depth per pass for every tool ({MATERIALS[job.workMaterial].examples}). Values set on a tool override it.</p>
-      <h3>Setup notes</h3>
-      <textarea rows="3" aria-label="Setup notes" placeholder={job.machine.kind === 'lathe' ? 'How the bar is held: three-jaw, soft jaws, tailstock centre…' : 'How the block is held: vise on 10 mm parallels, stop on the left…'} value={job.notes ?? ''} onchange={(e) => store.set({ ...job, notes: (e.currentTarget as HTMLTextAreaElement).value.trim() || undefined })}></textarea>
-      <p class="muted small">Printed on the setup sheet (G-code tab).</p>
+      <h3>How it is held</h3>
+      <textarea rows="3" aria-label="Setup notes" placeholder={job.machine.kind === 'lathe' ? 'Three-jaw, soft jaws, tailstock centre…' : 'Vise on 10 mm parallels, stop on the left…'} value={job.notes ?? ''} onchange={(e) => store.set({ ...job, notes: (e.currentTarget as HTMLTextAreaElement).value.trim() || undefined })}></textarea>
+      <p class="muted small gap">Your notes, printed on the setup sheet.</p>
+      {#if job.machine.kind === 'mill'}
+        {#if job.obstacles.length}
+          <ul class="lib">
+            {#each job.obstacles as o, i (i)}
+              <li>
+                <span class="what"><span class="label">{o.name}</span><span class="sub">X {o.x0.toFixed(0)} to {o.x1.toFixed(0)}, Y {o.y0.toFixed(0)} to {o.y1.toFixed(0)}, top at Z{o.top.toFixed(1)}</span></span>
+                <button class="ib" aria-label="Remove {o.name}" title="Remove" onclick={() => store.set({ ...job, obstacles: job.obstacles.filter((_, k) => k !== i) })}>×</button>
+              </li>
+            {/each}
+          </ul>
+          <p class="muted small">Clamps and jaws the checks keep every move clear of.</p>
+        {:else}
+          <p class="muted small">No clamps or jaws are entered, so the checks cannot keep the tool off them. Tell the assistant where they are, or scan the setup with the camera's line laser (Machine).</p>
+        {/if}
+      {/if}
+      <h3>Machine</h3>
+      <p class="muted">{job.machine.name}: {job.machine.minRpm}–{job.machine.maxRpm} rpm, feed up to {job.machine.maxFeed} mm/min.</p>
+      <details class="add">
+        <summary>Machine settings</summary>
+        <SchemaForm fields={machineFields(job.machine.kind)} value={machineDraft?.value ?? (job.machine as Record<string, unknown>)} errors={machineDraft?.errors ?? {}} onchange={editMachine} />
+      </details>
     {:else if tab === 'tools'}
       <ol class="ops">
         {#each job.tools as t (t.id)}
@@ -386,6 +389,7 @@
       <div class="row">
         <button class="btn pri" onclick={download} disabled={store.analysis.diagnostics.some((d) => d.severity === 'error')} title="Fix errors before downloading">Download .nc</button>
         <button class="btn" onclick={() => (files.sheet = true)} title="One page for the machine: stock, zero, tools, operations">Setup sheet</button>
+        <button class="btn" onclick={() => ui.go('machine')} title="Connect the controller and run the program from here">Run it: to the machine</button>
         <span class="muted">{gcodeLines.length} lines</span>
       </div>
       {#if store.analysis.diagnostics.some((d) => d.severity === 'error')}
@@ -394,11 +398,6 @@
       <MeasuredNote />
       <pre class="gcode">{#each gcodeLines as line, i (i)}<span class="ln">{i + 1}</span><span class:cm={line.startsWith('(')}>{line}</span>
 {/each}</pre>
-    {:else}
-      <MachinePanel />
-      {#if machine.connected && job.machine.kind === 'mill'}<ProbePanel />{/if}
-      <ListenPanel />
-      <CameraPanel />
     {/if}
   </div>
 </section>
@@ -445,6 +444,7 @@
   .ib { border: 0; background: none; color: var(--ink-3); font-size: 18px; padding: 0 4px; }
   .ib:hover:not(:disabled) { color: var(--err); }
   .small { font-size: 12px; margin: 0; }
+  .small.gap { margin-bottom: 8px; }
   label.btn { display: inline-block; margin: 0; cursor: pointer; color: inherit; }
   textarea { width: 100%; border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 8px; background: var(--panel); font: inherit; resize: vertical; }
   .lib { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }

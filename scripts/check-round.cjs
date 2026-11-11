@@ -11,11 +11,11 @@ const OUT = process.argv[2] ?? require('os').tmpdir();
   const p = await b.newPage({ viewport: { width: 1500, height: 950 } });
   p.on('pageerror', (e) => log('pageerror:', e.message.slice(0, 300)));
   await p.goto('http://localhost:4173/');
-  await p.evaluate(() => localStorage.clear()); await p.reload();
+  await p.evaluate(() => { localStorage.clear(); localStorage.setItem('swarf.sections', 'all'); }); await p.reload();
   const start = async (kind) => {
-    await p.getByRole('tab', { name: 'Stock' }).click();
-    await p.getByRole('button', { name: kind === 'mill' ? 'Mill example' : 'Lathe example' }).click();
-    await p.getByRole('tab', { name: 'Machine' }).click();
+    await p.getByRole('button', { name: 'File' }).click();
+    await p.getByRole('menuitem', { name: kind === 'mill' ? 'Mill example' : 'Lathe example' }).click();
+    await p.getByRole('button', { name: /^Machine/ }).click();
     if (await p.getByRole('button', { name: /Connect a simulated/ }).count()) await p.getByRole('button', { name: /Connect a simulated/ }).click();
     await p.waitForFunction(() => window.__swarfMachine?.status?.wpos, null, { polling: 200, timeout: 20000 });
     if (!(await p.evaluate(() => window.__swarfCamera?.running))) await p.locator('section.camera').getByRole('button', { name: 'Start', exact: true }).click();

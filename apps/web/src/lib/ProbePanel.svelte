@@ -48,8 +48,7 @@
 </script>
 
 <section class="probe">
-  <h3>Zero by touching</h3>
-  <p class="muted small">The cutter is the probe: wire it (the spindle or a clip on the cutter) to the controller's probe input, and the other side to a touch plate or, for aluminium and other conductive stock, a clip on the stock. Each touch goes down slowly and stops the moment the circuit closes (G38.2).</p>
+  <details class="how"><summary>How this works</summary><p class="muted small">The cutter is the probe: wire it (the spindle or a clip on the cutter) to the controller's probe input, and the other side to a touch plate or, for aluminium and other conductive stock, a clip on the stock. Each touch goes down slowly and stops the moment the circuit closes (G38.2).</p></details>
   <p class="small">Probe input: <b class:on={probe.touching}>{probe.touching ? 'closed (touching)' : 'open'}</b> <span class="muted">— {machine.probeTested ? 'circuit tested since connecting.' : 'before the first touch, hold the plate (or the clip) against the cutter: it must read closed. Nothing here moves until it has.'}</span></p>
   <div class="grid">
     <label>Cutter
@@ -103,8 +102,9 @@
 </section>
 
 <style>
-  .probe { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-  h3 { margin: 0; font-size: 14px; }
+  .how summary { cursor: pointer; color: var(--link); font-size: 12.5px; font-weight: 600; }
+  .how p { margin-top: 6px; }
+  .probe { display: flex; flex-direction: column; gap: 8px; }
   h4 { margin: 8px 0 0; font-size: 13px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; }
   .grid { display: flex; gap: 12px; flex-wrap: wrap; }

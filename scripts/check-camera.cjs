@@ -17,9 +17,9 @@ const T0 = Date.now(); const ts = () => ((Date.now() - T0) / 1000).toFixed(0) + 
   await p.reload();
   await p.waitForTimeout(800);
   // mill example, machine tab, simulated mill
-  await p.getByRole('tab', { name: 'Stock' }).click();
-  await p.getByRole('button', { name: KIND === 'lathe' ? 'Lathe example' : 'Mill example' }).click();
-  await p.getByRole('tab', { name: 'Machine' }).click();
+  await p.getByRole('button', { name: 'File' }).click();
+  await p.getByRole('menuitem', { name: KIND === 'lathe' ? 'Lathe example' : 'Mill example' }).click();
+  await p.getByRole('button', { name: /^Machine/ }).click();
   await p.getByRole('button', { name: /Connect a simulated/ }).click();
   await p.waitForTimeout(800);
   await p.locator('section.camera').getByRole('button', { name: 'Start', exact: true }).click();

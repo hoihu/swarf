@@ -130,7 +130,7 @@ export function alignmentChecks(job: Job, program: Program): Diagnostic[] {
   const follow = followOps(job);
   const surface = m ? surfaceAt(m.top) : null;
   for (const o of follow) {
-    if (!surface) out.push({ severity: 'warning', code: 'FOLLOW_NO_TOP', message: 'This operation is to follow the measured top, but no top is kept with the job: touch the top in the Machine tab ("Check the top") and keep it. Until then it is cut as if the top were flat.', opId: o.id });
+    if (!surface) out.push({ severity: 'warning', code: 'FOLLOW_NO_TOP', message: 'This operation is to follow the measured top, but no top is kept with the job: touch the top at the machine (Setting up, "Check the top") and keep it. Until then it is cut as if the top were flat.', opId: o.id });
   }
   if (!m) return out;
   if (surface && follow.length) {

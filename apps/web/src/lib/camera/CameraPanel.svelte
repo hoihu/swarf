@@ -116,8 +116,7 @@
 </script>
 
 <section class="camera">
-  <h3>Camera</h3>
-  <p class="muted small">A camera looking at the work area shows the toolpath drawn over the real picture: wrong work zero, clamps in the way or too little stock are seen before cutting.</p>
+  <details class="how"><summary>How this works</summary><p class="muted small">A camera looking at the work area shows the toolpath drawn over the real picture: wrong work zero, clamps in the way or too little stock are seen before cutting.</p></details>
 
   <div class="row">
     <select value={camera.source} onchange={(e) => (camera.source = (e.currentTarget as HTMLSelectElement).value)} disabled={camera.running} aria-label="Camera">
@@ -218,7 +217,7 @@
                 The camera sees a Ø{camera.tool.diameter.toFixed(1)} cutter{toolVerdict.fits ? `: fits Ø${camera.tool.expected}.` : `, not Ø${camera.tool.expected}${toolVerdict.like ? `: it looks like T${toolVerdict.like.id} (${toolVerdict.like.name})` : ''}. Do not start before this is cleared up.`}
               </li>
               <li class:warn={toolVerdict.long}>
-                {toolVerdict.long ? `Its tip is ${Math.abs(camera.tool.tip).toFixed(1)} mm ${camera.tool.tip < 0 ? 'lower' : 'higher'} than the zero assumes: carry the zero over to this tool (Tool changes, above) before cutting.` : 'Its tip is where the zero has it, within what the camera can tell (a few tenths: no substitute for touching off).'}
+                {toolVerdict.long ? `Its tip is ${Math.abs(camera.tool.tip).toFixed(1)} mm ${camera.tool.tip < 0 ? 'lower' : 'higher'} than the zero assumes: carry the zero over to this tool (Tool changes, above this) before cutting.` : 'Its tip is where the zero has it, within what the camera can tell (a few tenths: no substitute for touching off).'}
               </li>
               {#if Math.abs(camera.tool.offset) > 1}<li class="warn">The outline sits {Math.abs(camera.tool.offset).toFixed(1)} mm off the spindle axis as the camera has it: the camera has moved since it was calibrated, or something else is being measured.</li>{/if}
             </ul>
@@ -300,8 +299,9 @@
 </section>
 
 <style>
-  .camera { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-  h3 { margin: 0; font-size: 14px; }
+  .how summary { cursor: pointer; color: var(--link); font-size: 12.5px; font-weight: 600; }
+  .how p { margin-top: 6px; }
+  .camera { display: flex; flex-direction: column; gap: 8px; }
   h4 { margin: 8px 0 0; font-size: 13px; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .row select { flex: 1; min-width: 0; border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 8px; background: var(--panel); }

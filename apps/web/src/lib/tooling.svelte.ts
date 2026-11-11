@@ -1,7 +1,7 @@
 /**
  * Tool changes on the connected machine: which tool the work zero is right for, the change under
  * way, and the two ways of carrying the zero over to the new tool (tooling.ts): stored offsets
- * and the tool setter. In the Machine tab (ToolPanel.svelte).
+ * and the tool setter. Under Setting up, in the machine mode (ToolPanel.svelte).
  */
 import { machine } from './machine.svelte.ts';
 import { simWorld } from './simworld.ts';
