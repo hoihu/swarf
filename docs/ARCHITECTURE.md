@@ -61,7 +61,6 @@ Tier 2, toward everyday use (done: forms, MCP for Claude Code, the app chat answ
 Code, Copilot CLI, Codex CLI or OpenCode headless, multi-start threads, lathe arcs as G18 G2/G3, a material library for speeds and feeds, streaming over Web Serial, planner time estimate, ramp/helix entry, nose radius on
 chamfers, external and internal threading as G33 passes, boring, lathe profiles, contour tabs, WebSocket streaming, a review card per assistant turn, DXF/SVG import with contours and pockets of any outline, lathe profiles from drawings, arc fitting):
 - A thread pull-out (G33 with X moving), internal profiles.
-- Camera: bar diameter and stickout on the lathe (silhouette, better with a backlight), the tool after a change.
 - Probing: bores and bosses as datums; the corner routine to keep clear of known obstacles (it touches the sides 6 mm out, where low edge clamps sit).
 
 Tier 3 (only by reusing libraries): STEP import (build123d / OpenCascade), adaptive clearing,

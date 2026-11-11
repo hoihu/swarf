@@ -222,6 +222,26 @@ loaded only here):
    the scan found: facing over vise jaws passes, a deep contour into them does not, straps are in
    the way of facing (`apps/web/test/simsetups.test.ts`).
 
+5. **Round things.** Their axis is known (the spindle's), so the picture only has to give the
+   outline: across the axis the two edges of the silhouette, along it where the body ends.
+   - **The cutter in the spindle** (mill): "Check the tool" in the Camera section, or "Is it the
+     right tool? Ask the camera" during a tool change. It measures the cutter's diameter over the
+     20 mm above its tip and compares it with the tool the job wants; if it does not fit, it
+     names the job's tool it looks like. It also reads where the tip is against where the zero
+     has it, which shows a tool whose length was not carried over. Raise the cutter in front of
+     something plain first.
+   - **The bar in the chuck** (lathe): "Check the bar" reads its diameter, how far it stands out
+     of the chuck (from the chuck's face to the bar's) and where the raw face is, compares them
+     with the job's stock, and "Use what the camera sees as the stock" takes them over.
+
+   On the simulated camera: cutters of Ø5, 6 and 10 read within 0.2 mm and their tips within
+   0.1 mm, a Ø5 drill in place of a Ø6 end mill is called out, and a bar 0.6 mm thinner and
+   3.5 mm further out than the job says reads to 0.1 mm (`scripts/check-round.cjs`;
+   `apps/web/test/caliper.test.ts` does the same on ray-cast pictures through a distorting
+   lens). That is a clean picture. In a real one, flutes, chips, coolant and a cluttered
+   background move the edges: take a diameter as good to about half a millimetre (it tells Ø6
+   from Ø8, not Ø6 from Ø6.35), and the tip as a check on the length, never as the zero.
+
 The lens is undone on the GPU for the overlay. A **simulated camera** (a known lens with
 distortion, looking at the simulated machine, holding the board up during the lens step) runs the
 whole flow without hardware and is how it is tested.
@@ -245,6 +265,7 @@ whole flow without hardware and is how it is tested.
 | Setup sheet | one printable page per job: stock, where the zero is, what holds the work, the tools in the order the program asks for them and how far each must reach, every operation with rpm, feed, depth and time, a drawing with the zero and the cuts |
 | Pictures | a photo of a part or a hand sketch with dimensions, attached to a chat message: the assistant reads the written dimensions and proposes stock and operations |
 | Review | "Worth a look": what a machinist would stop at before running (order, slender tools and parts, holding, thin floors), computed with numbers; Review asks the assistant to weigh it |
+| Camera checks | the cutter in the spindle after a change (diameter against the tool the job wants, tip against the zero), the bar in the chuck (diameter, stick-out, raw face against the job's stock) |
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
 
 Threading needs grblHAL in lathe mode with an index + pulse encoder ($32=2, $38, PID tuned), and

@@ -3,6 +3,7 @@
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
   import { tooling } from './tooling.svelte.ts';
+  import { camera } from './camera/camera.svelte.ts';
 
   const tools = $derived(store.job.tools);
   const name = (id: number | null) => (id === null ? '' : `T${id} ${tools.find((t) => t.id === id)?.name ?? ''}`.trim());
@@ -11,6 +12,23 @@
   const mill = $derived(store.job.machine.kind === 'mill');
   let next = $state<number | null>(null);
   const fmt = (v: number) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3);
+
+  // the camera, when it is running and calibrated, can tell whether the right cutter went in
+  const pendingTool = $derived(tools.find((t) => t.id === tooling.pending));
+  const canLook = $derived(mill && camera.running && camera.ready && !!pendingTool?.diameter);
+  let looked = $state<{ id: number; ok: boolean; text: string } | null>(null);
+  async function look(): Promise<void> {
+    const t = pendingTool;
+    if (!t?.diameter) return;
+    looked = null;
+    try {
+      const s = await camera.checkTool(t.diameter);
+      const ok = Math.abs(s.diameter - t.diameter) <= Math.max(0.5, t.diameter * 0.1);
+      looked = { id: t.id, ok, text: ok ? `The camera sees a Ø${s.diameter.toFixed(1)} cutter: fits T${t.id} (Ø${t.diameter}).` : `The camera sees a Ø${s.diameter.toFixed(1)} cutter, but T${t.id} is Ø${t.diameter}: is the right tool in?` };
+    } catch (e) {
+      looked = { id: t.id, ok: false, text: e instanceof Error ? e.message : String(e) };
+    }
+  }
 </script>
 
 {#if machine.connected}
@@ -50,6 +68,10 @@
           {/if}
           <button class="link" onclick={() => tooling.setActive(tooling.active)}>Cancel the change</button>
         </div>
+        {#if canLook}
+          <p class="small"><button class="btn" disabled={!idle} onclick={look}>Is it the right tool? Ask the camera</button> <span class="muted">Raise the cutter clear of the work first.</span></p>
+          {#if looked && looked.id === tooling.pending}<p class="small" class:bad={!looked.ok}>{looked.text}</p>{/if}
+        {/if}
         {#if mill && tooling.setter && !tooling.hasReading}<p class="muted small">The setter has no reading of the tool before, so it cannot tell the difference this time: touch this one off on the work, say so, then take its reading below.</p>{/if}
       </div>
     {/if}
@@ -87,6 +109,7 @@
 {/if}
 
 <style>
+  .bad { color: var(--err); font-weight: 600; }
   .toolpanel { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
   h4 { margin: 0 0 8px; font-size: 13px; }
   .line, .ways { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }

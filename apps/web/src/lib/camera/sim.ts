@@ -233,7 +233,7 @@ export class SimCamera {
     const { job } = w;
     // what is really there sits where the simulator's work zero started (a new zero does not move it)
     const [ox, oy, oz] = simWorld.origin ?? w.wco;
-    const key = `${job.machine.kind}:${JSON.stringify(job.stock)}:${[ox, oy, oz].join(',')}:${JSON.stringify([simWorld.stockError, simWorld.setup, simWorld.plate])}`;
+    const key = `${job.machine.kind}:${JSON.stringify(job.stock)}:${[ox, oy, oz].join(',')}:${JSON.stringify([simWorld.stockError, simWorld.setup, simWorld.plate, simWorld.toolDiameter, simWorld.stickout, simWorld.barError])}`;
     if (key === this.#key) return;
     this.#key = key;
     this.#fixed.clear();
@@ -263,8 +263,10 @@ export class SimCamera {
       const cam = millCamera(s);
       this.pose = lookAt([ox + cam.at[0], oy + cam.at[1], oz + cam.at[2]], [ox + cam.target[0], oy + cam.target[1], oz + cam.target[2]], [0, 0, 1]);
       // cutter (tip at the origin of the tool group) and spindle
-      const d = 6;
-      const cutter = new THREE.Mesh(new THREE.CylinderGeometry(d / 2, d / 2, 40, 24).rotateX(Math.PI / 2).translate(0, 0, 20), metal);
+      // the cutter now in the spindle: its diameter, and how much further it sticks out than the first one
+      const d = simWorld.toolDiameter;
+      const out = simWorld.stickout;
+      const cutter = new THREE.Mesh(new THREE.CylinderGeometry(d / 2, d / 2, 40 + out, 24).rotateX(Math.PI / 2).translate(0, 0, 20 - out / 2), metal);
       const spindle = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, 80, 32).rotateX(Math.PI / 2).translate(0, 0, 80), dark);
       this.#tool.add(cutter, spindle);
       // the laser module on the front of the spindle head
@@ -277,11 +279,14 @@ export class SimCamera {
     } else {
       const s = job.stock;
       const chuckZ = s.front - s.stickout;
-      const bar = new THREE.Mesh(new THREE.CylinderGeometry(s.diameter / 2, s.diameter / 2, s.stickout, 64).rotateX(Math.PI / 2), metal);
-      bar.position.set(ox, oy, oz + chuckZ + s.stickout / 2);
+      // the bar as it really is: not quite the job's
+      const e = simWorld.barError;
+      const real = { d: s.diameter + e.diameter, out: s.stickout + e.stickout, chuck: s.front + e.front - (s.stickout + e.stickout) };
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(real.d / 2, real.d / 2, real.out, 64).rotateX(Math.PI / 2), metal);
+      bar.position.set(ox, oy, oz + real.chuck + real.out / 2);
       const cd = job.machine.chuckDiameter ?? 100;
       const chuck = new THREE.Mesh(new THREE.CylinderGeometry(cd / 2, cd / 2, 50, 64).rotateX(Math.PI / 2), dark);
-      chuck.position.set(ox, oy, oz + chuckZ - 25);
+      chuck.position.set(ox, oy, oz + real.chuck - 25);
       this.#fixed.add(bar, chuck);
       // the lathe's frame: x towards the operator, z along the spindle, y up; camera in front, above
       this.pose = lookAt([ox + 190, oy + 150, oz + s.front - s.stickout / 2 + 25], [ox + 15, oy, oz + s.front - s.stickout / 2 + 10], [0, 1, 0]);

@@ -17,6 +17,8 @@ export const simWorld = {
   origin: null as V3 | null,
   /** The real block against the job's: corner offset, size difference, turn (°), top too high/low, tilt (mm per mm along X and Y). */
   stockError: { dx: 0.8, dy: -0.6, dsx: 0.4, dsy: -0.3, angle: 0.25, dz: -0.37, tiltX: 0.0004, tiltY: -0.0006 } as StockError,
+  /** The real bar against the job's (lathe): thicker or thinner, further out of the chuck, its raw face further forward. */
+  barError: { diameter: -0.6, stickout: 3.5, front: 0.4 },
   /** How the block is held (sim/setups.ts). */
   setup: 'side' as SetupName,
   /** The simulated controller's real state (machine position, laser output), while connected. */

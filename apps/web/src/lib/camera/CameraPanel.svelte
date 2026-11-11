@@ -5,6 +5,7 @@
   import { laserScan } from './laserscan.svelte.ts';
   import { machine } from '../machine.svelte.ts';
   import { store } from '../store.svelte.ts';
+  import { tooling } from '../tooling.svelte.ts';
 
   const lathe = $derived(store.job.machine.kind === 'lathe');
   const lens = $derived(camera.calib.lens);
@@ -29,6 +30,33 @@
     const s = store.job.stock;
     if (!f || s.kind !== 'block') return;
     store.set({ ...store.job, stock: { ...s, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10 } });
+  }
+  // ---- the cutter in the spindle, the bar in the chuck
+  const cutters = $derived(store.job.tools.filter((t) => t.diameter && (t.type === 'endmill' || t.type === 'drill' || t.type === 'chamfer' || t.type === 'threadmill')));
+  let toolId = $state<number | null>(null);
+  const wanted = $derived(cutters.find((t) => t.id === (toolId ?? tooling.pending ?? tooling.active)) ?? cutters[0]);
+  /** What the camera's cutter says about the tool that should be in. */
+  const toolVerdict = $derived.by(() => {
+    const s = camera.tool;
+    if (!s) return null;
+    const tol = Math.max(0.5, s.expected * 0.1);
+    const fits = Math.abs(s.diameter - s.expected) <= tol;
+    // which of the job's cutters it looks like instead
+    const like = fits ? null : cutters.filter((t) => Math.abs(t.diameter! - s.diameter) <= Math.max(0.5, t.diameter! * 0.1)).sort((a, b) => Math.abs(a.diameter! - s.diameter) - Math.abs(b.diameter! - s.diameter))[0];
+    return { fits, like, long: Math.abs(s.tip) > 1 };
+  });
+  const barDiff = $derived.by(() => {
+    const b = camera.bar;
+    const s = stockNow;
+    if (!b || s.kind !== 'bar') return null;
+    return { d: b.diameter - s.diameter, out: b.stickout === null ? null : b.stickout - s.stickout, front: b.front === null ? null : b.front - s.front };
+  });
+  function useBar(): void {
+    const b = camera.bar;
+    const s = store.job.stock;
+    if (!b || s.kind !== 'bar') return;
+    const r = (v: number, step: number) => Math.round(v / step) * step;
+    store.set({ ...store.job, stock: { ...s, diameter: +r(b.diameter, 0.1).toFixed(1), ...(b.stickout !== null ? { stickout: +r(b.stickout, 0.5).toFixed(1) } : {}), ...(b.front !== null ? { front: +r(b.front, 0.1).toFixed(1) } : {}) } });
   }
   const ENOUGH = 15;
 
@@ -136,6 +164,25 @@
         </p>
         <div class="row"><button class="btn" onclick={() => camera.forget('pose')}>Measure again</button></div>
 
+        {#if lathe}
+          <h4>3 · Check the bar</h4>
+          <p class="small">Measures the bar's outline in the picture: its diameter, how far it stands out of the chuck, and where its raw face is (that one needs Z zero set). The camera reads to a few tenths of a millimetre; it takes the spindle axis where the controller has X0.</p>
+          <div class="row"><button class="btn pri" onclick={() => run(async () => void (await camera.checkBar()))}>Check the bar</button></div>
+          {#if camera.bar && barDiff && stockNow.kind === 'bar'}
+            <ul class="result">
+              <li class:warn={off(barDiff.d, 0.4)}>Ø{camera.bar.diameter.toFixed(1)}{off(barDiff.d, 0.4) ? ` (the job says Ø${stockNow.diameter})` : ', as in the job.'}</li>
+              <li class:warn={barDiff.out === null || off(barDiff.out, 1)}>
+                {#if camera.bar.stickout === null}The chuck's face or the bar's end could not be made out.
+                {:else}{camera.bar.stickout.toFixed(1)} mm out of the chuck{off(barDiff.out ?? 0, 1) ? ` (the job says ${stockNow.stickout}): ${(barDiff.out ?? 0) < 0 ? 'less than the job counts on. Operations near the chuck would run into the jaws.' : 'more than the job says: more overhang, and the checks place the jaws further forward than they are.'}` : ', as in the job.'}{/if}
+              </li>
+              {#if camera.bar.front !== null && barDiff.front !== null}
+                <li class:warn={off(barDiff.front, 0.5)}>Raw face at Z{signed(camera.bar.front)}{off(barDiff.front, 0.5) ? ` (the job says Z${signed(stockNow.front)}): ${camera.bar.front < 0 ? 'behind Z0: there is nothing to face, the part comes out short. Set Z zero again.' : 'the facing cut is that much deeper or shallower than planned.'}` : ', as in the job.'}</li>
+              {/if}
+              {#if Math.abs(camera.bar.offset) > 1}<li class="warn">The outline sits {Math.abs(camera.bar.offset).toFixed(1)} mm off the spindle axis as the camera has it: X zero is not on the axis, or the camera has moved since it was calibrated.</li>{/if}
+            </ul>
+            {#if off(barDiff.d, 0.4) || off(barDiff.out ?? 0, 1) || off(barDiff.front ?? 0, 0.5)}<div class="row"><button class="btn" onclick={useBar}>Use what the camera sees as the stock</button></div>{/if}
+          {/if}
+        {/if}
         {#if !lathe}
           <h4>3 · Check the setup</h4>
           <p class="small">Compares the block in the picture with the job: where its front-left corner is (the job's X0 Y0), its length and width, and whether it sits square. Needs Z zero on the block's top; the camera reads to a few tenths of a millimetre.</p>
@@ -152,6 +199,28 @@
               <li class:warn={off(blockDiff.angle, 0.2)}>
                 {off(blockDiff.angle, 0.2) ? `Turned ${blockDiff.angle.toFixed(1)}° against X: square the block (or the vise) to the table.` : 'Square to X.'}
               </li>
+            </ul>
+          {/if}
+
+          <h4>The cutter in the spindle</h4>
+          <p class="small">After a tool change: the camera measures the cutter's outline and tells whether it is the one the job wants, and whether its tip is where the zero assumes. Raise the cutter clear of the work, in front of something plain.</p>
+          <div class="row">
+            <label class="small">Should be
+              <select value={wanted?.id} onchange={(e) => (toolId = Number((e.currentTarget as HTMLSelectElement).value))}>
+                {#each cutters as t (t.id)}<option value={t.id}>T{t.id} Ø{t.diameter}</option>{/each}
+              </select>
+            </label>
+            <button class="btn" disabled={!wanted} onclick={() => run(async () => void (await camera.checkTool(wanted!.diameter!)))}>Check the tool</button>
+          </div>
+          {#if camera.tool && toolVerdict}
+            <ul class="result">
+              <li class:warn={!toolVerdict.fits}>
+                The camera sees a Ø{camera.tool.diameter.toFixed(1)} cutter{toolVerdict.fits ? `: fits Ø${camera.tool.expected}.` : `, not Ø${camera.tool.expected}${toolVerdict.like ? `: it looks like T${toolVerdict.like.id} (${toolVerdict.like.name})` : ''}. Do not start before this is cleared up.`}
+              </li>
+              <li class:warn={toolVerdict.long}>
+                {toolVerdict.long ? `Its tip is ${Math.abs(camera.tool.tip).toFixed(1)} mm ${camera.tool.tip < 0 ? 'lower' : 'higher'} than the zero assumes: carry the zero over to this tool (Tool changes, above) before cutting.` : 'Its tip is where the zero has it, within what the camera can tell (a few tenths: no substitute for touching off).'}
+              </li>
+              {#if Math.abs(camera.tool.offset) > 1}<li class="warn">The outline sits {Math.abs(camera.tool.offset).toFixed(1)} mm off the spindle axis as the camera has it: the camera has moved since it was calibrated, or something else is being measured.</li>{/if}
             </ul>
           {/if}
 

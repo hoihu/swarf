@@ -7,7 +7,8 @@
 import { BOARD, TABLE_MARKER, TOOL_MARKER, calibrateLens, detectBoard, detectMarkers, loadCv, solvePose, type BoardView, type CV, type Marker } from './cv.ts';
 import { pixelToRay, project, quadCenter, rodrigues, shiftPose, sub, mulMV, tipOffset, type Lens, type Pose, type V2, type V3 } from './geometry.ts';
 import { SimCamera } from './sim.ts';
-import { measureBlock, toGrey, type BlockFit } from './setup.ts';
+import { measureBlock, toGrey, type BlockFit, type Grey } from './setup.ts';
+import { findEnd, findShoulder, measureCylinder } from './caliper.ts';
 import type { LaserPlane } from './laser.ts';
 import { machine } from '../machine.svelte.ts';
 import { store } from '../store.svelte.ts';
@@ -25,6 +26,29 @@ export interface CameraCalib {
 }
 
 export type CameraView = 'scene' | 'camera' | 'overlay';
+
+/** The cutter as the camera sees it. */
+export interface ToolSeen {
+  diameter: number;
+  scatter: number;
+  /** Where its tip is against where the controller has it, mm (negative: lower, a longer tool). */
+  tip: number;
+  /** Its middle off the spindle axis as seen, mm (a check on the camera's calibration). */
+  offset: number;
+  /** The diameter that was expected. */
+  expected: number;
+}
+
+/** The bar as the camera sees it. */
+export interface BarSeen {
+  diameter: number;
+  scatter: number;
+  offset: number;
+  /** Work Z of the raw face (null: not found). */
+  front: number | null;
+  /** From the chuck's face to the bar's (null: one of them not found). */
+  stickout: number | null;
+}
 
 function loadAll(): Record<string, CameraCalib> {
   try {
@@ -216,6 +240,85 @@ class Camera {
   /** How long after the machine the picture shows it, at most (ms). */
   get lag(): number {
     return this.#sim ? this.#sim.lag : 350;
+  }
+
+  // ---------- round things: the cutter in the spindle, the bar in the chuck ----------
+
+  tool = $state<ToolSeen | null>(null);
+  bar = $state<BarSeen | null>(null);
+
+  /** A few pictures averaged against noise. */
+  async #averaged(n = 4): Promise<Grey> {
+    let sum: Float32Array | null = null;
+    let w = 0;
+    let h = 0;
+    for (let i = 0; i < n; i++) {
+      const img = this.grab();
+      if (!img) throw new Error('No camera picture.');
+      const g = toGrey(img);
+      w = g.width;
+      h = g.height;
+      if (!sum) sum = new Float32Array(g.lum.length);
+      for (let k = 0; k < sum.length; k++) sum[k]! += g.lum[k]! / n;
+      await sleep(120);
+    }
+    return { width: w, height: h, lum: sum! };
+  }
+
+  /**
+   * The cutter in the spindle, from its outline (mill): its diameter, and where its tip is against
+   * where the controller has it. To tell that the right tool is in after a change; the tip reads
+   * to a few tenths, which is a check on the tool's length, not a way to set it.
+   */
+  async checkTool(expected: number): Promise<ToolSeen> {
+    const { lens, pose } = this.calib;
+    if (!lens || !pose || !this.ready) throw new Error('Calibrate the camera first.');
+    if (store.job.machine.kind !== 'mill') throw new Error('The tool check is for the mill.');
+    const s = machine.status;
+    const at: V3 | null = pose.frame === 'machine' ? this.mpos() : s?.wpos ? [s.wpos[0], s.wpos[1], s.wpos[2]] : null;
+    if (!at) throw new Error('Connect the machine: the check needs to know where the spindle is.');
+    this.tool = null;
+    const g = await this.#averaged();
+    const up: V3 = [0, 0, 1];
+    const reach = Math.max(14, expected * 1.6);
+    // roughly, well above where the tip should be; then the tip; then the cutter just above it
+    const rough = measureCylinder(g, lens, pose, at, up, [10, 13, 16, 19, 22], reach);
+    if (!Number.isFinite(rough.diameter)) throw new Error('The camera cannot make out a cutter where the spindle is: is it in view, lit, and clear of the work behind it? (Raise it in front of a plain background.)');
+    const tip = findEnd(g, lens, pose, at, up, -20, 10, rough.diameter / 2, 1);
+    if (tip === null) throw new Error('The camera sees the cutter but not where it ends: raise it clear of the work.');
+    const fit = measureCylinder(g, lens, pose, [at[0], at[1], at[2] + tip], up, [3, 6, 9, 12, 15, 18], reach);
+    const seen = Number.isFinite(fit.diameter) ? fit : rough;
+    const out: ToolSeen = { diameter: seen.diameter, scatter: seen.scatter, tip, offset: seen.offset, expected };
+    this.tool = out;
+    return out;
+  }
+
+  /**
+   * The bar in the chuck, from its outline (lathe): its diameter, how far it stands out of the
+   * chuck, and where its raw face is (which needs Z zero set). The spindle axis is taken where the
+   * controller has X0.
+   */
+  async checkBar(): Promise<BarSeen> {
+    const { lens, pose } = this.calib;
+    const stock = store.job.stock;
+    if (!lens || !pose || !this.ready) throw new Error('Calibrate the camera first.');
+    if (stock.kind !== 'bar') throw new Error('The bar check is for the lathe.');
+    const wco: V3 | null = pose.frame === 'machine' ? this.wco() : [0, 0, 0];
+    if (!wco) throw new Error('Connect the machine: the check needs its work offset.');
+    this.bar = null;
+    const g = await this.#averaged();
+    // the spindle axis through work X0, along Z; t is work Z
+    const p0: V3 = [wco[0], 0, wco[2]];
+    const u: V3 = [0, 0, 1];
+    const ts = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7].map((k) => stock.front - k * stock.stickout);
+    const fit = measureCylinder(g, lens, pose, p0, u, ts, stock.diameter * 1.2 + 6);
+    if (!Number.isFinite(fit.diameter)) throw new Error('The camera cannot make out the bar: is it in view and lit, with something plain behind it?');
+    const search = Math.max(12, stock.stickout * 0.25);
+    const front = findEnd(g, lens, pose, p0, u, stock.front - search, stock.front + search, fit.diameter / 2, -1);
+    const chuck = findShoulder(g, lens, pose, p0, u, stock.front - stock.stickout - search, stock.front - stock.stickout + search, fit.diameter / 2);
+    const out: BarSeen = { diameter: fit.diameter, scatter: fit.scatter, offset: fit.offset, front, stickout: front !== null && chuck !== null ? front - chuck : null };
+    this.bar = out;
+    return out;
   }
 
   // ---------- setup check ----------
