@@ -8,6 +8,8 @@
   import { issuesByField, machineFields, opFields, toolFieldsFor } from './form.ts';
   import { store } from './store.svelte.ts';
   import { OP_TEMPLATES } from './ops.ts';
+  import { download as saveAs, fileName, files } from './files.svelte.ts';
+  import { inLibrary, toolSummary } from '@swarf/cam';
 
   type Tab = 'ops' | 'stock' | 'tools' | 'gcode' | 'machine';
   let tab = $state<Tab>('ops');
@@ -168,14 +170,19 @@
   }
   const usedBy = (id: number) => job.operations.filter((o) => o.tool === id).length;
 
+  // ---- the tool library
+  const libTools = $derived(files.toolsFor(job.machine.kind));
+  /** 'new': not in the library; 'same': as kept; 'changed': kept, but different now (the number aside). */
+  function kept(t: Tool): 'new' | 'same' | 'changed' {
+    const e = inLibrary(files.library, job.machine.kind, t.name);
+    if (!e) return 'new';
+    return JSON.stringify({ ...e.tool, id: 0 }) === JSON.stringify({ ...t, id: 0 }) ? 'same' : 'changed';
+  }
+  const inJob = (name: string) => job.tools.find((t) => t.name.trim().toLowerCase() === name.trim().toLowerCase());
+
   // ---- G-code
   function download(): void {
-    const blob = new Blob([store.gcode.text], { type: 'text/plain' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${job.name.replace(/[^\w.-]+/g, '_') || 'job'}.nc`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    saveAs(fileName(job.name, '.nc'), store.gcode.text, 'text/plain');
   }
   const gcodeLines = $derived(store.gcode.text.split('\n'));
   const toolName = (id: number) => job.tools.find((t) => t.id === id)?.name ?? `T${id} (missing)`;
@@ -275,6 +282,12 @@
         <button class="btn" onclick={() => start('lathe', false)}>Empty lathe job</button>
         <button class="btn" onclick={() => start('mill', false)}>Empty mill job</button>
       </div>
+      <h3>Job file</h3>
+      <div class="row">
+        <label class="btn">Open a job<input type="file" accept=".json,application/json" onchange={(e) => files.openJobFrom(e)} hidden /></label>
+        <button class="btn" onclick={() => files.saveJob()}>Save this job</button>
+      </div>
+      <p class="muted small">The job is kept in this browser as you work. A file ({fileName(job.name, '.swarf.json')}) keeps it for later, or for another computer: machine, stock, tools, operations and drawings.</p>
       <h3>Stock</h3>
       {#if job.stock.kind === 'bar'}
         <label>Bar diameter <input type="number" step="0.5" min="1" value={job.stock.diameter} onchange={(e) => setStock({ diameter: num(e) })} /> mm</label>
@@ -295,6 +308,9 @@
       </label>
       <label class="wide">Grade <input type="text" value={job.material ?? ''} placeholder={MATERIALS[job.workMaterial].examples.split(',')[0]} onchange={(e) => store.set({ ...job, material: (e.currentTarget as HTMLInputElement).value || undefined })} /></label>
       <p class="muted">The material sets cutting speed, feed and depth per pass for every tool ({MATERIALS[job.workMaterial].examples}). Values set on a tool override it.</p>
+      <h3>Setup notes</h3>
+      <textarea rows="3" aria-label="Setup notes" placeholder={job.machine.kind === 'lathe' ? 'How the bar is held: three-jaw, soft jaws, tailstock centre…' : 'How the block is held: vise on 10 mm parallels, stop on the left…'} value={job.notes ?? ''} onchange={(e) => store.set({ ...job, notes: (e.currentTarget as HTMLTextAreaElement).value.trim() || undefined })}></textarea>
+      <p class="muted small">Printed on the setup sheet (G-code tab).</p>
     {:else if tab === 'tools'}
       <ol class="ops">
         {#each job.tools as t (t.id)}
@@ -316,6 +332,11 @@
                   onchange={(v) => editTool(t.id, v)}
                 />
                 <div class="row">
+                  {#if kept(t) === 'same'}
+                    <span class="muted small">In your library</span>
+                  {:else}
+                    <button class="btn" onclick={() => files.keepTool(job.machine.kind, t)} title="Your library keeps tools for every job, in this browser">{kept(t) === 'changed' ? 'Update in the library' : 'Keep in the library'}</button>
+                  {/if}
                   <button class="btn danger" disabled={usedBy(t.id) > 0} title={usedBy(t.id) ? 'Operations use this tool' : ''} onclick={() => removeTool(t.id)}>Remove tool</button>
                 </div>
               </div>
@@ -324,9 +345,32 @@
         {/each}
       </ol>
       <div class="row"><button class="btn" onclick={addTool}>Add a tool</button></div>
+      <h3>Your tool library</h3>
+      {#if !libTools.length}
+        <p class="muted small">Empty for the {job.machine.kind}. Open a tool above and choose "Keep in the library": it is then there for every job{job.machine.kind === 'lathe' ? ', with its stored offset in the tool post' : ''}.</p>
+      {/if}
+      <ul class="lib">
+        {#each libTools as t (t.name)}
+          {@const here = inJob(t.name)}
+          <li>
+            <span class="what"><span class="label">{t.name}</span><span class="sub">{toolSummary(t)}{t.offset ? ' · offset stored' : ''}</span></span>
+            {#if here}
+              <span class="muted small">T{here.id} in this job</span>
+            {:else}
+              <button class="btn" aria-label="Add {t.name} to the job" onclick={() => (toolOpen = files.takeTool(t))}>Add to the job</button>
+            {/if}
+            <button class="ib" aria-label="Remove {t.name} from the library" title="Remove from the library" onclick={() => files.dropTool(job.machine.kind, t.name)}>×</button>
+          </li>
+        {/each}
+      </ul>
+      <div class="row">
+        <button class="btn" disabled={!files.library.length} onclick={() => files.saveLibrary()}>Save the library as a file</button>
+        <label class="btn">Add tools from a file<input type="file" accept=".json,application/json" onchange={(e) => files.importLibraryFrom(e)} hidden /></label>
+      </div>
     {:else if tab === 'gcode'}
       <div class="row">
         <button class="btn pri" onclick={download} disabled={store.analysis.diagnostics.some((d) => d.severity === 'error')} title="Fix errors before downloading">Download .nc</button>
+        <button class="btn" onclick={() => (files.sheet = true)} title="One page for the machine: stock, zero, tools, operations">Setup sheet</button>
         <span class="muted">{gcodeLines.length} lines</span>
       </div>
       {#if store.analysis.diagnostics.some((d) => d.severity === 'error')}
@@ -384,6 +428,10 @@
   .ib { border: 0; background: none; color: var(--ink-3); font-size: 18px; padding: 0 4px; }
   .ib:hover:not(:disabled) { color: var(--err); }
   .small { font-size: 12px; margin: 0; }
+  label.btn { display: inline-block; margin: 0; cursor: pointer; color: inherit; }
+  textarea { width: 100%; border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 8px; background: var(--panel); font: inherit; resize: vertical; }
+  .lib { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .lib li { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--line-2); border-radius: 8px; padding: 5px 8px; }
   .add summary { cursor: pointer; color: var(--ink-2); font-weight: 600; padding: 4px 0; }
   label { display: grid; grid-template-columns: 1fr 110px auto; align-items: center; gap: 8px; margin: 6px 0; color: var(--ink-2); }
   label.wide { grid-template-columns: 1fr 2fr; margin-top: 14px; }

@@ -510,6 +510,8 @@ export const Job = z.object({
   workMaterial: MaterialId.default('aluminium'),
   /** The grade or notes, free text (e.g. "6082 T6"), shown to the agent. */
   material: z.string().optional(),
+  /** How the work is held and anything else to remember at the machine, free text; printed on the setup sheet. */
+  notes: z.string().optional(),
 });
 export type Job = z.infer<typeof Job>;
 export type JobInput = z.input<typeof Job>;

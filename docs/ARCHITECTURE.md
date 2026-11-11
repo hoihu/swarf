@@ -35,6 +35,11 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   operation (no G96/G95: the speed is set for the largest diameter the operation cuts).
 - **Checks** (`cam/src/check.ts`): travel, chuck, rapids into material, depth of cut, plunging.
   Errors block the agent from finishing (fix budget 4) and the G-code download.
+- **Files and the sheet** (`cam/src/jobfile.ts`, `sheet.ts`): a job file and a tool library file
+  are JSON read back through the schema; `setupSheet(job, analysis)` gives the setup sheet as
+  data (per-tool and per-operation times from the planner, reach, travel), which
+  `SetupSheet.svelte` lays out for printing. The library itself is `files.svelte.ts`
+  (localStorage).
 - **Simulated workshop** (`apps/web/src/lib/sim/`, `simworld.ts`): the setups on the simulated
   mill's table as solids (boxes, the block's top sloped, upright cylinders), with heights,
   contact for a cutter and ray casting. The simulated controller's probe touches them, the

@@ -27,6 +27,7 @@ const LABELS: Record<string, [string, string?]> = {
   spacing: ['Letter spacing'],
   tipClear: ['Point below the chamfer', 'mm'],
   tipDiameter: ['Flat at the tip', 'mm'],
+  angle: ['Angle', '°'],
   hand: ['Hand'],
   passes: ['Passes'],
   x0: ['From X', 'mm'],
@@ -142,12 +143,14 @@ export const toolFields: Field[] = fields(z.toJSONSchema(Tool, { io: 'input', un
 
 /** Tool fields that mean nothing for a type of tool. */
 const NOT_FOR: Record<string, string[]> = {
-  turning: ['width', 'flutes', 'centerCutting', 'chipload'],
-  boring: ['width', 'flutes', 'centerCutting', 'chipload'],
-  grooving: ['diameter', 'internal', 'noseRadius', 'flutes', 'centerCutting', 'chipload', 'fluteLength'],
-  threading: ['width', 'noseRadius', 'flutes', 'centerCutting', 'chipload', 'feedPerRev', 'maxDoc'],
-  drill: ['internal', 'width', 'noseRadius', 'edgeLength', 'flutes', 'centerCutting', 'chipload', 'maxDoc'],
-  endmill: ['internal', 'width', 'noseRadius', 'edgeLength', 'feedPerRev'],
+  turning: ['width', 'flutes', 'centerCutting', 'chipload', 'angle', 'tipDiameter'],
+  boring: ['width', 'flutes', 'centerCutting', 'chipload', 'angle', 'tipDiameter'],
+  grooving: ['diameter', 'internal', 'noseRadius', 'flutes', 'centerCutting', 'chipload', 'fluteLength', 'angle', 'tipDiameter'],
+  threading: ['width', 'noseRadius', 'flutes', 'centerCutting', 'chipload', 'feedPerRev', 'maxDoc', 'angle', 'tipDiameter'],
+  drill: ['internal', 'width', 'noseRadius', 'edgeLength', 'flutes', 'centerCutting', 'chipload', 'maxDoc', 'angle', 'tipDiameter'],
+  endmill: ['internal', 'width', 'noseRadius', 'edgeLength', 'feedPerRev', 'angle', 'tipDiameter'],
+  chamfer: ['internal', 'width', 'noseRadius', 'edgeLength', 'feedPerRev', 'centerCutting'],
+  threadmill: ['internal', 'width', 'noseRadius', 'edgeLength', 'feedPerRev', 'centerCutting', 'angle', 'tipDiameter'],
 };
 
 /** The fields for one tool: those its type uses, and any it has a value for anyway. */

@@ -216,6 +216,9 @@ whole flow without hardware and is how it is tested.
 | Checks | machine travel, chuck collision, rapids into material, boring into solid material, boring bars that don't fit or reach, cuts deeper than the flutes or the depth of cut for the material, plunging with a non-centre-cutting endmill, impossible operations |
 | G-code | a "boring" subset (G0–G3, G17/G18, G7/G8, G21, G90, G94, G54, M0 tool changes) that runs the same on grblHAL, LinuxCNC and most others |
 | Preview | three.js: toolpath (feeds blue, rapids orange), the part as it is cut, timeline scrubber, tool marker |
+| Job files | Save the job as a file (`<name>.swarf.json`: machine, stock, tools, operations, drawings, notes) and open it again, here or on another computer. A file is checked like any other input before it becomes the job |
+| Tool library | your own cutters, entered once: "Keep in the library" on a tool, "Add to the job" in any later job (lathe tools keep their stored offset in the tool post). Kept in this browser; saved and read as a file to move it |
+| Setup sheet | one printable page per job: stock, where the zero is, what holds the work, the tools in the order the program asks for them and how far each must reach, every operation with rpm, feed, depth and time, a drawing with the zero and the cuts |
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
 
 Threading needs grblHAL in lathe mode with an index + pulse encoder ($32=2, $38, PID tuned), and
@@ -224,6 +227,32 @@ reach speed, since grblHAL does not correct the sync while accelerating. There i
 the end of a pass: end at a groove, or the thread runs out on the shank.
 
 Not yet: profiles from DXF for the mill. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Files, your tools, and the sheet for the machine
+
+**The job as a file.** The job is kept in the browser while you work; Save (in the header, or
+Stock → Job file) downloads it as `<name>.swarf.json`, Open reads one back. The job you had goes
+on the undo stack. A file that does not fit the schema is refused with the field that is wrong,
+and nothing opens while a program is under way on the machine.
+
+**Your tool library.** In the Tools tab, open a tool and choose "Keep in the library". The
+library is per machine kind and lives in this browser; under the job's tools it lists what you
+have, with "Add to the job" (the tool comes under its own number if that is free, else the next
+one). A tool that is in the job under the same name is recognised, and "Update in the library"
+appears when you changed it. A lathe tool is kept with its stored offset, so a quick-change
+holder is measured once. "Save the library as a file" and "Add tools from a file" carry it to
+another browser. Offsets are against that machine's reference tool: they mean nothing on another
+machine, and are wrong after the reference tool is reground or moved in its holder.
+
+**The setup sheet.** G-code → Setup sheet shows one page and prints it (or saves a PDF) through
+the browser's dialog: stock and material, the zero in words, the clamps and jaws the job knows of
+(on the lathe, where the jaws are and how close the tools come), your setup notes (Stock → Setup
+notes, or tell the assistant), the tools in the order the program stops for them with a box to
+tick, how far each goes and the least stick-out that keeps the holder above the stock and the
+clamps, stored offsets, then every operation with rpm, feed, deepest point and time. The drawing
+is the job from above (mill) or from the side (lathe) with the zero and the cuts. Errors from the
+checks are printed at the top. The stick-out is geometry only (top of the highest thing minus
+the deepest cut, plus 2 mm): the sheet does not know your holder's shape.
 
 ## Safety
 

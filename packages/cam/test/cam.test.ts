@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EXAMPLES,
+  jobFile, openJobFile, libraryFile, openLibraryFile, keepTool, dropTool, takeTool, inLibrary, setupSheet, cutLines, toolSummary,
   Job,
   LatheMaterial,
   MillMaterial,
@@ -1066,5 +1067,122 @@ describe('more mill operations', () => {
     // 0.6134 P deep at the last pass
     const radii = helix.map((m) => Math.hypot(m.to.x - 30, m.to.y - 25));
     expect(Math.min(...radii)).toBeCloseTo(6 + 2.5 - 0.6134 * 1.75, 4);
+  });
+});
+
+describe('job files and the tool library', () => {
+  it('a job comes back from its file as it went in', () => {
+    const job = { ...EXAMPLES.mill(), notes: 'In the vise, on 10 mm parallels' };
+    expect(openJobFile(jobFile(job))).toEqual(job);
+    // a bare job as JSON is taken too
+    expect(openJobFile(JSON.stringify(EXAMPLES.lathe()))).toEqual(EXAMPLES.lathe());
+  });
+
+  it('refuses what is not a job, with a sentence', () => {
+    expect(() => openJobFile('G21 G90')).toThrow(/not JSON/);
+    expect(() => openJobFile('{"swarf":"job","version":1,"job":{"name":"x"}}')).toThrow(/does not fit \(machine/);
+    expect(() => openJobFile(libraryFile([]))).toThrow(/tool library, not a job/);
+    expect(() => openJobFile('{"swarf":"job","version":99,"job":{}}')).toThrow(/newer/);
+    const bad = JSON.parse(jobFile(EXAMPLES.mill()));
+    bad.job.tools[0].diameter = -6;
+    expect(() => openJobFile(JSON.stringify(bad))).toThrow(/tools\.0\.diameter/);
+  });
+
+  it('keeps tools per machine by name, and replaces one kept again', () => {
+    const [t1, t2] = EXAMPLES.mill().tools;
+    let lib = keepTool([], 'mill', t1!);
+    lib = keepTool(lib, 'mill', t2!);
+    lib = keepTool(lib, 'lathe', EXAMPLES.lathe().tools[0]!);
+    expect(lib).toHaveLength(3);
+    lib = keepTool(lib, 'mill', { ...t1!, name: ` ${t1!.name.toUpperCase()} `, flutes: 3 });
+    expect(lib).toHaveLength(3);
+    expect(inLibrary(lib, 'mill', t1!.name)?.tool.flutes).toBe(3);
+    expect(inLibrary(lib, 'lathe', t1!.name)).toBeUndefined();
+    expect(openLibraryFile(libraryFile(lib))).toEqual(lib);
+    expect(dropTool(lib, 'mill', t2!.name)).toHaveLength(2);
+    expect(() => openLibraryFile(jobFile(EXAMPLES.mill()))).toThrow(/a job, not a tool library/);
+  });
+
+  it('puts a library tool into a job under a free number, and updates one already there', () => {
+    const job = EXAMPLES.mill();
+    const used = job.tools[0]!;
+    const fresh = { id: used.id, name: 'Endmill Ø10 rougher', type: 'endmill' as const, diameter: 10, flutes: 3, fluteLength: 22 };
+    const a = takeTool(job, fresh);
+    expect(a.id).toBe(Math.max(...job.tools.map((t) => t.id)) + 1);
+    expect(a.job.tools.find((t) => t.id === a.id)?.diameter).toBe(10);
+    expect(job.tools).toHaveLength(a.job.tools.length - 1); // the job given is left alone
+    const free = takeTool(job, { ...fresh, id: 42 });
+    expect(free.id).toBe(42);
+    // the same name again: the job's tool takes the library's values and keeps its number
+    const b = takeTool(a.job, { ...fresh, id: 7, fluteLength: 30 });
+    expect(b.id).toBe(a.id);
+    expect(b.job.tools).toHaveLength(a.job.tools.length);
+    expect(b.job.tools.find((t) => t.id === a.id)?.fluteLength).toBe(30);
+    expect(hasErrors(analyze(b.job).diagnostics)).toBe(false);
+  });
+});
+
+describe('setup sheet', () => {
+  it('lists the mill job: stock, zero, tools in the order of use, times', () => {
+    const job = Job.parse({ ...EXAMPLES.mill(), notes: 'Vise, 10 mm parallels', obstacles: [{ name: 'fixed jaw', x0: -5, y0: 50, x1: 85, y1: 70, top: 8 }] });
+    const a = analyze(job);
+    const s = setupSheet(job, a);
+    expect(s.stock[0]).toBe('Block 80 × 50 × 15 mm (X × Y × Z)');
+    expect(s.zero.join(' ')).toMatch(/front-left corner.*raw top is at Z\+0\.5.*underside is at Z-14\.5/);
+    expect(s.holding[0]).toBe('fixed jaw: X-5 to 85, Y50 to 70, top at Z+8');
+    expect(s.notes).toBe('Vise, 10 mm parallels');
+    // face mill first (T2), then the pocket's endmill, then the drill
+    expect(s.tools.map((t) => t.id)).toEqual([2, 1, 3]);
+    expect(s.stops).toBe(3);
+    expect(s.ops.map((o) => o.n)).toEqual([1, 2, 3]);
+    expect(s.ops[1]!.deepest).toBe('to Z-5');
+    // the drill goes through (Z−16): it must stand out past the jaw (top Z+8) by 24 mm and a little
+    const drill = s.tools[2]!;
+    expect(drill.ops).toEqual([3]);
+    expect(drill.reach).toMatch(/goes to Z-16: at least 26 mm out of the holder/);
+    // the parts add up to the whole (each starts from rest, so a little more)
+    const sum = s.ops.reduce((t, o) => t + o.seconds, 0);
+    expect(sum).toBeGreaterThanOrEqual(a.seconds - 1e-6);
+    expect(sum).toBeLessThan(a.seconds * 1.05 + 2);
+    expect(s.tools.reduce((t, o) => t + o.seconds, 0)).toBeCloseTo(sum, 6);
+    expect(s.ops.every((o) => o.rpm > 0 && o.feed > 0)).toBe(true);
+    expect(s.travel!.min.z).toBeCloseTo(-16, 6);
+    expect(s.travel!.max.z).toBeCloseTo(a.program.home.z, 6);
+  });
+
+  it('says a job without clamps is held by nothing the checks know of', () => {
+    const s = setupSheet(EXAMPLES.mill(), analyze(EXAMPLES.mill()));
+    expect(s.holding[0]).toMatch(/No clamps or jaws entered/);
+  });
+
+  it('lists the lathe job: the jaws, how close the tools come, stored offsets on the diameter', () => {
+    const base = EXAMPLES.lathe();
+    const job = { ...base, tools: base.tools.map((t) => (t.id === 2 ? { ...t, offset: { x: 1.25, z: -3.4 } } : t)) };
+    const s = setupSheet(job, analyze(job));
+    expect(s.stock[0]).toBe('Bar Ø25 mm, 60 mm out of the chuck');
+    expect(s.holding[0]).toBe('Chuck jaws at Z-59');
+    // parting at Z−38 with a blade to its left: the tools stay well clear of the jaws
+    const gap = Number(/: ([\d.]+) mm from the jaws/.exec(s.holding[1]!)![1]);
+    expect(gap).toBeGreaterThan(10);
+    expect(gap).toBeLessThan(21.1);
+    expect(s.tools.map((t) => t.id)).toEqual([1, 2]);
+    expect(s.tools[0]!.ops).toEqual([1, 2, 3]);
+    expect(s.tools[1]!.offset).toBe('X2.5 (on the diameter) Z-3.4');
+    expect(s.ops.at(-1)!.deepest).toMatch(/^to Z-\d+(\.\d+)?, Ø0$/);
+  });
+
+  it('draws the cuts as lines, without the rapids', () => {
+    const a = analyze(EXAMPLES.mill());
+    const lines = cutLines(a.program);
+    expect(lines.length).toBeGreaterThan(5);
+    expect(lines.every((l) => l.length >= 2)).toBe(true);
+    // nothing is cut at the travel height
+    expect(Math.max(...lines.flat().map((q) => q.z))).toBeLessThan(a.program.home.z);
+  });
+
+  it('describes tools in a few words', () => {
+    expect(toolSummary({ id: 1, name: 'x', type: 'endmill', diameter: 6, flutes: 2, fluteLength: 15 })).toBe('endmill Ø6, 2 flutes, flutes 15 long');
+    expect(toolSummary({ id: 4, name: 'x', type: 'chamfer', diameter: 6, angle: 60 })).toBe('pointed cutter 60° Ø6');
+    expect(toolSummary({ id: 5, name: 'x', type: 'boring', diameter: 10, fluteLength: 30, internal: true })).toBe('boring Ø10, reach 30');
   });
 });

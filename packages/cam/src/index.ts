@@ -18,3 +18,5 @@ export { fitArcs } from './arcfit.ts';
 export { profileFromDrawing } from './importers/lathe.ts';
 export { MATERIALS, MaterialId, cutKind, defaultToolMaterial, type CutKind, type ToolMaterial } from './materials.ts';
 export { textStrokes, type TextStrokes } from './font.ts';
+export { jobFile, openJobFile, libraryFile, openLibraryFile, keepTool, dropTool, takeTool, inLibrary, Library, LibraryTool } from './jobfile.ts';
+export { setupSheet, cutLines, toolSummary, type Sheet, type SheetOp, type SheetTool } from './sheet.ts';

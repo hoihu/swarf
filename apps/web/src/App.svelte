@@ -9,6 +9,8 @@
   import { minutes } from './lib/ops.ts';
   import { bridge } from './lib/bridge.svelte.ts';
   import { machine } from './lib/machine.svelte.ts';
+  import { files } from './lib/files.svelte.ts';
+  import SetupSheet from './lib/SetupSheet.svelte';
   import { onMount } from 'svelte';
 
   onMount(() => bridge.start());
@@ -51,9 +53,18 @@
         <i></i>{bridge.status === 'connected' ? bridge.agent ? `${bridge.agent} connected` : 'swarf server connected' : bridge.status === 'denied' ? 'Server refused' : bridge.status === 'offline' ? 'Server offline' : 'Connecting…'}
       </span>
     {/if}
+    <label class="btn ghost file" title="Open a job file (.swarf.json)">Open<input type="file" accept=".json,application/json" onchange={(e) => files.openJobFrom(e)} hidden /></label>
+    <button class="btn ghost file" title="Save this job as a file" onclick={() => files.saveJob()}>Save</button>
     <button class="btn ghost" onclick={() => store.undo()} disabled={!store.history.length}>Undo</button>
     <button class="btn ghost" onclick={() => (settings = true)}>Assistant</button>
   </header>
+
+  {#if files.message}
+    <div class="said" class:bad={files.message.bad} role="status">
+      <span>{files.message.text}</span>
+      <button aria-label="Dismiss" onclick={() => (files.message = null)}>×</button>
+    </div>
+  {/if}
 
   <main class="panes" data-pane={pane}>
     <div class="pane-job"><JobPanel /></div>
@@ -72,6 +83,7 @@
 </div>
 
 {#if settings}<Settings onClose={() => (settings = false)} />{/if}
+{#if files.sheet}<SetupSheet onClose={() => (files.sheet = false)} />{/if}
 
 <style>
   .app { height: 100dvh; display: flex; flex-direction: column; }
@@ -92,6 +104,11 @@
   .link-state.offline i, .link-state.denied i { background: #ff8f86; }
   .btn.ghost { background: transparent; color: var(--on-iron); border-color: rgba(255, 255, 255, 0.2); }
   .btn.ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
+  label.btn { cursor: pointer; }
+  .said { display: flex; align-items: center; gap: 10px; padding: 6px 14px; background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: 13px; flex: none; }
+  .said.bad { background: var(--err-soft); color: var(--err); }
+  .said span { flex: 1; min-width: 0; }
+  .said button { border: 0; background: none; color: inherit; font-size: 18px; line-height: 1; padding: 0 4px; }
   .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 340px) 1fr minmax(320px, 380px); }
   .panes > div { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
   .pane-view { position: relative; }
@@ -117,5 +134,7 @@
     .facts { font-size: 12px; flex: 0 1 auto; min-width: 0; }
     .grow { display: none; }
     .btn.ghost { padding: 5px 9px; }
+    /* (Open and Save are also in the Stock tab) */
+    .btn.file { display: none; }
   }
 </style>

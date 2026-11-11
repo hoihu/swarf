@@ -57,6 +57,7 @@ const SetStockInput = z.object({
   stock: Stock.optional().describe('The raw stock (leave out to change only the material)'),
   workMaterial: MaterialId.optional().describe('Workpiece material class: sets speeds, feeds and depth per pass'),
   material: z.string().optional().describe('The grade or notes as the user said it, e.g. "6082", "C45", "POM"'),
+  notes: z.string().optional().describe('How the work is held and what to remember at the machine, as the user said it; printed on the setup sheet'),
 });
 const AddOpInput = z.object({
   operation: Operation,
@@ -170,12 +171,13 @@ export function runCamTool(port: JobPort, name: string, input: unknown): ToolOut
     case TOOL_NAMES.setStock: {
       const p = SetStockInput.safeParse(input);
       if (!p.success) return fail('stock', `Invalid input: ${zodMessage(p.error)}`);
-      const { stock: s, workMaterial, material } = p.data;
-      if (!s && !workMaterial && material === undefined) return fail('stock', 'Give the stock, the material or both.');
+      const { stock: s, workMaterial, material, notes } = p.data;
+      if (!s && !workMaterial && material === undefined && notes === undefined) return fail('stock', 'Give the stock, the material or both.');
       const parts: string[] = [];
       if (s) parts.push(s.kind === 'bar' ? `stock: bar Ø${s.diameter}, ${s.stickout} mm out` : `stock: block ${s.x}×${s.y}×${s.z}`);
+      if (notes !== undefined) parts.push('setup notes');
       if (workMaterial || material) parts.push(`material: ${MATERIALS[workMaterial ?? job.workMaterial].name.toLowerCase()}${material ? ` ${material}` : ''}`);
-      return commit('stock', { ...job, ...(s ? { stock: s } : {}), ...(workMaterial ? { workMaterial } : {}), ...(material !== undefined ? { material: material || undefined } : {}) }, parts.join('; '));
+      return commit('stock', { ...job, ...(s ? { stock: s } : {}), ...(workMaterial ? { workMaterial } : {}), ...(material !== undefined ? { material: material || undefined } : {}), ...(notes !== undefined ? { notes: notes || undefined } : {}) }, parts.join('; '));
     }
     case TOOL_NAMES.addOp: {
       const p = AddOpInput.safeParse(input);
