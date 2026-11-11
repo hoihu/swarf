@@ -3,6 +3,7 @@
   import { emit, hasErrors, resumeFrom, walk } from '@swarf/cam';
   import JogPanel from './JogPanel.svelte';
   import Section from './Section.svelte';
+  import { download } from './files.svelte.ts';
   import { tooling } from './tooling.svelte.ts';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
@@ -10,6 +11,16 @@
   import { SETUPS, type SetupName } from './sim/setups.ts';
 
   let mdi = $state('');
+  let savingLog = $state(false);
+  async function saveLog(): Promise<void> {
+    savingLog = true;
+    try {
+      const text = await machine.logText();
+      download(`swarf-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`, text, 'text/plain');
+    } finally {
+      savingLog = false;
+    }
+  }
   // what the simulated mill has on its table (the probe touches it, the simulated camera sees it)
   let simSetup = $state<SetupName>(simWorld.setup);
   const setSimSetup = (v: SetupName) => {
@@ -221,6 +232,7 @@
     </form>
     <p class="muted small">Networked grblHAL boards: the WebSocket server ($307, usually port 81). If yours wants a subprotocol, add it after a space, e.g. <code>ws://192.168.1.50:81 arduino</code>.</p>
     <p class="muted small">Or download the .nc file from the G-code tab and run it with your usual sender.</p>
+    <p class="muted small">Something went wrong before the connection was lost? <button class="link" onclick={saveLog} disabled={savingLog}>Save the log</button> of this visit.</p>
     <p class="muted small">No machine at hand? <button class="link" onclick={() => machine.connect('sim', store.job.machine.kind)}>Connect a simulated {store.job.machine.kind}</button>: it moves in real time, for trying things out.</p>
     {#if machine.message}<p class="diag error">{machine.message}</p>{/if}
   </div>
@@ -311,6 +323,10 @@
       <input bind:value={mdi} placeholder="Command, e.g. G0 X0 Z5" aria-label="Command" disabled={busy} spellcheck="false" autocomplete="off" />
       <button class="btn" type="submit" disabled={busy || !mdi.trim()}>Send</button>
     </form>
+    <div class="row">
+      <button class="btn" onclick={saveLog} disabled={savingLog}>Save a log</button>
+    </div>
+    <p class="muted small">Everything sent and received since the page was opened, with times, the controller's settings (asked for when it is idle) and the job. For when something does not go as it should: save it before closing or reloading the page, and send it along.</p>
   </Section>
 {/if}
 

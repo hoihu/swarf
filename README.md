@@ -162,6 +162,24 @@ A real machine stops when it hits something; the simulated one says so and goes 
 crash: the tool ran into the left strap…". The tests run whole programs this way, tool changes
 included (`apps/web/test/simrun.test.ts`, in a browser `scripts/check-run.cjs`).
 
+## When something goes wrong: the session log
+
+The app writes down everything that passes between it and the controller from the moment the
+page is opened: each line sent and received with its time, real-time commands by name (hold,
+reset, overrides), and what the app itself did in between (Run pressed, a tool change, Stop, a
+lost link). Status polls are left out, and a status report that repeats unchanged is counted
+instead of repeated.
+
+**Save a log** (Machine → Console, or the link on the connect screen after a lost connection)
+downloads it as a text file. If the controller is idle it is first asked for its build info,
+settings, offsets and modes (`$I`, `$$`, `$#`, `$G`), so they are in the file; the job is at the
+end, so the run can be tried again elsewhere. The header says which build of the app and which
+browser it was.
+
+The log lives in the page's memory (the last 40 000 lines): save it **before** reloading or
+closing the tab. It contains the job and the machine's settings and nothing else from the
+computer.
+
 ## Listen to the cut
 
 **Listen to the cut** (Machine → Setting up) opens the microphone (the laptop's will do; the browser asks) and

@@ -1,6 +1,7 @@
 /**
  * The connected controller: one streamer over Web Serial, its live status and the console.
  */
+import { Recorder, recorded } from './record.ts';
 import { RT, SimGrbl, Streamer, type JobState, type ProbeResult, type Reply, type Status, type Transport } from '@swarf/grbl';
 import { simWorld } from './simworld.ts';
 import { store } from './store.svelte.ts';
@@ -77,6 +78,7 @@ class Machine {
             const c = simWorld.crashes[n];
             if (c) {
               this.crash = `Simulated crash: the tool ran into the ${c.what} on a ${c.move} at X${(c.at[0] - sim.wco[0]).toFixed(1)} Y${(c.at[1] - sim.wco[1]).toFixed(1)} Z${(c.at[2] - sim.wco[2]).toFixed(1)}.`;
+              this.record.ev(this.crash);
               this.#log({ dir: 'note', text: this.crash });
             }
           };
@@ -95,7 +97,8 @@ class Machine {
         t = await openWebSocket(/^wss?:\/\//.test(address) ? address : `ws://${address}`, protocol);
       } else t = await openSerial();
       this.label = t.label;
-      this.#s = new Streamer(t, {
+      this.record.ev(`connected: ${t.label}`);
+      this.#s = new Streamer(recorded(t, this.record), {
         status: (s) => {
           // (the overrides come only with some reports: keep the last ones)
           this.status = s.ov || !this.status?.ov ? s : { ...s, ov: this.status.ov };
@@ -109,6 +112,7 @@ class Machine {
           this.line = this.#lineMap ? (this.#lineMap[src] ?? src) : src;
         },
         job: (state, message) => {
+          this.record.ev(`program: ${state}${message ? ` (${message})` : ''}`);
           this.job = state;
           if (message) {
             this.message = message;
@@ -120,6 +124,7 @@ class Machine {
         },
         link: (lost) => {
           this.lost = lost;
+          this.record.ev(lost ? 'the controller stopped answering' : 'the controller answers again');
           if (lost) this.#log({ dir: 'note', text: 'The controller does not answer any more.' });
         },
         log: (dir, text) => this.#log({ dir, text }),
@@ -144,6 +149,7 @@ class Machine {
   }
 
   async disconnect(): Promise<void> {
+    this.record.ev('disconnected');
     await this.#s?.close();
     this.#s = null;
     this.connected = false;
@@ -168,9 +174,11 @@ class Machine {
       this.acked = 0;
       this.line = -1;
       this.#lineMap = lineMap;
+      this.record.ev(`Run pressed: ${gcode.split('\n').length} lines${lineMap ? ', starting in the middle' : ''}${firstToolLoaded ? ', first tool already in' : ''}; job "${store.job.name}"`);
       await this.#s.run(gcode, { skipLeadingPause: firstToolLoaded });
     } catch (e) {
       this.message = e instanceof Error ? e.message : String(e);
+      this.record.ev(`run refused: ${this.message}`);
     }
   }
 
@@ -184,6 +192,7 @@ class Machine {
 
   /** A line for the console that is neither sent nor received. */
   note(text: string): void {
+    this.record.ev(text);
     this.#log({ dir: 'note', text });
   }
   hold = () => this.#s?.hold();
@@ -195,10 +204,47 @@ class Machine {
     }
   }
   /** Stop everything: nothing more is sent, motion is held, then the controller reset (spindle off). */
-  stop = () => this.#s?.stop();
+  stop = () => {
+    this.record.ev('Stop pressed');
+    return this.#s?.stop();
+  };
 
   feed = (cmd: 'feed100' | 'feedPlus10' | 'feedMinus10') => this.#s?.override(RT[cmd]);
   jogCancel = () => this.#s?.override(RT.jogCancel);
+
+  /** Everything sent and received since the page was opened, with times (record.ts). */
+  record = new Recorder();
+
+  /**
+   * The record as a text file's contents: what build and browser this is, the session, and at the
+   * end the controller's settings and state (asked for now, when it is idle) and the job, so that
+   * what happened can be followed and tried again elsewhere.
+   */
+  async logText(): Promise<string> {
+    const idle = this.connected && this.status?.state === 'Idle' && this.job !== 'running' && this.job !== 'paused';
+    if (idle) {
+      this.record.ev('asked for the log: build info, settings, offsets and modes follow');
+      for (const q of ['$I', '$$', '$#', '$G']) {
+        try {
+          await this.#s?.send(q);
+        } catch {
+          // whatever it answers is in the record
+        }
+      }
+      await new Promise((r) => setTimeout(r, 700));
+    } else this.record.ev(this.connected ? 'asked for the log while the controller was busy: its settings were not asked for' : 'asked for the log while not connected');
+    const job = $state.snapshot(store.job);
+    const head = [
+      'swarf session log',
+      `saved: ${new Date().toISOString()}`,
+      `build: ${typeof __SWARF_BUILD__ === 'string' ? __SWARF_BUILD__ : 'dev'}`,
+      `browser: ${navigator.userAgent}`,
+      `connection: ${this.connected ? this.label : 'not connected'}${this.simulated ? ' (simulated)' : ''}`,
+      `job: ${job.name} (${job.machine.kind}), ${job.operations.length} operations; checks: ${store.analysis.diagnostics.map((d) => d.code).join(' ') || 'clean'}`,
+      'lines: seconds since the page was opened, > sent, < received, # what the app did. Status polls are left out; a status report repeated unchanged is counted.',
+    ];
+    return this.record.text(head, ['---- the job (File > Open a job reads this, saved on its own as .json) ----', JSON.stringify({ swarf: 'job', version: 1, job })]);
+  }
   /** Spindle speed override (the controller keeps it between 10 and 200 %). */
   spindleOv = (cmd: 'spindle100' | 'spindlePlus10' | 'spindleMinus10' | 'spindlePlus1' | 'spindleMinus1') => this.#s?.override(RT[cmd]);
 }
