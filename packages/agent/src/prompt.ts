@@ -1,7 +1,7 @@
 /**
  * System prompt (static, cacheable) and the per-turn job state that travels with each user message.
  */
-import { MATERIALS, reviewJob, analyze, area, bbox, cuttingData, opLabel, profileFromDrawing, type Job } from '@swarf/cam';
+import { MATERIALS, reviewJob, setupList, analyze, area, bbox, cuttingData, opLabel, profileFromDrawing, type Job } from '@swarf/cam';
 import { formatDiagnostics } from './tools.ts';
 
 /** How to build jobs: shared by the in-app agent and the MCP instructions for Claude Code. */
@@ -19,6 +19,7 @@ How to build a job:
 - Drawings (mill): an imported DXF/SVG is a shape. mill_contour side outside cuts the part out along its outline and cuts its holes too (add tabs when it goes through the stock); side inside runs inside an outline; side on follows the lines (engraving, open paths). mill_pocket clears inside the closed outlines and leaves the outlines inside them standing as islands. Move a drawing on the stock with place_shape. You cannot see the drawing itself, only its summary: if what the user asks does not match it (sizes, number of holes), say so.
 - Holes: lathe_drill on centre, then lathe_bore with the boring bar (it needs a hole at least as big as its minimum bore, and reaches only so deep). Internal thread: drill, bore to the minor diameter (D − 1.0825 × pitch, e.g. Ø8.38 for M10), then lathe_thread with side internal and the internal threading bar.
 - Mill pockets and contours take "finish" (mm left on the walls by the levels, taken off in one pass at full depth; 0.2 is usual, 0 for none) and "direction" (climb by default; conventional for a machine with backlash in its screws). Use finish 0.2 where the walls matter (fits, visible faces) and the flutes are as long as the cut is deep; leave it 0 for roughing out or a cut deeper than the flutes.
+- A feature on a face the tool cannot reach from above (a hole in the side, the underside) needs another clamping: on the mill, add_setup turns the block and starts a new setup with its own zero (X0 Y0 at the front-left corner of the block as it then lies, Z0 on its top). Plan the setups before the operations: do in one setup everything that must line up with each other; in the first, cut the faces the block will be pushed against in the next; do not cut away what the next setup must be clamped on. When you carry a position over a turn, convert it with the corners add_setup reports; say in words which way the block is turned, and put it in the setup's notes (set_stock notes) with what it is pushed against.
 - Pockets take "strategy": rings (the default: passes parallel to the wall, level by level) or adaptive (a small bite beside the cutter, "load" × its diameter, over the whole depth of the flutes, spreading from a helix where there is most room). Use adaptive for pockets deeper than about one cutter diameter, in steel or stainless, or when the user asks for it or for less load on the machine; keep rings for shallow pockets and for pockets hardly wider than the tool (adaptive refuses those). With adaptive, stepDown is the height of a level (default: the flutes' length, two diameters at most).
 - Pointed cutters (chamfer mills, V-bits, spot drills, engravers) are tools of type "chamfer" with their "angle" (the included angle, 90 by default) and "tipDiameter"; mill_spot, mill_chamfer and mill_engrave need one (engraving also works with a small end mill). A chamfer on the outside of a part needs the wall beside the edge cut first (contour, then chamfer), or the whole cone is buried (DOC_HIGH). Spot before drilling where the hole's position matters; a spot 0.5 mm wider than the hole chamfers it.
 - Threads on the mill are thread-milled (mill_thread, tool type "threadmill"): drill the core hole first (nominal diameter less the pitch: M8×1.25 → Ø6.8), deeper than the thread. There is no tapping cycle (it needs a synchronised spindle or a floating holder; a hand tap in the spotted, drilled hole is the alternative, and worth suggesting for small threads).
@@ -47,6 +48,10 @@ export function formatJobContext(job: Job): string {
   const a = analyze(job);
   const lines = ['<job_state>'];
   lines.push(`job: ${job.name}`);
+  if (job.setups) {
+    const { setups, at } = setupList(job);
+    lines.push(`setups: ${setups.map((s, i) => `${i + 1} ${s.name}${i ? ` (${s.turn})` : ''}${i === at ? ' [IN HAND]' : `, ${s.operations.length} op(s)`}`).join('; ')}. Stock, operations, clamps and notes below are those of the setup in hand.`);
+  }
   lines.push(
     `machine: ${m.name} (${m.kind}), spindle ${m.minRpm}–${m.maxRpm} rpm, feed ≤ ${m.maxFeed} mm/min, travel X${m.envelope.min.x}..${m.envelope.max.x}` +
       (m.kind === 'mill' ? ` Y${m.envelope.min.y}..${m.envelope.max.y}` : '') +

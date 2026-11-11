@@ -101,6 +101,31 @@ describe('pictures', () => {
   });
 });
 
+describe('setups', () => {
+  it('adds a setup with the block turned, says where the corners went, and switches back', () => {
+    let job = EXAMPLES.mill();
+    const p = { get: () => job, set: (j: Job) => (job = j) };
+    const r = runCamTool(p, 'add_setup', { turn: 'front-up', name: 'Side hole' })!;
+    expect(r.isError).toBe(false);
+    expect(job.setups).toMatchObject({ at: 1, name: 'Side hole', turn: 'front-up' });
+    expect(job.stock).toMatchObject({ x: 80, y: 14.5, z: 50 });
+    expect(job.operations).toEqual([]);
+    // the old top faces the back now; the old front-left top corner is at the back of the new top
+    expect(r.content).toMatch(/the old top is now the back, the old front is now the top, the old left is now the left/);
+    expect(r.content).toMatch(/\(X0 Y0 Z0 there\) is at X0 Y14\.5 Z0/);
+    expect(r.content).toMatch(/\(X80 Y50 Z0 there\) at X80 Y14\.5 Z-50/);
+    const ctx = formatJobContext(job);
+    expect(ctx).toMatch(/setups: 1 Setup 1, 3 op\(s\); 2 Side hole \(front-up\) \[IN HAND\]/);
+    // a hole into the old front face, then back to the first setup
+    expect(runCamTool(p, 'add_operation', { operation: { type: 'mill_drill', tool: 3, points: [{ x: 40, y: 7 }], zBottom: -10, zTop: 0, peck: 3 } })!.isError).toBe(false);
+    expect(runCamTool(p, 'switch_setup', { setup: 1 })!.isError).toBe(false);
+    expect(job.operations).toHaveLength(3);
+    expect(job.setups!.others[0]!.operations).toHaveLength(1);
+    expect(runCamTool(p, 'switch_setup', { setup: 5 })!.isError).toBe(true);
+    expect(runCamTool({ get: () => EXAMPLES.lathe(), set: () => {} }, 'add_setup', { turn: 'over-y' })!.content).toMatch(/for the mill/);
+  });
+});
+
 describe('review', () => {
   it('the job state carries what is worth a look, for a review to start from', () => {
     const job = { ...EXAMPLES.mill(), operations: [...EXAMPLES.mill().operations].reverse() };

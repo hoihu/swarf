@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EXAMPLES, emptyJob,
+  EXAMPLES, emptyJob, mapPoint, faceAfter, turnedSize, setupList, setupJobs, switchSetup, addSetup, removeSetup, renameSetup, leftBy,
   alignProgram, surfaceAt, isAligned, reviewJob, adaptivePlans, offsetRegion, inRegion,
   jobFile, openJobFile, libraryFile, openLibraryFile, keepTool, dropTool, takeTool, inLibrary, setupSheet, cutLines, toolSummary,
   Job,
@@ -1517,5 +1517,119 @@ describe('adaptive clearing', () => {
     // Ø6 with 15 mm of flutes: two diameters at a time
     expect([...zs].sort((p, q) => q - p)).toEqual([-12, -24]);
     expect(hasErrors(a.diagnostics)).toBe(false);
+  });
+});
+
+describe('a part in several setups', () => {
+  const block = { kind: 'block' as const, x: 80, y: 50, z: 15, top: 0 };
+
+  it('says where the faces go, and how large the block lies', () => {
+    expect(faceAfter('front-up', 'front')).toBe('top');
+    expect(faceAfter('front-up', 'top')).toBe('back');
+    expect(faceAfter('back-up', 'top')).toBe('front');
+    expect(faceAfter('left-up', 'top')).toBe('right');
+    expect(faceAfter('right-up', 'right')).toBe('top');
+    expect(faceAfter('over-y', 'top')).toBe('bottom');
+    expect(faceAfter('over-y', 'left')).toBe('right');
+    expect(faceAfter('over-y', 'front')).toBe('front');
+    expect(faceAfter('over-x', 'front')).toBe('back');
+    expect(faceAfter('over-x', 'left')).toBe('left');
+    expect(faceAfter('quarter', 'front')).toBe('right');
+    expect(turnedSize('front-up', block)).toEqual({ x: 80, y: 15, z: 50 });
+    expect(turnedSize('left-up', block)).toEqual({ x: 15, y: 50, z: 80 });
+    expect(turnedSize('over-y', block)).toEqual({ x: 80, y: 50, z: 15 });
+    expect(turnedSize('quarter', block)).toEqual({ x: 50, y: 80, z: 15 });
+  });
+
+  it('carries a point over a turn: a hole near the front-left corner of the top', () => {
+    // 10 from the left, 5 from the front, on the top
+    const p = { x: 10, y: 5, z: 0 };
+    const to = (turn: Parameters<typeof mapPoint>[0]) => {
+      const s = turnedSize(turn, block);
+      const q = mapPoint(turn, block, { kind: 'block', ...s, top: 0 }, p);
+      return [q.x, q.y, q.z].map((v) => Math.round(v * 1000) / 1000);
+    };
+    // flipped left to right: now 10 from the RIGHT, still 5 from the front, on the underside
+    expect(to('over-y')).toEqual([70, 5, -15]);
+    // flipped front to back: still 10 from the left, now 5 from the BACK
+    expect(to('over-x')).toEqual([10, 45, -15]);
+    // front face up: the old top faces the back; the point is 5 mm under the new top, at the back
+    expect(to('front-up')).toEqual([10, 15, -5]);
+    expect(to('back-up')).toEqual([10, 0, -45]);
+    // left face up: the old top faces right; the point is 10 under the new top
+    expect(to('left-up')).toEqual([15, 5, -10]);
+    expect(to('right-up')).toEqual([0, 5, -70]);
+    expect(to('quarter')).toEqual([45, 10, 0]);
+    // turned twice the same way over, it is back where it was
+    const s = { ...block };
+    const back = mapPoint('over-y', s, s, mapPoint('over-y', s, s, p));
+    expect([back.x, back.y, back.z].map((v) => Math.round(v * 1e6) / 1e6)).toEqual([10, 5, 0]);
+    // and a raw top is taken into account: Z is measured from each setup's own zero
+    const raw = mapPoint('over-y', { ...block, top: 0.5 }, { ...block, top: 0 }, { x: 10, y: 5, z: 0.5 });
+    expect(raw.z).toBeCloseTo(-15, 6);
+  });
+
+  it('a job without setups is one setup, and stays as it was', () => {
+    const job = EXAMPLES.mill();
+    expect(setupList(job).setups.map((s) => s.name)).toEqual(['Setup 1']);
+    expect(setupJobs(job)).toEqual([job]);
+    expect(switchSetup(job, 0)).toBe(job);
+    expect(() => switchSetup(job, 1)).toThrow(/no setup 2/);
+    expect(() => removeSetup(job)).toThrow(/needs one setup/);
+    expect(() => addSetup(EXAMPLES.lathe(), 'over-y', undefined, { x: 1, y: 1, z: 1 })).toThrow(/for the mill/);
+  });
+
+  it('adds a setup with the block turned, switches between them, and keeps each one apart', () => {
+    const first = Job.parse({ ...EXAMPLES.mill(), notes: 'in the vise', obstacles: [{ name: 'jaw', x0: -5, y0: 50, x1: 85, y1: 60, top: 5 }] });
+    const size = leftBy(first, analyze(first));
+    // the example faces 0.5 off a 15 mm block and cuts no outline
+    expect(size).toEqual({ x: 80, y: 50, z: 14.5, ox: 0, oy: 0 });
+    let job = addSetup(first, 'front-up', undefined, size);
+    expect(job.setups).toMatchObject({ at: 1, name: 'Front face up', turn: 'front-up' });
+    expect(job.stock).toEqual({ kind: 'block', x: 80, y: 14.5, z: 50, top: 0 });
+    expect(job.operations).toEqual([]);
+    expect(job.obstacles).toEqual([]);
+    expect(job.notes).toBeUndefined();
+    expect(job.tools).toEqual(first.tools);
+    // work on the second: a hole in what was the front face
+    job = Job.parse({ ...job, operations: [{ type: 'mill_drill', tool: 3, points: [{ x: 40, y: 7 }], zBottom: -12, zTop: 0, peck: 3 }], notes: 'on edge, against the stop' });
+    expect(hasErrors(analyze(job).diagnostics)).toBe(false);
+    expect(setupList(job).setups.map((s) => `${s.name}: ${s.operations.length} ops`)).toEqual(['Setup 1: 3 ops', 'Front face up: 1 ops']);
+    // back to the first: it is as it was, and the second waits
+    const again = switchSetup(job, 0);
+    expect(again.operations).toEqual(first.operations);
+    expect(again.stock).toEqual(first.stock);
+    expect(again.notes).toBe('in the vise');
+    expect(again.obstacles).toHaveLength(1);
+    expect(again.setups!.others[0]!.notes).toBe('on edge, against the stop');
+    expect(switchSetup(again, 1)).toEqual(job);
+    // each setup is a whole job of its own for the checks and the G-code
+    const each = setupJobs(again);
+    expect(each.map((j) => j.operations.length)).toEqual([3, 1]);
+    expect(each.map((j) => emit(j, analyze(j).program).text.includes('M30'))).toEqual([true, true]);
+    // the file keeps all of it
+    expect(openJobFile(jobFile(job))).toEqual(job);
+    // a third, in between; names stay apart
+    const third = addSetup(again, 'front-up', undefined, size);
+    expect(setupList(third).setups.map((s) => s.name)).toEqual(['Setup 1', 'Front face up 2', 'Front face up']);
+    expect(renameSetup(third, ' Rear holes ').setups!.name).toBe('Rear holes');
+    // taking the second out leaves the first in hand, and with one left the job is plain again
+    const one = removeSetup(job);
+    expect(one.setups).toBeUndefined();
+    expect(one.operations).toEqual(first.operations);
+  });
+
+  it('what a setup leaves: an outline cut round to full depth is the size that is turned', () => {
+    const job = withOps('mill', [
+      { type: 'mill_face', tool: 2, z: 0 },
+      { type: 'mill_contour_rect', tool: 1, x: 10, y: 10, w: 50, h: 30, zBottom: -15, side: 'outside', tabs: 0 },
+    ], { stock: { kind: 'block', x: 80, y: 50, z: 15.5, top: 0.5 } });
+    const s = leftBy(job, analyze(job));
+    expect(s.z).toBe(15);
+    expect(Math.abs(s.x - 50)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(s.y - 30)).toBeLessThanOrEqual(0.5);
+    // and where it sits in the stock it was cut from
+    expect(Math.abs(s.ox - 10)).toBeLessThanOrEqual(0.3);
+    expect(Math.abs(s.oy - 10)).toBeLessThanOrEqual(0.3);
   });
 });

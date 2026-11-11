@@ -3,23 +3,19 @@
    * The setup sheet: one page to print and take to the machine. What to clamp, where the zero is,
    * which tools in which order and how far out, what each operation does and how long it takes.
    */
-  import { cutLines, setupSheet } from '@swarf/cam';
+  import { analyze, cutLines, setupJobs, setupSheet, type Job, type Program } from '@swarf/cam';
   import { store } from './store.svelte.ts';
   import { minutes } from './ops.ts';
 
   let { onClose }: { onClose: () => void } = $props();
 
-  const job = $derived(store.job);
-  const sheet = $derived(setupSheet(job, store.analysis));
-  const errors = $derived(sheet.problems.filter((p) => p.severity === 'error'));
-  const notes = $derived(sheet.problems.filter((p) => p.severity !== 'error'));
   const today = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   const n1 = (v: number) => (Math.round(v * 10) / 10).toString();
 
   /** The drawing: the mill from above, the lathe from the side (chuck on the left), in mm. */
-  const drawing = $derived.by(() => {
+  function draw(job: Job, program: Program) {
     const st = job.stock;
-    const lines = cutLines(store.analysis.program);
+    const lines = cutLines(program);
     let x0: number, x1: number, y0: number, y1: number;
     const paths: string[] = [];
     if (st.kind === 'block') {
@@ -45,7 +41,16 @@
     const h = y1 - y0 + 2 * pad;
     // one unit of line width, whatever the size of the job
     return { box: `${(x0 - pad).toFixed(2)} ${(-y1 - pad).toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}`, u: Math.max(w, h) / 420, d: paths.join(''), ratio: w / h };
-  });
+  }
+
+  /** A page per setup, in order (the one in hand analysed already). */
+  const pages = $derived(
+    setupJobs($state.snapshot(store.job) as Job).map((job, i) => {
+      const analysis = i === (store.job.setups?.at ?? 0) ? store.analysis : analyze(job);
+      const sheet = setupSheet(job, analysis);
+      return { job, sheet, drawing: draw(job, analysis.program), errors: sheet.problems.filter((p) => p.severity === 'error'), notes: sheet.problems.filter((p) => p.severity !== 'error') };
+    }),
+  );
 
   function onKey(e: KeyboardEvent): void {
     if (e.key === 'Escape') onClose();
@@ -63,70 +68,75 @@
     <button class="btn" onclick={onClose}>Close</button>
   </div>
 
+  {#each pages as pg, k (k)}
   <article class="sheet">
     <header>
       <div>
-        <h1>{sheet.name}</h1>
-        <p class="sub">{sheet.machine} · {sheet.material} · {today}</p>
+        <h1>{pg.sheet.name}{#if pg.sheet.setup}<span class="of"> setup {pg.sheet.setup.n} of {pg.sheet.setup.of}: {pg.sheet.setup.name}</span>{/if}</h1>
+        <p class="sub">{pg.sheet.machine} · {pg.sheet.material} · {today}</p>
       </div>
       <div class="time">
-        <span class="big">{minutes(sheet.seconds)}</span>
-        <span class="sub">cutting and moving{sheet.stops ? `, plus ${sheet.stops} stop${sheet.stops === 1 ? '' : 's'} for a tool` : ''}</span>
+        <span class="big">{minutes(pg.sheet.seconds)}</span>
+        <span class="sub">cutting and moving{pg.sheet.stops ? `, plus ${pg.sheet.stops} stop${pg.sheet.stops === 1 ? '' : 's'} for a tool` : ''}</span>
       </div>
     </header>
 
-    {#if errors.length}
+    {#if pg.errors.length}
       <div class="warn err">
-        <strong>Do not run this job: the checks found {errors.length} error{errors.length === 1 ? '' : 's'}.</strong>
-        {#each errors as p, i (i)}<p>{p.message}</p>{/each}
+        <strong>Do not run this job: the checks found {pg.errors.length} error{pg.errors.length === 1 ? '' : 's'}.</strong>
+        {#each pg.errors as p, i (i)}<p>{p.message}</p>{/each}
       </div>
+    {/if}
+
+    {#if pg.sheet.setup?.how}
+      <div class="turn"><strong>Turn the block.</strong> {pg.sheet.setup.how} Then set the zero again on the block as it lies.</div>
     {/if}
 
     <div class="two">
       <div>
         <h2>Stock</h2>
-        <ul>{#each sheet.stock as l, i (i)}<li>{l}</li>{/each}<li>{sheet.material}</li></ul>
+        <ul>{#each pg.sheet.stock as l, i (i)}<li>{l}</li>{/each}<li>{pg.sheet.material}</li></ul>
         <h2>Zero</h2>
-        <ul>{#each sheet.zero as l, i (i)}<li>{l}</li>{/each}</ul>
+        <ul>{#each pg.sheet.zero as l, i (i)}<li>{l}</li>{/each}</ul>
         <h2>Holding</h2>
-        <ul>{#each sheet.holding as l, i (i)}<li>{l}</li>{/each}</ul>
-        {#if sheet.notes}
+        <ul>{#each pg.sheet.holding as l, i (i)}<li>{l}</li>{/each}</ul>
+        {#if pg.sheet.notes}
           <h2>Notes</h2>
-          <p class="notes">{sheet.notes}</p>
+          <p class="notes">{pg.sheet.notes}</p>
         {/if}
       </div>
-      <figure style:--ratio={drawing.ratio}>
-        <svg viewBox={drawing.box} role="img" aria-label={sheet.kind === 'mill' ? 'The job from above' : 'The job from the side'}>
-          {#if job.stock.kind === 'block'}
-            <rect class="stock" x="0" y={-job.stock.y} width={job.stock.x} height={job.stock.y} stroke-width={drawing.u * 1.6} />
-            {#each job.obstacles as o, i (i)}
-              <rect class="clamp" x={Math.min(o.x0, o.x1)} y={-Math.max(o.y0, o.y1)} width={Math.abs(o.x1 - o.x0)} height={Math.abs(o.y1 - o.y0)} stroke-width={drawing.u} />
-              <text class="tag" x={(o.x0 + o.x1) / 2} y={-(o.y0 + o.y1) / 2} font-size={drawing.u * 11} text-anchor="middle" dominant-baseline="central">{o.name}</text>
+      <figure style:--ratio={pg.drawing.ratio}>
+        <svg viewBox={pg.drawing.box} role="img" aria-label={pg.sheet.kind === 'mill' ? 'The job from above' : 'The job from the side'}>
+          {#if pg.job.stock.kind === 'block'}
+            <rect class="stock" x="0" y={-pg.job.stock.y} width={pg.job.stock.x} height={pg.job.stock.y} stroke-width={pg.drawing.u * 1.6} />
+            {#each pg.job.obstacles as o, i (i)}
+              <rect class="clamp" x={Math.min(o.x0, o.x1)} y={-Math.max(o.y0, o.y1)} width={Math.abs(o.x1 - o.x0)} height={Math.abs(o.y1 - o.y0)} stroke-width={pg.drawing.u} />
+              <text class="tag" x={(o.x0 + o.x1) / 2} y={-(o.y0 + o.y1) / 2} font-size={pg.drawing.u * 11} text-anchor="middle" dominant-baseline="central">{o.name}</text>
             {/each}
           {:else}
-            {@const r = job.stock.diameter / 2}
-            {@const jaws = job.stock.front - job.stock.stickout}
-            <rect class="clamp" x={jaws - 12} y={-r - 2.5} width="12" height={2 * r + 5} stroke-width={drawing.u} />
-            <text class="tag" x={jaws - 6} y="0" font-size={drawing.u * 11} text-anchor="middle" dominant-baseline="central" transform="rotate(-90 {jaws - 6} 0)">chuck</text>
-            <rect class="stock" x={jaws} y={-r} width={job.stock.stickout} height={2 * r} stroke-width={drawing.u * 1.6} />
-            <line class="axis" x1={jaws - 14} y1="0" x2={Math.max(job.stock.front, 0) + 4} y2="0" stroke-width={drawing.u * 0.8} stroke-dasharray="{drawing.u * 8} {drawing.u * 3} {drawing.u * 1.5} {drawing.u * 3}" />
+            {@const r = pg.job.stock.diameter / 2}
+            {@const jaws = pg.job.stock.front - pg.job.stock.stickout}
+            <rect class="clamp" x={jaws - 12} y={-r - 2.5} width="12" height={2 * r + 5} stroke-width={pg.drawing.u} />
+            <text class="tag" x={jaws - 6} y="0" font-size={pg.drawing.u * 11} text-anchor="middle" dominant-baseline="central" transform="rotate(-90 {jaws - 6} 0)">chuck</text>
+            <rect class="stock" x={jaws} y={-r} width={pg.job.stock.stickout} height={2 * r} stroke-width={pg.drawing.u * 1.6} />
+            <line class="axis" x1={jaws - 14} y1="0" x2={Math.max(pg.job.stock.front, 0) + 4} y2="0" stroke-width={pg.drawing.u * 0.8} stroke-dasharray="{pg.drawing.u * 8} {pg.drawing.u * 3} {pg.drawing.u * 1.5} {pg.drawing.u * 3}" />
           {/if}
-          <path class="cuts" d={drawing.d} stroke-width={drawing.u * 0.9} />
+          <path class="cuts" d={pg.drawing.d} stroke-width={pg.drawing.u * 0.9} />
           <!-- the zero -->
-          <g class="zero" stroke-width={drawing.u * 1.6}>
-            <circle cx="0" cy="0" r={drawing.u * 7} />
-            <line x1={-drawing.u * 11} y1="0" x2={drawing.u * 11} y2="0" />
-            <line x1="0" y1={-drawing.u * 11} x2="0" y2={drawing.u * 11} />
+          <g class="zero" stroke-width={pg.drawing.u * 1.6}>
+            <circle cx="0" cy="0" r={pg.drawing.u * 7} />
+            <line x1={-pg.drawing.u * 11} y1="0" x2={pg.drawing.u * 11} y2="0" />
+            <line x1="0" y1={-pg.drawing.u * 11} x2="0" y2={pg.drawing.u * 11} />
           </g>
         </svg>
         <figcaption>
-          {sheet.kind === 'mill' ? 'From above: X to the right, Y away from you.' : 'From the side: the chuck on the left, Z to the right.'}
+          {pg.sheet.kind === 'mill' ? 'From above: X to the right, Y away from you.' : 'From the side: the chuck on the left, Z to the right.'}
           The cross is the zero; the thin lines are the cuts.
-          {#if sheet.travel}
-            {#if sheet.kind === 'mill'}
-              The tool moves within X {n1(sheet.travel.min.x)} to {n1(sheet.travel.max.x)}, Y {n1(sheet.travel.min.y)} to {n1(sheet.travel.max.y)}, Z {n1(sheet.travel.min.z)} to {n1(sheet.travel.max.z)}.
+          {#if pg.sheet.travel}
+            {#if pg.sheet.kind === 'mill'}
+              The tool moves within X {n1(pg.sheet.travel.min.x)} to {n1(pg.sheet.travel.max.x)}, Y {n1(pg.sheet.travel.min.y)} to {n1(pg.sheet.travel.max.y)}, Z {n1(pg.sheet.travel.min.z)} to {n1(pg.sheet.travel.max.z)}.
             {:else}
-              The tool moves within Z {n1(sheet.travel.min.z)} to {n1(sheet.travel.max.z)}, out to Ø{n1(sheet.travel.max.x * 2)}.
+              The tool moves within Z {n1(pg.sheet.travel.min.z)} to {n1(pg.sheet.travel.max.z)}, out to Ø{n1(pg.sheet.travel.max.x * 2)}.
             {/if}
           {/if}
         </figcaption>
@@ -134,17 +144,17 @@
     </div>
 
     <h2>Tools, in the order the program asks for them</h2>
-    {#if sheet.tools.length}
+    {#if pg.sheet.tools.length}
       <table>
-        <thead><tr><th class="box"></th><th>Tool</th><th>What</th><th>Reach</th>{#if sheet.tools.some((t) => t.offset)}<th>Stored offset</th>{/if}<th>For</th><th class="r">Time</th></tr></thead>
+        <thead><tr><th class="box"></th><th>Tool</th><th>What</th><th>Reach</th>{#if pg.sheet.tools.some((t) => t.offset)}<th>Stored offset</th>{/if}<th>For</th><th class="r">Time</th></tr></thead>
         <tbody>
-          {#each sheet.tools as t (t.id)}
+          {#each pg.sheet.tools as t (t.id)}
             <tr>
               <td class="box"><i></i></td>
               <td><strong>T{t.id}</strong> {t.name}</td>
               <td>{t.what}</td>
               <td>{t.reach || '–'}</td>
-              {#if sheet.tools.some((x) => x.offset)}<td>{t.offset || 'touch off'}</td>{/if}
+              {#if pg.sheet.tools.some((x) => x.offset)}<td>{t.offset || 'touch off'}</td>{/if}
               <td>{t.ops.map((n) => `#${n}`).join(' ')}</td>
               <td class="r">{minutes(t.seconds)}</td>
             </tr>
@@ -155,27 +165,28 @@
       <p class="sub">No operations yet: nothing to set up.</p>
     {/if}
 
-    {#if sheet.ops.length}
+    {#if pg.sheet.ops.length}
       <h2>Operations</h2>
       <table>
         <thead><tr><th class="r">#</th><th>Operation</th><th>Tool</th><th class="r">rpm</th><th class="r">Feed, mm/min</th><th>Deepest</th><th class="r">Time</th></tr></thead>
         <tbody>
-          {#each sheet.ops as o, i (i)}
+          {#each pg.sheet.ops as o, i (i)}
             <tr><td class="r">{o.n}</td><td>{o.label}</td><td>T{o.tool}</td><td class="r">{Math.round(o.rpm)}</td><td class="r">{o.feed ? Math.round(o.feed) : '–'}</td><td>{o.deepest || '–'}</td><td class="r">{minutes(o.seconds)}</td></tr>
           {/each}
         </tbody>
       </table>
     {/if}
 
-    {#if notes.length}
+    {#if pg.notes.length}
       <h2>The checks note</h2>
-      <ul>{#each notes as p, i (i)}<li>{p.message}</li>{/each}</ul>
+      <ul>{#each pg.notes as p, i (i)}<li>{p.message}</li>{/each}</ul>
     {/if}
 
     <footer>
       The program stops before the first move and at every tool change, and goes on with Resume. Times are an estimate from the controller's acceleration; pauses are not counted. Made with swarf from the job as it was on {today}: if the job changes, print again.
     </footer>
   </article>
+  {/each}
 </div>
 
 <style>
@@ -188,6 +199,9 @@
   .sheet { max-width: 210mm; margin: 0 auto; background: #fff; color: #16191a; padding: 14mm 14mm 10mm; border-radius: 3px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4); font-size: 12.5px; line-height: 1.4; }
   header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; border-bottom: 2px solid #16191a; padding-bottom: 8px; margin-bottom: 4px; }
   h1 { margin: 0; font-size: 24px; line-height: 1.15; }
+  .of { font-size: 15px; font-weight: 600; color: #565d5f; }
+  .turn { border: 1.5px solid #16191a; border-radius: 4px; padding: 6px 10px; margin-top: 10px; }
+  .sheet + .sheet { margin-top: 18px; }
   .sub { margin: 2px 0 0; color: #565d5f; font-size: 12px; }
   .time { text-align: right; display: flex; flex-direction: column; flex: none; }
   .big { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -229,6 +243,7 @@
     .sheet-overlay { position: static; background: none; padding: 0; overflow: visible; }
     .bar { display: none; }
     .sheet { box-shadow: none; padding: 0; max-width: none; border-radius: 0; }
+    .sheet + .sheet { margin-top: 0; break-before: page; }
     tr, figure, .warn { break-inside: avoid; }
     @page { size: A4; margin: 14mm; }
   }

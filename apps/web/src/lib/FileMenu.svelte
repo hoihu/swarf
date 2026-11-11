@@ -1,7 +1,7 @@
 <script lang="ts">
   /** The job as a whole: start a new one, open and save it, what goes to the machine with it. */
   import { EXAMPLES, emptyJob, hasErrors } from '@swarf/cam';
-  import { download, fileName, files } from './files.svelte.ts';
+  import { download, fileName, files, programName } from './files.svelte.ts';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
 
@@ -48,7 +48,7 @@
       <button role="menuitem" onclick={() => act(() => files.saveJob())}>Save the job<span>{fileName(store.job.name, '.swarf.json')}</span></button>
       <hr />
       <button role="menuitem" onclick={() => act(() => (files.sheet = true))}>Setup sheet<span>to print</span></button>
-      <button role="menuitem" disabled={errors} title={errors ? 'Fix the errors first' : ''} onclick={() => act(() => download(fileName(store.job.name, '.nc'), store.gcode.text, 'text/plain'))}>Download the G-code<span>.nc</span></button>
+      <button role="menuitem" disabled={errors} title={errors ? 'Fix the errors first' : ''} onclick={() => act(() => download(fileName(programName(store.job), '.nc'), store.gcode.text, 'text/plain'))}>Download the G-code<span>{store.job.setups ? `setup ${store.job.setups.at + 1}, .nc` : '.nc'}</span></button>
     </div>
   {/if}
 </div>

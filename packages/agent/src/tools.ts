@@ -17,6 +17,13 @@ import {
   opLabel,
   withIds,
   type Diagnostic,
+  Turn,
+  addSetup,
+  faceAfter,
+  leftBy,
+  mapPoint,
+  setupList,
+  switchSetup,
 } from '@swarf/cam';
 import type { ToolDefinition } from './types.ts';
 
@@ -50,7 +57,15 @@ export const TOOL_NAMES = {
   gcode: 'get_gcode',
   placeShape: 'place_shape',
   ask: 'ask_user',
+  addSetup: 'add_setup',
+  switchSetup: 'switch_setup',
 } as const;
+
+const AddSetupInput = z.object({
+  turn: Turn.describe('How the block is turned from the setup in hand: over-y (flipped over left to right, the front stays the front), over-x (flipped over front to back), front-up / back-up / left-up / right-up (that face of the block as it lies now comes on top), quarter (a quarter turn counter-clockwise on the table), none'),
+  name: z.string().max(60).optional().describe('What the setup is for, e.g. "Side holes"'),
+});
+const SwitchSetupInput = z.object({ setup: z.number().int().min(1).describe('Its number in the order, from 1') });
 
 export const AskUser = z.object({
   question: z.string().min(1),
@@ -124,6 +139,13 @@ export const CAM_TOOLS: ToolDefinition[] = [
     input_schema: schemaOf(PlaceShapeInput),
   },
   { name: TOOL_NAMES.gcode, description: 'The generated G-code (one operation, or the start of the program).', input_schema: schemaOf(GcodeInput) },
+  {
+    name: TOOL_NAMES.addSetup,
+    description:
+      'Mill: add another clamping of the same part after the setup in hand, with the block turned, and take it in hand (stock, operations, clamps and notes are then that setup\'s; tools, material and drawings are shared). Use it when a feature is on a face the tool cannot reach from above. The new stock is what the setup in hand leaves, lying the new way, with X0 Y0 at its front-left corner and Z0 on its top; the result says where the corners and the old top went, so positions can be carried over without mirroring them.',
+    input_schema: schemaOf(AddSetupInput),
+  },
+  { name: TOOL_NAMES.switchSetup, description: 'Take another setup of the job in hand (see the setups line in the job state).', input_schema: schemaOf(SwitchSetupInput) },
   {
     name: TOOL_NAMES.ask,
     description: 'Ask the user one question with 2–5 concrete options when a decision has a real trade-off you cannot settle yourself (e.g. which tool, material unknown and it matters). Ends your turn.',
@@ -258,6 +280,39 @@ export function runCamTool(port: JobPort, name: string, input: unknown): ToolOut
       const shown = lines.slice(0, p.data.maxLines);
       const more = lines.length - shown.length;
       return { content: shown.join('\n') + (more > 0 ? `\n… ${more} more lines` : ''), isError: false, label: `G-code${p.data.opId ? ` · ${p.data.opId}` : ''}`, detail: `${lines.length} lines` };
+    }
+    case TOOL_NAMES.addSetup: {
+      const p = AddSetupInput.safeParse(input);
+      if (!p.success) return fail('setup', `Invalid input: ${zodMessage(p.error)}`);
+      try {
+        const before = job.stock;
+        const size = leftBy(job, analyze(job));
+        const next = addSetup(job, p.data.turn, p.data.name, size);
+        const out = commit('setup', next, `added setup ${next.setups!.at + 1}: ${next.setups!.name}`);
+        if (out.isError || before.kind !== 'block' || next.stock.kind !== 'block') return out;
+        // where things went, so that positions are carried over and not mirrored
+        const to = next.stock;
+        const from = { ...before, x: size.x, y: size.y, z: size.z, top: 0 };
+        const at = (x: number, y: number, z: number) => {
+          const q = mapPoint(p.data.turn, from, to, { x: x - size.ox, y: y - size.oy, z });
+          return `X${+q.x.toFixed(2)} Y${+q.y.toFixed(2)} Z${+q.z.toFixed(2)}`;
+        };
+        const faces = (['top', 'front', 'left'] as const).map((f) => `the old ${f} is now the ${faceAfter(p.data.turn, f)}`).join(', ');
+        out.content += `\nThe block now lies ${to.x}×${to.y}×${to.z} (X×Y×Z); ${faces}. In the new setup's coordinates: the part's front-left top corner in the setup before (X${size.ox} Y${size.oy} Z0 there) is at ${at(size.ox, size.oy, 0)}, its back-right top corner (X${size.ox + size.x} Y${size.oy + size.y} Z0 there) at ${at(size.ox + size.x, size.oy + size.y, 0)}. Positions from the setup before must be converted the same way.`;
+        return out;
+      } catch (e) {
+        return fail('setup', e instanceof Error ? e.message : String(e));
+      }
+    }
+    case TOOL_NAMES.switchSetup: {
+      const p = SwitchSetupInput.safeParse(input);
+      if (!p.success) return fail('setup', `Invalid input: ${zodMessage(p.error)}`);
+      try {
+        const next = switchSetup(job, p.data.setup - 1);
+        return commit('setup', next, `setup ${p.data.setup} in hand: ${setupList(next).setups[p.data.setup - 1]!.name}`);
+      } catch (e) {
+        return fail('setup', e instanceof Error ? e.message : String(e));
+      }
     }
     default:
       return null;

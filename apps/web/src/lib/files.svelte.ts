@@ -10,6 +10,9 @@ const KEY = 'swarf.library';
 
 export const fileName = (name: string, ext: string) => `${name.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'job'}${ext}`;
 
+/** The name of the program for the setup in hand: the job's, with the setup's number and name when there are several. */
+export const programName = (job: { name: string; setups?: { at: number; name: string } | undefined }) => (job.setups ? `${job.name} ${job.setups.at + 1} ${job.setups.name}` : job.name);
+
 export function download(name: string, text: string, type = 'application/json'): void {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type }));

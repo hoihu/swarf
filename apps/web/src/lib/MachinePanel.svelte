@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { emit, hasErrors, resumeFrom, walk } from '@swarf/cam';
+  import { TURNS, emit, hasErrors, resumeFrom, setupList, switchSetup, walk, type Job } from '@swarf/cam';
   import JogPanel from './JogPanel.svelte';
   import Section from './Section.svelte';
   import { download } from './files.svelte.ts';
@@ -276,6 +276,19 @@
       {#if resume}<span class="muted small">Everything before it is taken as done.</span>{/if}
     </div>
   {/if}
+  {#if store.job.setups}
+    {@const all = setupList(store.job)}
+    <div class="which">
+      <label class="small">Setup
+        <select value={all.at} disabled={busy || waiting} onchange={(e) => store.setup(switchSetup($state.snapshot(store.job) as Job, Number((e.currentTarget as HTMLSelectElement).value)))}>
+          {#each all.setups as s, i (i)}<option value={i}>{i + 1} of {all.setups.length}: {s.name}</option>{/each}
+        </select>
+      </label>
+      <p class="muted small">
+        {#if all.at > 0}{TURNS.find((t) => t.turn === store.job.setups?.turn)?.how}{' '}{/if}Each setup has its own zero: set X, Y and Z again on the block as it lies now, before this program runs.
+      </p>
+    </div>
+  {/if}
   <div class="row">
     <button class="btn pri" onclick={start} disabled={!canStart} title={errors ? 'The job has errors' : st !== 'Idle' ? 'The controller must be idle' : ''}>{resume ? `Run from ${startAt}` : 'Run program'}</button>
     {#if machine.job === 'paused' || waiting}
@@ -331,6 +344,8 @@
 {/if}
 
 <style>
+  .which { margin: 10px 0 2px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .which select { border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 6px; background: var(--panel); margin-left: 6px; max-width: 100%; }
   .ovs { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 10px 0 0; }
   .ov { display: inline-flex; align-items: center; gap: 0; font-size: 12.5px; color: var(--ink-2); }
   .ov span { margin-right: 8px; }

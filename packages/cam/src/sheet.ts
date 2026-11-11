@@ -4,6 +4,7 @@
  * far each must reach, the operations with speeds and times. All from the job and its analysis.
  */
 import { alignmentLines } from './align.ts';
+import { TURNS } from './setups.ts';
 import type { Analysis } from './check.ts';
 import { MATERIALS } from './materials.ts';
 import { plannedSeconds } from './planner.ts';
@@ -55,6 +56,8 @@ export interface Sheet {
   /** The corners of everything the program does, work coordinates (lathe x: radius). */
   travel: { min: Vec3; max: Vec3 } | null;
   problems: { severity: string; message: string }[];
+  /** Which setup of how many this is, and how the block is turned for it (null: the job is one setup). */
+  setup: { n: number; of: number; name: string; how: string } | null;
 }
 
 const n1 = (v: number) => (Math.round(v * 10) / 10).toString();
@@ -217,5 +220,6 @@ export function setupSheet(job: Job, analysis: Analysis): Sheet {
     stops,
     travel: min && max ? { min, max } : null,
     problems: analysis.diagnostics.map((d) => ({ severity: d.severity, message: d.message })),
+    setup: job.setups ? { n: job.setups.at + 1, of: job.setups.others.length + 1, name: job.setups.name, how: job.setups.at > 0 ? (TURNS.find((t) => t.turn === job.setups!.turn)?.how ?? '') : '' } : null,
   };
 }

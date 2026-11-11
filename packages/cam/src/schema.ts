@@ -517,6 +517,28 @@ export const Measured = z.object({
 });
 export type Measured = z.infer<typeof Measured>;
 
+/**
+ * How the block is turned from one setup to the next, as the operator does it standing in front
+ * of the machine (X to the right, Y away, Z up):
+ * over-y: flipped over left to right (the front stays the front); over-x: flipped over front to
+ * back (the left stays left); front-up, back-up, left-up, right-up: stood up so that this face of
+ * the block as it lay is now on top; quarter: turned a quarter counter-clockwise on the table.
+ */
+export const Turn = z.enum(['none', 'over-y', 'over-x', 'front-up', 'back-up', 'left-up', 'right-up', 'quarter']);
+export type Turn = z.infer<typeof Turn>;
+
+/** What belongs to one clamping of the part: the block as it lies, what is cut, what holds it. */
+export const SetupPart = z.object({
+  name: z.string().min(1).max(60),
+  turn: Turn.default('none'),
+  stock: Stock,
+  operations: z.array(Operation).default([]),
+  obstacles: z.array(Obstacle).default([]),
+  notes: z.string().optional(),
+  measured: Measured.optional(),
+});
+export type SetupPart = z.infer<typeof SetupPart>;
+
 export const Job = z.object({
   name: z.string(),
   machine: Machine,
@@ -534,6 +556,20 @@ export const Job = z.object({
   /** How the work is held and anything else to remember at the machine, free text; printed on the setup sheet. */
   notes: z.string().optional(),
   measured: Measured.optional(),
+  /**
+   * A part made in several clampings (mill). The job's own stock, operations, obstacles, notes and
+   * measurements are those of the setup in hand; the others wait here, in order, with the place
+   * of the one in hand among them. Machine, tools, material and drawings are shared.
+   */
+  setups: z
+    .object({
+      /** Where the setup in hand comes in the order (0: first). */
+      at: z.number().int().min(0),
+      name: z.string().min(1).max(60),
+      turn: Turn.default('none'),
+      others: z.array(SetupPart).max(11),
+    })
+    .optional(),
 });
 export type Job = z.infer<typeof Job>;
 export type JobInput = z.input<typeof Job>;

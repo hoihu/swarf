@@ -23,3 +23,4 @@ export { setupSheet, cutLines, toolSummary, type Sheet, type SheetOp, type Sheet
 export { alignProgram, alignmentLines, alignmentChecks, isAligned, surfaceAt } from './align.ts';
 export { reviewJob, type Finding } from './review.ts';
 export { adaptivePlans, deepest, type AdaptivePlan } from './ops/adaptive.ts';
+export { TURNS, turnLabel, turnedSize, mapPoint, faceAfter, setupList, setupJobs, switchSetup, addSetup, removeSetup, renameSetup, leftBy } from './setups.ts';

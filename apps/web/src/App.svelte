@@ -57,6 +57,7 @@
     <input class="name" value={store.job.name} aria-label="Job name" onchange={(e) => store.set({ ...store.job, name: (e.currentTarget as HTMLInputElement).value || 'Job' })} />
     <span class="facts">
       <span>{store.job.machine.kind === 'lathe' ? 'Lathe' : 'Mill'}</span>
+      {#if store.job.setups}<span>setup {store.job.setups.at + 1} of {store.job.setups.others.length + 1}</span>{/if}
       <span>{store.job.operations.length} operation{store.job.operations.length === 1 ? '' : 's'}</span>
       {#if tools > 1}<span>{tools} tools</span>{/if}
       <span>{minutes(store.analysis.seconds)}</span>

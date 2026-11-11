@@ -82,6 +82,13 @@ class Store {
     this.set(job);
   }
 
+  /** Take another setup of the same job in hand (or add one): undoable, and a running agent turn stops editing. */
+  setup(job: Job): void {
+    this.epoch++;
+    this.selected = null;
+    this.set(job);
+  }
+
   /** Mark the current job as an undo point without changing it (before an agent turn). */
   checkpoint(): void {
     this.history = [...this.history.slice(-49), $state.snapshot(this.job) as Job];

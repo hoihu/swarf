@@ -330,6 +330,7 @@ whole flow without hardware and is how it is tested.
 | Review | "Worth a look": what a machinist would stop at before running (order, slender tools and parts, holding, thin floors), computed with numbers; Review asks the assistant to weigh it |
 | Camera checks | the cutter in the spindle after a change (diameter against the tool the job wants, tip against the zero), the bar in the chuck (diameter, stick-out, raw face against the job's stock) |
 | Chatter | the microphone tells a ring between the teeth's own tones from a clean cut, and offers the spindle speeds in step with it as spindle override |
+| Setups | a part in several clampings: the block turned (flipped, a face up), each setup with its own zero, operations, clamps and sheet page; points carried over a turn |
 | Adaptive clearing | pockets with `strategy: adaptive`: a small bite over the whole depth of the flutes, spreading from a helix, instead of rings level by level |
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
 
@@ -339,6 +340,38 @@ reach speed, since grblHAL does not correct the sync while accelerating. There i
 the end of a pass: end at a groove, or the thread runs out on the shank.
 
 Not yet: profiles from DXF for the mill. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## A part in several setups
+
+On a three-axis mill the tool only comes from above. A hole in a side face, or anything on the
+underside, means taking the block out, turning it and clamping it again: another **setup**,
+with its own zero.
+
+The job pane starts with the setups of the part. **+ Setup** adds one after the setup in hand:
+you say how the block is turned, as you would do it standing in front of the machine (flipped
+over left to right or front to back, the front, back, left or right face up, a quarter turn on
+the table), and the new setup starts with the block as the setup before leaves it, lying the new
+way: the stock less what was faced off, or the part alone where an outline was cut round it to
+full depth. Everything else works on the setup in hand: operations, clamps and notes, the
+checks, the preview, the G-code, the machine. Tools, material, drawings and machine settings
+are shared. The whole part is one job file.
+
+- **The zero** of every setup is the same rule: X0 Y0 at the front-left corner of the block as
+  it lies, Z0 on its finished top. "Where is what?" under the setups says in words where the
+  faces went, and converts a point of the setup before into this one, so a hole is carried over
+  a turn and not mirrored: 10 mm from the left and 5 from the front on the top is, front face
+  up, X10 Y(thickness) Z-5.
+- **At the machine** the setup is named above Run, with how to turn the block, and can be
+  switched there; the G-code's head and file name carry its number and name.
+- **The setup sheet** has a page per setup, the later ones starting with how to turn the block.
+- **The assistant** can add and switch setups (it is told to plan them before the operations:
+  what must line up goes in one setup, the first cuts the faces the next is pushed against).
+
+What it does not do yet: the new setup's stock is a plain block. The pockets and holes of the
+setups before are not in it, so the preview does not show them and the checks take the block
+for solid (a cut into an earlier pocket is checked as if the metal were there, which errs on
+the careful side). Nothing checks that features of different setups meet. It is for the mill;
+the lathe has one clamping per job. And as everything: tried on the simulator only.
 
 ## Adaptive clearing
 

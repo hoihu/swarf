@@ -49,6 +49,7 @@ export function emit(job: Job, drawn: Program, o: { fromSegment?: number } = {})
   const lineOfMove: number[] = [];
 
   lines.push(comment(`swarf: ${job.name}`));
+  if (job.setups) lines.push(comment(`setup ${job.setups.at + 1} of ${job.setups.others.length + 1}: ${job.setups.name}`));
   lines.push(comment(`${job.machine.name}, ${lathe ? 'lathe' : 'mill'}, mm`));
   lines.push(comment(stockLine(job)));
   if (lathe) lines.push(comment(`X is a ${dia ? 'diameter' : 'radius'}; Z0 = finished front face`));

@@ -5,8 +5,9 @@
   import { issuesByField, machineFields, opFields, toolFieldsFor } from './form.ts';
   import { store } from './store.svelte.ts';
   import { OP_TEMPLATES } from './ops.ts';
+  import SetupBar from './SetupBar.svelte';
   import { ui } from './ui.svelte.ts';
-  import { download as saveAs, fileName, files } from './files.svelte.ts';
+  import { download as saveAs, fileName, files, programName } from './files.svelte.ts';
   import { inLibrary, reviewJob, toolSummary } from '@swarf/cam';
 
   type Tab = 'ops' | 'stock' | 'tools' | 'gcode';
@@ -187,13 +188,14 @@
 
   // ---- G-code
   function download(): void {
-    saveAs(fileName(job.name, '.nc'), store.gcode.text, 'text/plain');
+    saveAs(fileName(programName(job), '.nc'), store.gcode.text, 'text/plain');
   }
   const gcodeLines = $derived(store.gcode.text.split('\n'));
   const toolName = (id: number) => job.tools.find((t) => t.id === id)?.name ?? `T${id} (missing)`;
 </script>
 
 <section class="panel">
+  <SetupBar />
   <div class="tabs" role="tablist">
     {#each [['ops', 'Operations'], ['stock', 'Setup'], ['tools', 'Tools'], ['gcode', 'G-code']] as [id, name] (id)}
       <button role="tab" aria-selected={tab === id} class:on={tab === id} onclick={() => (tab = id as Tab)}>
