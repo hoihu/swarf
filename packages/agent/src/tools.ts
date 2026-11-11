@@ -24,6 +24,8 @@ import type { ToolDefinition } from './types.ts';
 export interface JobPort {
   get(): Job;
   set(job: Job): void;
+  /** The pictures the user attached to the message being answered (for agents that cannot be handed them directly). */
+  pictures?(): { data: string; mimeType: string }[];
 }
 
 export interface ToolOutcome {
@@ -33,6 +35,8 @@ export interface ToolOutcome {
   /** For the chat's activity list. */
   label: string;
   detail: string;
+  /** Pictures for the model to look at (base64). */
+  images?: { data: string; mimeType: string }[];
 }
 
 export const TOOL_NAMES = {

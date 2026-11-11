@@ -12,9 +12,17 @@ export interface ToolDefinition {
 /** Provider-neutral conversation blocks. Assistant messages also keep the raw provider payload. */
 export type Block =
   | { type: 'text'; text: string }
+  /** A picture from the user (a photo of a part, a sketch with dimensions): base64, in a user message. */
+  | { type: 'image'; data: string; mimeType: string }
   | { type: 'thinking'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; tool_use_id: string; content: string; images?: { data: string; mimeType: string }[]; is_error?: boolean };
+
+/** A picture the user attached. */
+export interface Picture {
+  data: string;
+  mimeType: string;
+}
 
 export interface Message {
   role: 'user' | 'assistant';

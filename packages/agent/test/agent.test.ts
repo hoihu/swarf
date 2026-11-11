@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES, analyze, emptyJob, type Job } from '@swarf/cam';
-import { Agent, CAM_TOOLS, formatJobContext, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, runCamTool, type AgentEvent, type Block, type JobPort, type Script } from '../src/index.ts';
+import { toApi as anthropicApi } from '../src/providers/anthropic.ts';
+import { toApi as openaiApi } from '../src/providers/openai.ts';
+import { SYSTEM_PROMPT, Agent, CAM_TOOLS, formatJobContext, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, runCamTool, type AgentEvent, type Block, type JobPort, type Script } from '../src/index.ts';
 
 function port(job: Job): JobPort & { job: Job } {
   const p = { job, get: () => p.job, set: (j: Job) => (p.job = j) };
@@ -58,6 +60,44 @@ describe('material', () => {
     const ctx = formatJobContext(p.job);
     expect(ctx).toContain('material: steel (Steel, C45)');
     expect(ctx).toMatch(/T1 turning: .*vc 120 m\/min, 0\.08 mm\/rev, 0\.5 mm\/pass/);
+  });
+});
+
+describe('pictures', () => {
+  const pic = { data: 'aGVsbG8=', mimeType: 'image/jpeg' };
+
+  it('a picture attached to a message reaches the model with the words, and the prompt says how to read it', async () => {
+    let seen: Block[] = [];
+    const script: Script = { name: 'look', match: /sketch/, steps: [({ messages }) => { seen = messages.at(-1)!.content; return [{ type: 'text', text: 'I read Ø20 × 30.' }]; }] };
+    const agent = new Agent({ provider: new ScriptedProvider([script]), job: port(emptyJob('lathe')) });
+    const events: AgentEvent[] = [];
+    await agent.run('Make the part in this sketch', (e) => events.push(e), undefined, [pic]);
+    expect(seen[0]).toEqual({ type: 'image', ...pic });
+    const text = seen.find((b) => b.type === 'text') as Extract<Block, { type: 'text' }>;
+    expect(text.text).toMatch(/Make the part in this sketch\n\n\[A picture is attached to this message\.\]$/);
+    expect(events.at(-1)).toMatchObject({ type: 'done', reason: 'complete' });
+    expect(SYSTEM_PROMPT).toMatch(/never take a size by measuring the picture/);
+  });
+
+  it('goes to Claude as an image block and to OpenAI-style APIs as an image_url, with the text', () => {
+    const messages = [{ role: 'user' as const, content: [{ type: 'image' as const, ...pic }, { type: 'text' as const, text: 'this part' }] }];
+    expect(anthropicApi(messages)[0]!.content).toEqual([{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: pic.data } }, { type: 'text', text: 'this part' }]);
+    const o = openaiApi('sys', messages);
+    expect(o[1]).toEqual({ role: 'user', content: [{ type: 'text', text: 'this part' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,aGVsbG8=' } }] });
+    expect(o).toHaveLength(2);
+  });
+
+  it('after a question was asked, the answer may carry a picture: tool results first', async () => {
+    let seen: Block[] = [];
+    const script: Script = {
+      name: 'ask',
+      match: /bracket/,
+      steps: [[{ type: 'tool_use', id: 'q1', name: 'ask_user', input: { question: 'Which side up?', options: ['A', 'B'] } }], ({ messages }) => { seen = messages.at(-1)!.content; return [{ type: 'text', text: 'ok' }]; }],
+    };
+    const agent = new Agent({ provider: new ScriptedProvider([script]), job: port(emptyJob('mill')) });
+    await agent.run('a bracket', () => {});
+    await agent.run('A, as in this photo', () => {}, undefined, [pic]);
+    expect(seen.map((b) => b.type)).toEqual(['tool_result', 'image', 'text']);
   });
 });
 

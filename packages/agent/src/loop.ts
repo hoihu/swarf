@@ -6,7 +6,7 @@
 import { analyze } from '@swarf/cam';
 import { SYSTEM_PROMPT, formatJobContext, formatVerification } from './prompt.ts';
 import { AskUser, CAM_TOOLS, TOOL_NAMES, formatDiagnostics, runCamTool, type JobPort, type ToolOutcome } from './tools.ts';
-import type { AgentEvent, Block, Message, Provider } from './types.ts';
+import type { AgentEvent, Block, Message, Picture, Provider } from './types.ts';
 
 export interface AgentOptions {
   provider: Provider;
@@ -48,18 +48,22 @@ export class Agent {
     this.pending = null;
   }
 
-  async run(userText: string, emit: (e: AgentEvent) => void, signal?: AbortSignal): Promise<void> {
+  /** `pictures`: what the user attached to this message (a photo of a part, a sketch), base64. */
+  async run(userText: string, emit: (e: AgentEvent) => void, signal?: AbortSignal, pictures: Picture[] = []): Promise<void> {
     const maxSteps = this.opts.maxSteps ?? 30;
     const fixBudget = this.opts.fixBudget ?? 4;
 
     const context = formatJobContext(this.opts.job.get());
     const content: Block[] = [];
+    // (after any tool results, which must come first; before the words about them)
+    const shown: Block[] = pictures.map((p) => ({ type: 'image' as const, data: p.data, mimeType: p.mimeType }));
+    if (pictures.length) userText = `${userText}\n\n[${pictures.length === 1 ? 'A picture is' : `${pictures.length} pictures are`} attached to this message.]`;
     if (this.pending) {
       content.push(...this.pending.otherResults, { type: 'tool_result', tool_use_id: this.pending.askId, content: `The user answered: ${userText}` });
       this.pending = null;
-      content.push({ type: 'text', text: context });
+      content.push(...shown, { type: 'text', text: context });
     } else {
-      content.push({ type: 'text', text: `${context}\n\n${userText}` });
+      content.push(...shown, { type: 'text', text: `${context}\n\n${userText}` });
     }
     this.messages.push({ role: 'user', content });
 

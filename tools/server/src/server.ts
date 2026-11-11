@@ -14,6 +14,7 @@ import { SERVER_PORTS, SERVER_PROTOCOL, type ChatCapability, type HarnessInfo, t
 export interface CallResult {
   isError: boolean;
   text: string;
+  images?: { data: string; mimeType: string }[];
 }
 
 export interface LocalServerOptions {
@@ -224,7 +225,7 @@ export class LocalServer {
         if (!p) return;
         clearTimeout(p.timer);
         this.#pending.delete(msg.id);
-        p.resolve({ isError: msg.isError, text: msg.text });
+        p.resolve({ isError: msg.isError, text: msg.text, ...(msg.images?.length ? { images: msg.images } : {}) });
       }
     });
 

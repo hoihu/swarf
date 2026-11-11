@@ -216,7 +216,7 @@ function mapStop(s: string | null, toolCalls: boolean): StopReason {
  * another provider, after the user switched) are built from the blocks. Tool results become
  * `tool` messages; their pictures follow in a user message, as tool messages carry text only.
  */
-function toApi(system: string, messages: Message[]): ApiMessage[] {
+export function toApi(system: string, messages: Message[]): ApiMessage[] {
   const out: ApiMessage[] = [{ role: 'system', content: system }];
   for (const m of messages) {
     if (m.role === 'assistant') {
@@ -235,15 +235,19 @@ function toApi(system: string, messages: Message[]): ApiMessage[] {
       continue;
     }
     const images: { type: 'image_url'; image_url: { url: string } }[] = [];
+    const own: { type: 'image_url'; image_url: { url: string } }[] = [];
     const texts: string[] = [];
     for (const b of m.content) {
       if (b.type === 'tool_result') {
         out.push({ role: 'tool', tool_call_id: b.tool_use_id, content: b.is_error ? `Error: ${b.content}` : b.content });
         for (const i of b.images ?? []) images.push({ type: 'image_url', image_url: { url: `data:${i.mimeType};base64,${i.data}` } });
       } else if (b.type === 'text') texts.push(b.text);
+      else if (b.type === 'image') own.push({ type: 'image_url', image_url: { url: `data:${b.mimeType};base64,${b.data}` } });
     }
     if (images.length) out.push({ role: 'user', content: [{ type: 'text', text: 'Images returned by the tool calls above:' }, ...images] });
-    if (texts.length) out.push({ role: 'user', content: texts.join('\n\n') });
+    // the user's own pictures go with the user's words
+    if (own.length) out.push({ role: 'user', content: [{ type: 'text', text: texts.join('\n\n') || 'See the picture.' }, ...own] });
+    else if (texts.length) out.push({ role: 'user', content: texts.join('\n\n') });
   }
   return out;
 }

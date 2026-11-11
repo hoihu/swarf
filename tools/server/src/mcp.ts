@@ -37,7 +37,7 @@ export function createMcpServer(relay: LocalServer, opts: { cwd?: string; mode?:
     if (!tools.some((t) => t.name === name)) r = { isError: true, text: `Unknown tool ${name}` };
     else if (name === MCP_TOOL_NAMES.save) r = await saveGcode(relay, input, opts.cwd ?? process.cwd());
     else r = await relay.call(name, input);
-    return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }] };
+    return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }, ...(r.images ?? []).map((i) => ({ type: 'image' as const, data: i.data, mimeType: i.mimeType }))] };
   });
 
   if (mode === 'cli') {

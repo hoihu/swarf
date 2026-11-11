@@ -15,7 +15,7 @@ export const SERVER_PORTS = [7790, 7791, 7792, 7793, 7794] as const;
 
 export type TabToServer =
   | { type: 'hello'; protocol: number; accessKey: string; client: string }
-  | { type: 'result'; id: number; isError: boolean; text: string }
+  | { type: 'result'; id: number; isError: boolean; text: string; images?: { data: string; mimeType: string }[] }
   /** A chat message for a coding agent (default Claude Code). `session`: continue that conversation (null: a new one). */
   | { type: 'chat'; id: string; text: string; session: string | null; model?: string; harness?: HarnessId }
   | { type: 'chat_cancel'; id: string };

@@ -8,7 +8,7 @@ import { formatJobContext, CAM_GUIDE } from './prompt.ts';
 import { CAM_TOOLS, TOOL_NAMES, runCamTool, type JobPort, type ToolOutcome } from './tools.ts';
 import type { ToolDefinition } from './types.ts';
 
-export const MCP_TOOL_NAMES = { context: 'get_context', save: 'save_gcode' } as const;
+export const MCP_TOOL_NAMES = { context: 'get_context', save: 'save_gcode', pictures: 'look_at_pictures' } as const;
 
 export const MCP_INSTRUCTIONS = `swarf: CAM for a hobby CNC lathe or mill (grblHAL), open in the user's browser. You build the job from parametric operations with these tools; swarf generates the toolpaths, checks them and writes simple G-code, and the user watches the 3D preview update as you work. Never write G-code by hand.
 
@@ -45,6 +45,11 @@ export function mcpTools(): ToolDefinition[] {
     },
     ...CAM_TOOLS.filter((t) => t.name !== TOOL_NAMES.ask),
     {
+      name: MCP_TOOL_NAMES.pictures,
+      description: 'The pictures the user attached to their message in the app (a photo of a part, a hand sketch with dimensions). Call it when the message says pictures are attached.',
+      input_schema: { type: 'object', properties: {} },
+    },
+    {
       name: MCP_TOOL_NAMES.save,
       description: 'Write the generated G-code to a file on this computer (refused while the job has errors). path: absolute, or relative to the directory the server was started in; .nc is added when there is no extension.',
       input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
@@ -56,6 +61,12 @@ export function mcpTools(): ToolDefinition[] {
 export function runTabTool(port: JobPort, name: string, input: unknown): ToolOutcome {
   if (name === MCP_TOOL_NAMES.context) {
     return { content: formatJobContext(port.get()), isError: false, label: 'read job', detail: 'job state' };
+  }
+  if (name === MCP_TOOL_NAMES.pictures) {
+    const pics = port.pictures?.() ?? [];
+    return pics.length
+      ? { content: `${pics.length} picture${pics.length === 1 ? '' : 's'} attached by the user.`, isError: false, label: 'looked at the picture', detail: `${pics.length} picture${pics.length === 1 ? '' : 's'}`, images: pics }
+      : { content: 'No picture is attached to the current message.', isError: true, label: 'look at the picture', detail: 'none attached' };
   }
   if (name === TOOL_NAMES.ask) return { content: 'ask_user is not available here; ask your user directly.', isError: true, label: name, detail: 'not available' };
   return runCamTool(port, name, input) ?? { content: `Unknown tool ${name}`, isError: true, label: name, detail: 'unknown tool' };

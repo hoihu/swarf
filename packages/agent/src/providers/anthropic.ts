@@ -137,7 +137,7 @@ function mapStop(s: string | null): StopReason {
  * Assistant turns are replayed from `raw` unchanged; user turns, and assistant turns of another
  * provider (the user switched mid-conversation), are built from blocks.
  */
-function toApi(messages: Message[]): Anthropic.Beta.BetaMessageParam[] {
+export function toApi(messages: Message[]): Anthropic.Beta.BetaMessageParam[] {
   return messages.map((m) => {
     if (m.role === 'assistant' && Array.isArray(m.raw)) {
       return { role: 'assistant', content: m.raw as Anthropic.Beta.BetaContentBlockParam[] };
@@ -145,6 +145,7 @@ function toApi(messages: Message[]): Anthropic.Beta.BetaMessageParam[] {
     const content: Anthropic.Beta.BetaContentBlockParam[] = [];
     for (const b of m.content) {
       if (b.type === 'text') content.push({ type: 'text', text: b.text });
+      else if (b.type === 'image') content.push({ type: 'image', source: { type: 'base64', media_type: b.mimeType as 'image/png' | 'image/jpeg', data: b.data } });
       else if (b.type === 'tool_result') {
         const body = b.images?.length
           ? [

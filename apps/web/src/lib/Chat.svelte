@@ -6,6 +6,7 @@
   import { store } from './store.svelte.ts';
   import { bridge } from './bridge.svelte.ts';
   import { miniMarkdown } from './markdown.ts';
+  import { prepare, type Attached } from './pictures.ts';
 
   let { onSettings }: { onSettings: () => void } = $props();
 
@@ -21,6 +22,8 @@
     notes: string[];
     question?: { question: string; options: string[] };
     error?: string;
+    /** Pictures sent with a user message (data URLs). */
+    pictures?: string[];
     /** What the turn changed, to keep or revert. */
     review?: { before: Job; after: Job; diff: JobDiff; state: 'open' | 'kept' | 'reverted' };
   }
@@ -97,12 +100,46 @@
     log?.scrollTo({ top: log.scrollHeight });
   }
 
+  // ---- pictures for the assistant: a photo of a part, a sketch with dimensions
+  let attached = $state<Attached[]>([]);
+  let attachError = $state('');
+  async function attach(files: Iterable<File>): Promise<void> {
+    attachError = '';
+    for (const f of files) {
+      if (attached.length >= 4) {
+        attachError = 'Four pictures at most per message.';
+        break;
+      }
+      try {
+        attached.push(await prepare(f, f.name || 'picture'));
+      } catch (e) {
+        attachError = e instanceof Error ? e.message : String(e);
+      }
+    }
+  }
+  function pasted(e: ClipboardEvent): void {
+    const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return;
+    e.preventDefault();
+    void attach(files);
+  }
+  function dropped(e: DragEvent): void {
+    const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return;
+    e.preventDefault();
+    void attach(files);
+  }
+
   async function send(text = input): Promise<void> {
     text = text.trim();
+    const pictures = text === REVIEW ? [] : $state.snapshot(attached);
+    if (!text && pictures.length) text = 'Here is a picture of the part: propose the stock and the operations.';
     if (!text || busy) return;
     input = '';
+    if (pictures.length) attached = [];
+    attachError = '';
     busy = true;
-    items.push({ role: 'user', text, activity: [], notes: [] });
+    items.push({ role: 'user', text, activity: [], notes: [], ...(pictures.length ? { pictures: pictures.map((p) => p.url) } : {}) });
     items.push({ role: 'assistant', text: '', activity: [], notes: [] });
     const cur = items[items.length - 1]!;
     void scroll();
@@ -122,10 +159,21 @@
     const beforeJob = $state.snapshot(store.job) as Job;
     epoch = store.epoch;
     store.checkpoint();
+    const sent = pictures.map((p) => ({ data: p.data, mimeType: p.mimeType }));
+    if (demo && sent.length) {
+      cur.text = 'No model is connected, so nobody can look at the picture: connect an assistant in the settings (a coding agent on this computer, or a model with an API key that can read images).';
+      store.history = store.history.slice(0, -1);
+      busy = false;
+      void scroll();
+      return;
+    }
     if (useLocal) {
+      // a coding agent's CLI takes words only: it fetches the pictures with a tool
+      bridge.pictures = sent;
       try {
-        await viaLocal(text, cur);
+        await viaLocal(sent.length ? `${text}\n\n[${sent.length === 1 ? 'A picture is' : `${sent.length} pictures are`} attached to this message: call look_at_pictures to see ${sent.length === 1 ? 'it' : 'them'}.]` : text, cur);
       } finally {
+        bridge.pictures = [];
         busy = false;
         if (store.epoch === epoch && JSON.stringify(store.job) === before) store.history = store.history.slice(0, -1);
         review(cur, beforeJob);
@@ -164,7 +212,7 @@
       void scroll();
     };
     try {
-      await agent.run(text, on, controller.signal);
+      await agent.run(text, on, controller.signal, sent);
     } finally {
       busy = false;
       controller = null;
@@ -291,7 +339,10 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
     {/if}
     {#each items as it, i (i)}
       {#if it.role === 'user'}
-        <div class="msg user">{it.text}</div>
+        <div class="msg user">
+          {#if it.pictures}<div class="pics">{#each it.pictures as u, k (k)}<img src={u} alt="Attached picture {k + 1}" />{/each}</div>{/if}
+          {it.text}
+        </div>
       {:else}
         <div class="msg bot">
           {#if it.activity.length}
@@ -337,13 +388,26 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
     {/each}
   </div>
 
-  <form class="compose" onsubmit={(e) => { e.preventDefault(); void send(); }}>
-    <textarea rows="2" bind:value={input} onkeydown={key} placeholder="e.g. face, then turn Ø20 over 30 mm" aria-label="Message"></textarea>
+  {#if attached.length || attachError}
+    <div class="attached">
+      {#each attached as a, k (k)}
+        <span class="thumb"><img src={a.url} alt={a.name} /><button type="button" aria-label="Remove {a.name}" onclick={() => attached.splice(k, 1)}>×</button></span>
+      {/each}
+      {#if attachError}<span class="error small">{attachError}</span>{/if}
+    </div>
+  {/if}
+  <form class="compose" onsubmit={(e) => { e.preventDefault(); void send(); }} ondragover={(e) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); }} ondrop={dropped}>
+    <label class="btn clip" title="Attach a picture: a photo of the part, or a sketch with its dimensions. Paste or drop one works too.">
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect x="2.5" y="4.5" width="15" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" /><circle cx="7" cy="8.5" r="1.4" fill="currentColor" /><path d="M3.5 14l4-4 3 3 2.5-2.5 3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></svg>
+      <span class="sr">Attach a picture</span>
+      <input type="file" accept="image/*" multiple hidden onchange={(e) => { const i = e.currentTarget as HTMLInputElement; void attach([...(i.files ?? [])]); i.value = ''; }} />
+    </label>
+    <textarea rows="2" bind:value={input} onkeydown={key} onpaste={pasted} placeholder="e.g. face, then turn Ø20 over 30 mm" aria-label="Message"></textarea>
     {#if busy}
       <button type="button" class="btn" onclick={stop}>Stop</button>
     {:else}
       <div class="sendcol">
-        <button type="submit" class="btn pri" disabled={!input.trim()}>Send</button>
+        <button type="submit" class="btn pri" disabled={!input.trim() && !attached.length}>Send</button>
         <button type="button" class="btn" disabled={!store.job.operations.length} title="The assistant goes through the job as a machinist would before pressing start: holding, order, tools, speeds. It changes nothing." onclick={() => send(REVIEW)}>Review</button>
       </div>
     {/if}
@@ -351,6 +415,16 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
 </section>
 
 <style>
+  .attached { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px 0; border-top: 1px solid var(--line); }
+  .attached + .compose { border-top: 0; }
+  .thumb { position: relative; display: inline-block; }
+  .thumb img { display: block; height: 56px; max-width: 110px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line-2); }
+  .thumb button { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--panel); line-height: 1; padding: 0; font-size: 13px; }
+  .pics { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .pics img { max-width: 100%; max-height: 180px; border-radius: 6px; display: block; }
+  .clip { display: inline-grid; place-items: center; padding: 6px 8px; cursor: pointer; align-self: flex-end; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .small { font-size: 12.5px; }
   .sendcol { display: flex; flex-direction: column; gap: 4px; }
   .chat { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--panel); }
   header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex: none; }

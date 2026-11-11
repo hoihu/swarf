@@ -24,6 +24,8 @@ class Bridge {
   onCall: ((label: string, ok: boolean, detail: string) => void) | null = null;
   /** While a chat turn runs, its edits share one undo step (the turn's checkpoint) instead of one each. */
   batch = false;
+  /** The pictures attached to the chat message being answered (look_at_pictures hands them to the agent). */
+  pictures: { data: string; mimeType: string }[] = [];
   #target: { accessKey: string; port: number } | null = null;
   #ws: WebSocket | null = null;
   #retry = 0;
@@ -123,13 +125,13 @@ class Bridge {
           break;
         case 'call': {
           const r = runTabTool(
-            { get: () => $state.snapshot(store.job) as Job, set: (j: Job) => store.set(j, !this.batch) },
+            { get: () => $state.snapshot(store.job) as Job, set: (j: Job) => store.set(j, !this.batch), pictures: () => this.pictures },
             msg.tool,
             msg.input,
           );
           this.last = r.isError ? `${r.label} failed` : r.label;
           this.onCall?.(r.label, !r.isError, r.detail);
-          ws.send(JSON.stringify({ type: 'result', id: msg.id, isError: r.isError, text: r.content } satisfies TabToServer));
+          ws.send(JSON.stringify({ type: 'result', id: msg.id, isError: r.isError, text: r.content, ...(r.images?.length ? { images: r.images } : {}) } satisfies TabToServer));
           break;
         }
       }

@@ -24,9 +24,9 @@ async function startServer(): Promise<LocalServer> {
 }
 
 /** A tab that runs tools against an in-memory job, like the app does. */
-async function fakeTab(s: LocalServer, opts: { key?: string; origin?: string } = {}): Promise<{ ws: WebSocket; job: () => Job; first: ServerToTab }> {
+async function fakeTab(s: LocalServer, opts: { key?: string; origin?: string; pictures?: { data: string; mimeType: string }[] } = {}): Promise<{ ws: WebSocket; job: () => Job; first: ServerToTab }> {
   let job = emptyJob('lathe');
-  const port = { get: () => job, set: (j: Job) => (job = j) };
+  const port = { get: () => job, set: (j: Job) => (job = j), pictures: () => opts.pictures ?? [] };
   const ws = new WebSocket(`ws://127.0.0.1:${s.port}`, { origin: opts.origin ?? 'http://localhost:5173' });
   cleanup.push(async () => ws.close());
   const first = await new Promise<ServerToTab>((resolve, reject) => {
@@ -39,7 +39,7 @@ async function fakeTab(s: LocalServer, opts: { key?: string; origin?: string } =
     const msg = JSON.parse(String(raw)) as ServerToTab;
     if (msg.type !== 'call') return;
     const r = runTabTool(port, msg.tool, msg.input);
-    ws.send(JSON.stringify({ type: 'result', id: msg.id, isError: r.isError, text: r.content } satisfies TabToServer));
+    ws.send(JSON.stringify({ type: 'result', id: msg.id, isError: r.isError, text: r.content, ...(r.images?.length ? { images: r.images } : {}) } satisfies TabToServer));
   });
   return { ws, job: () => job, first };
 }
@@ -87,6 +87,25 @@ describe('MCP', () => {
     expect(names).toContain('save_gcode');
     expect(names).not.toContain('ask_user');
     expect(c.getInstructions()).toMatch(/Never write G-code by hand/);
+  });
+
+  it('hands the agent the pictures the user attached in the app', async () => {
+    const s = await startServer();
+    await fakeTab(s, { pictures: [{ data: 'aGVsbG8=', mimeType: 'image/jpeg' }] });
+    const c = await mcpClient(s);
+    const r = (await c.callTool({ name: 'look_at_pictures', arguments: {} })) as { isError?: boolean; content: { type: string; text?: string; data?: string; mimeType?: string }[] };
+    expect(r.isError).toBeFalsy();
+    expect(r.content[0]!.text).toMatch(/1 picture attached/);
+    expect(r.content[1]).toEqual({ type: 'image', data: 'aGVsbG8=', mimeType: 'image/jpeg' });
+  });
+
+  it('says so when no picture is attached', async () => {
+    const s = await startServer();
+    await fakeTab(s);
+    const c = await mcpClient(s);
+    const r = await c.callTool({ name: 'look_at_pictures', arguments: {} });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/No picture is attached/);
   });
 
   it('edits the job in the tab and saves the G-code', async () => {

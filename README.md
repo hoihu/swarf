@@ -243,6 +243,8 @@ whole flow without hardware and is how it is tested.
 | Job files | Save the job as a file (`<name>.swarf.json`: machine, stock, tools, operations, drawings, notes) and open it again, here or on another computer. A file is checked like any other input before it becomes the job |
 | Tool library | your own cutters, entered once: "Keep in the library" on a tool, "Add to the job" in any later job (lathe tools keep their stored offset in the tool post). Kept in this browser; saved and read as a file to move it |
 | Setup sheet | one printable page per job: stock, where the zero is, what holds the work, the tools in the order the program asks for them and how far each must reach, every operation with rpm, feed, depth and time, a drawing with the zero and the cuts |
+| Pictures | a photo of a part or a hand sketch with dimensions, attached to a chat message: the assistant reads the written dimensions and proposes stock and operations |
+| Review | "Worth a look": what a machinist would stop at before running (order, slender tools and parts, holding, thin floors), computed with numbers; Review asks the assistant to weigh it |
 | Agent | Claude or any OpenAI-compatible model; edits are validated, every edit answers with the checks, and the turn is not finished while errors remain |
 
 Threading needs grblHAL in lathe mode with an index + pulse encoder ($32=2, $38, PID tuned), and
@@ -251,6 +253,21 @@ reach speed, since grblHAL does not correct the sync while accelerating. There i
 the end of a pass: end at a groove, or the thread runs out on the shank.
 
 Not yet: profiles from DXF for the mill. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## From a photo or a sketch
+
+Attach a picture to a message (the picture button beside the message box; pasting or dropping
+one works too, four at most): a hand sketch with its dimensions, a drawing on paper, a photo of
+the part to copy. The assistant reads the dimensions that are written on it, says which it read,
+and proposes the stock and the operations; a dimension the part needs and the picture does not
+give, it asks for. It is told never to take a size by measuring the picture. A photo without any
+dimensions gets a description and a request for sizes, not a guess.
+
+Pictures are made smaller before they are sent (1568 pixels on the longer side, JPEG). With a
+model API they go with the message; a coding agent on this computer (Claude Code and the others)
+gets words only, so it fetches them with the tool `look_at_pictures`. This needs a model that
+reads images. Check what it read against the sketch: a 3 read as an 8 makes a part that passes
+every check.
 
 ## A second pair of eyes
 
