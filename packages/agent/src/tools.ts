@@ -292,13 +292,13 @@ export function runCamTool(port: JobPort, name: string, input: unknown): ToolOut
         if (out.isError || before.kind !== 'block' || next.stock.kind !== 'block') return out;
         // where things went, so that positions are carried over and not mirrored
         const to = next.stock;
-        const from = { ...before, x: size.x, y: size.y, z: size.z, top: 0 };
+        const from = { ...before, x: size.x, y: size.y, z: size.z, top: size.oz };
         const at = (x: number, y: number, z: number) => {
           const q = mapPoint(p.data.turn, from, to, { x: x - size.ox, y: y - size.oy, z });
           return `X${+q.x.toFixed(2)} Y${+q.y.toFixed(2)} Z${+q.z.toFixed(2)}`;
         };
         const faces = (['top', 'front', 'left'] as const).map((f) => `the old ${f} is now the ${faceAfter(p.data.turn, f)}`).join(', ');
-        out.content += `\nThe block now lies ${to.x}×${to.y}×${to.z} (X×Y×Z); ${faces}. In the new setup's coordinates: the part's front-left top corner in the setup before (X${size.ox} Y${size.oy} Z0 there) is at ${at(size.ox, size.oy, 0)}, its back-right top corner (X${size.ox + size.x} Y${size.oy + size.y} Z0 there) at ${at(size.ox + size.x, size.oy + size.y, 0)}. Positions from the setup before must be converted the same way.`;
+        out.content += `\nThe block now lies ${to.x}×${to.y}×${to.z} (X×Y×Z); ${faces}. In the new setup's coordinates: the part's front-left top corner in the setup before (X${size.ox} Y${size.oy} Z0 there) is at ${at(size.ox, size.oy, 0)}, its back-right top corner (X${size.ox + size.x} Y${size.oy + size.y} Z0 there) at ${at(size.ox + size.x, size.oy + size.y, 0)}. Positions from the setup before must be converted the same way. The part comes over as that setup leaves it (its pockets and holes are in the new stock; what is cut there again is air).`;
         return out;
       } catch (e) {
         return fail('setup', e instanceof Error ? e.message : String(e));

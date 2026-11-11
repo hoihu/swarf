@@ -527,10 +527,19 @@ export type Measured = z.infer<typeof Measured>;
 export const Turn = z.enum(['none', 'over-y', 'over-x', 'front-up', 'back-up', 'left-up', 'right-up', 'quarter']);
 export type Turn = z.infer<typeof Turn>;
 
+/**
+ * Which piece of the setup before a setup's block is: its size there (as it lay), the place of
+ * its front-left corner and of its top, in that setup's coordinates. With it the part is carried
+ * over the turn as it was left, cuts and all; without it the setup starts from a plain block.
+ */
+export const CarriedFrom = z.object({ x: pos, y: pos, z: pos, ox: mm, oy: mm, oz: mm });
+export type CarriedFrom = z.infer<typeof CarriedFrom>;
+
 /** What belongs to one clamping of the part: the block as it lies, what is cut, what holds it. */
 export const SetupPart = z.object({
   name: z.string().min(1).max(60),
   turn: Turn.default('none'),
+  from: CarriedFrom.optional(),
   stock: Stock,
   operations: z.array(Operation).default([]),
   obstacles: z.array(Obstacle).default([]),
@@ -567,6 +576,7 @@ export const Job = z.object({
       at: z.number().int().min(0),
       name: z.string().min(1).max(60),
       turn: Turn.default('none'),
+      from: CarriedFrom.optional(),
       others: z.array(SetupPart).max(11),
     })
     .optional(),

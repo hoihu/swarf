@@ -13,7 +13,7 @@
  */
 import { CamError } from './program.ts';
 import type { Analysis } from './check.ts';
-import type { Job, SetupPart, Stock, Turn, Vec3 } from './schema.ts';
+import type { CarriedFrom, Job, SetupPart, Stock, Turn, Vec3 } from './schema.ts';
 import { MillMaterial } from './sim.ts';
 
 type Block = Extract<Stock, { kind: 'block' }>;
@@ -53,6 +53,24 @@ function rotate(turn: Turn, v: Vec3): Vec3 {
   }
 }
 
+/** The turn undone. */
+function unrotate(turn: Turn, v: Vec3): Vec3 {
+  switch (turn) {
+    case 'front-up':
+      return rotate('back-up', v);
+    case 'back-up':
+      return rotate('front-up', v);
+    case 'left-up':
+      return rotate('right-up', v);
+    case 'right-up':
+      return rotate('left-up', v);
+    case 'quarter':
+      return { x: v.y, y: -v.x, z: v.z };
+    default:
+      return rotate(turn, v);
+  }
+}
+
 /** The block's size as it lies after the turn (its top allowance is the caller's to set). */
 export function turnedSize(turn: Turn, s: { x: number; y: number; z: number }): { x: number; y: number; z: number } {
   const r = rotate(turn, { x: s.x, y: s.y, z: s.z });
@@ -75,6 +93,13 @@ export function mapPoint(turn: Turn, from: Block, to: Block, p: Vec3): Vec3 {
   return { x: r.x + size.x / 2, y: r.y + size.y / 2, z: r.z + (to.top - to.z) + size.z / 2 };
 }
 
+/** `mapPoint` the other way: where a point of the setup after the turn was in the one before. */
+export function unmapPoint(turn: Turn, from: Block, to: Block, p: Vec3): Vec3 {
+  const size = turnedSize(turn, from);
+  const v = unrotate(turn, { x: p.x - size.x / 2, y: p.y - size.y / 2, z: p.z - (to.top - to.z) - size.z / 2 });
+  return { x: v.x + from.x / 2, y: v.y + from.y / 2, z: v.z + from.top - from.z / 2 };
+}
+
 /** Which way a face of the block as it lay points after the turn, in words. */
 export function faceAfter(turn: Turn, face: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right'): string {
   const n: Record<string, Vec3> = { top: { x: 0, y: 0, z: 1 }, bottom: { x: 0, y: 0, z: -1 }, front: { x: 0, y: -1, z: 0 }, back: { x: 0, y: 1, z: 0 }, left: { x: -1, y: 0, z: 0 }, right: { x: 1, y: 0, z: 0 } };
@@ -88,9 +113,10 @@ export function faceAfter(turn: Turn, face: 'top' | 'bottom' | 'front' | 'back' 
 
 // ---- the setups of a job
 
-const own = (job: Job, name: string, turn: Turn): SetupPart => ({
+const own = (job: Job, name: string, turn: Turn, from?: CarriedFrom): SetupPart => ({
   name,
   turn,
+  ...(from ? { from } : {}),
   stock: job.stock,
   operations: job.operations,
   obstacles: job.obstacles,
@@ -103,7 +129,7 @@ export function setupList(job: Job): { setups: SetupPart[]; at: number } {
   const s = job.setups;
   if (!s) return { setups: [own(job, 'Setup 1', 'none')], at: 0 };
   const at = Math.min(s.at, s.others.length);
-  return { setups: [...s.others.slice(0, at), own(job, s.name, s.turn), ...s.others.slice(at)], at };
+  return { setups: [...s.others.slice(0, at), own(job, s.name, s.turn, s.from), ...s.others.slice(at)], at };
 }
 
 /** The job with setup `i` in hand. */
@@ -117,7 +143,7 @@ function withSetup(job: Job, setups: SetupPart[], i: number): Job {
     obstacles: cur.obstacles,
     ...(cur.notes !== undefined ? { notes: cur.notes } : {}),
     ...(cur.measured ? { measured: cur.measured } : {}),
-    ...(setups.length > 1 || cur.name !== 'Setup 1' ? { setups: { at: i, name: cur.name, turn: cur.turn, others: setups.filter((_, k) => k !== i) } } : {}),
+    ...(setups.length > 1 || cur.name !== 'Setup 1' ? { setups: { at: i, name: cur.name, turn: cur.turn, ...(cur.from ? { from: cur.from } : {}), others: setups.filter((_, k) => k !== i) } } : {}),
   };
 }
 
@@ -136,13 +162,14 @@ export function switchSetup(job: Job, i: number): Job {
 /**
  * The size of what the setup in hand leaves, as a plain block: the stock, less what was faced
  * off the top, and cut down to the outline where a contour went round the outside to full depth
- * (then `ox`, `oy` say where that part's front-left corner is in this setup's coordinates).
+ * (then `ox`, `oy` say where that part's front-left corner is in this setup's coordinates; `oz`
+ * is its top there).
  */
-export function leftBy(job: Job, analysis: Analysis): { x: number; y: number; z: number; ox: number; oy: number } {
+export function leftBy(job: Job, analysis: Analysis): CarriedFrom {
   const st = job.stock;
   if (st.kind !== 'block') throw new CamError('setups are for the mill');
   const m = analysis.material;
-  if (!(m instanceof MillMaterial)) return { x: st.x, y: st.y, z: st.z, ox: 0, oy: 0 };
+  if (!(m instanceof MillMaterial)) return { x: st.x, y: st.y, z: st.z, ox: 0, oy: 0, oz: st.top };
   const floor = st.top - st.z;
   // the pieces of material that hang together; the part is the largest one that the cut has
   // freed from the edge of the stock (the frame left around it stays behind), else everything
@@ -182,22 +209,24 @@ export function leftBy(job: Job, analysis: Analysis): { x: number; y: number; z:
   const all = pieces.reduce<Piece | null>((u, q) => (u ? { x0: Math.min(u.x0, q.x0), x1: Math.max(u.x1, q.x1), y0: Math.min(u.y0, q.y0), y1: Math.max(u.y1, q.y1), top: Math.max(u.top, q.top), n: u.n + q.n, edge: true } : q), null);
   const part = freed ?? all;
   const { x0, x1, y0, y1, top } = part ?? { x0: 0, x1: 0, y0: 0, y1: 0, top: -Infinity };
-  if (!Number.isFinite(top)) return { x: st.x, y: st.y, z: st.z, ox: 0, oy: 0 };
+  if (!Number.isFinite(top)) return { x: st.x, y: st.y, z: st.z, ox: 0, oy: 0, oz: st.top };
   const round = (v: number) => Math.round(v * 10) / 10;
   // (ox, oy: where the part's front-left corner is in this setup's coordinates)
-  return { x: round(Math.min(st.x, (x1 - x0) * m.cell)), y: round(Math.min(st.y, (y1 - y0) * m.cell)), z: round(top - floor), ox: freed ? round(x0 * m.cell) : 0, oy: freed ? round(y0 * m.cell) : 0 };
+  return { x: round(Math.min(st.x, (x1 - x0) * m.cell)), y: round(Math.min(st.y, (y1 - y0) * m.cell)), z: round(top - floor), ox: freed ? round(x0 * m.cell) : 0, oy: freed ? round(y0 * m.cell) : 0, oz: round(top) };
 }
 
 /**
  * Add a setup after the one in hand and take it in hand: the block turned as said, as large as
- * `size` (what the setup before leaves; see `leftBy`) lying the new way, nothing cut yet.
+ * `size` (what the setup before leaves; see `leftBy`) lying the new way, nothing cut yet. Given
+ * what `leftBy` says, the new setup remembers which piece it is, and the part comes over as it
+ * was left (carry.ts). Unlink it (`plainSetup`) to start from a plain block instead.
  */
-export function addSetup(job: Job, turn: Turn, name: string | undefined, size: { x: number; y: number; z: number }): Job {
+export function addSetup(job: Job, turn: Turn, name: string | undefined, size: CarriedFrom | { x: number; y: number; z: number }): Job {
   if (job.machine.kind !== 'mill' || job.stock.kind !== 'block') throw new CamError('setups are for the mill: the lathe has one clamping per job for now');
   const { setups, at } = setupList(job);
   if (setups.length >= 12) throw new CamError('twelve setups are the most a job takes');
   const t = turnedSize(turn, size);
-  const fresh: SetupPart = { name: name?.trim() || `${turnLabel(turn)}`, turn, stock: { kind: 'block', x: t.x, y: t.y, z: t.z, top: 0 }, operations: [], obstacles: [] };
+  const fresh: SetupPart = { name: name?.trim() || `${turnLabel(turn)}`, turn, ...('oz' in size ? { from: size } : {}), stock: { kind: 'block', x: t.x, y: t.y, z: t.z, top: 0 }, operations: [], obstacles: [] };
   // names tell setups apart
   let n = fresh.name;
   for (let k = 2; setups.some((s) => s.name === n); k++) n = `${fresh.name} ${k}`;
@@ -224,4 +253,11 @@ export function renameSetup(job: Job, name: string): Job {
   const n = name.trim();
   if (!n) return job;
   return withSetup(job, setups.map((s, k) => (k === at ? { ...s, name: n } : s)), at);
+}
+
+/** The setup in hand as a plain block: what the setups before cut is no longer carried into it. */
+export function plainSetup(job: Job): Job {
+  if (!job.setups?.from) return job;
+  const { from: _f, ...rest } = job.setups;
+  return { ...job, setups: rest };
 }

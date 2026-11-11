@@ -3,7 +3,7 @@
    * The clampings of the part (mill): which one is in hand, and adding one with the block turned.
    * Everything else in the job pane, the preview and the machine works on the one in hand.
    */
-  import { TURNS, addSetup, faceAfter, leftBy, mapPoint, removeSetup, renameSetup, setupList, switchSetup, turnedSize, type Turn } from '@swarf/cam';
+  import { TURNS, addSetup, faceAfter, leftBy, mapPoint, plainSetup, removeSetup, renameSetup, setupList, switchSetup, turnedSize, type Turn } from '@swarf/cam';
   import { files } from './files.svelte.ts';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
@@ -52,14 +52,17 @@
   let px = $state(0);
   let py = $state(0);
   let pz = $state(0);
+  const linked = $derived(!!job.setups?.from);
   const carried = $derived.by(() => {
     if (!before || before.stock.kind !== 'block' || job.stock.kind !== 'block' || !job.setups) return null;
-    // the block before, as large as this one lying the old way (what that setup left)
     const t = job.setups.turn;
-    const back = turnedSize(t === 'front-up' ? 'back-up' : t === 'back-up' ? 'front-up' : t === 'left-up' ? 'right-up' : t === 'right-up' ? 'left-up' : t === 'quarter' ? 'quarter' : t, job.stock);
-    const from = { kind: 'block' as const, x: back.x, y: back.y, z: back.z, top: 0 };
-    const q = mapPoint(t, from, job.stock, { x: px || 0, y: py || 0, z: pz || 0 });
-    return q;
+    const f = job.setups.from;
+    const p = { x: px || 0, y: py || 0, z: pz || 0 };
+    // the piece of the setup before that this block is, where it lay there
+    if (f) return mapPoint(t, { kind: 'block', x: f.x, y: f.y, z: f.z, top: f.oz }, job.stock, { x: p.x - f.ox, y: p.y - f.oy, z: p.z });
+    // not linked: take this block, lying the old way, for it
+    const back = turnedSize(t === 'front-up' ? 'back-up' : t === 'back-up' ? 'front-up' : t === 'left-up' ? 'right-up' : t === 'right-up' ? 'left-up' : t, job.stock);
+    return mapPoint(t, { kind: 'block', x: back.x, y: back.y, z: back.z, top: 0 }, job.stock, p);
   });
   const n2 = (v: number) => (Math.round(v * 100) / 100).toString();
 </script>
@@ -102,14 +105,18 @@
         <summary>{TURNS.find((t) => t.turn === job.setups?.turn)?.label ?? ''} from setup {list.at}: where is what?</summary>
         <p class="small">{TURNS.find((t) => t.turn === job.setups?.turn)?.how}</p>
         {#if carried}
-          <p class="small muted">A point of setup {list.at} (measured from the part's front-left corner there, Z from its top), in this setup:</p>
+          <p class="small muted">A point in setup {list.at}'s coordinates{linked ? '' : " (from the block's front-left corner there, Z from its top)"}, in this setup:</p>
           <div class="pt">
             <label>X <input type="number" step="0.1" bind:value={px} /></label>
             <label>Y <input type="number" step="0.1" bind:value={py} /></label>
             <label>Z <input type="number" step="0.1" bind:value={pz} /></label>
             <span class="is">is X {n2(carried.x)}  Y {n2(carried.y)}  Z {n2(carried.z)}</span>
           </div>
-          <p class="small muted">Taking this block for what setup {list.at} left: if you changed its size since, the numbers are off by that.</p>
+          {#if linked}
+            <p class="small muted">The part comes over as setup {list.at} leaves it: its pockets and holes are in this setup's stock, and the preview shows them. <button class="link" onclick={() => store.set(plainSetup($state.snapshot(job) as typeof job))}>Start from a plain block instead</button></p>
+          {:else}
+            <p class="small muted">This setup starts from a plain block: what setup {list.at} cut is not in it. The numbers take this block, lying the old way, for what that setup left.</p>
+          {/if}
         {/if}
       </details>
     {/if}
@@ -134,6 +141,7 @@
   .turned { font-size: 12.5px; }
   .turned summary { cursor: pointer; color: var(--link); font-weight: 600; }
   .turned p { margin-top: 6px; }
+  .link { border: 0; background: none; padding: 0; color: var(--link); font-weight: 600; text-decoration: underline; }
   .pt { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 6px 0; }
   .pt label { gap: 4px; }
   .pt input { width: 62px; flex: none; }

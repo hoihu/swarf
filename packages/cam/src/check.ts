@@ -6,6 +6,7 @@
 import { generate, retract, withIds, type Diagnostic } from './generate.ts';
 import { walk, type Program } from './program.ts';
 import { alignmentChecks } from './align.ts';
+import { carried } from './carry.ts';
 import { plannedSeconds } from './planner.ts';
 import type { Job, Tool, Vec3 } from './schema.ts';
 import { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
@@ -30,7 +31,8 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
   const lathe = program.kind === 'lathe';
   /** Operations that take a small bite over the depth of the flutes (adaptive clearing). */
   const lightOps = new Set(withIds(job.operations).filter((o) => 'strategy' in o && o.strategy === 'adaptive').map((o) => o.id!));
-  const material = job.stock.kind === 'bar' ? new LatheMaterial(job.stock) : new MillMaterial(job.stock);
+  // (a later setup of a part starts from what the ones before left: carry.ts)
+  const material = job.stock.kind === 'bar' ? new LatheMaterial(job.stock) : new MillMaterial(job.stock, undefined, carried(job));
   if ((lathe && !(material instanceof LatheMaterial)) || (!lathe && !(material instanceof MillMaterial))) return { material: null, diagnostics };
 
   const env = job.machine.envelope;

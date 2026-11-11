@@ -190,7 +190,7 @@ export function chuckMesh(chuckZ: number, diameter: number): THREE.Mesh {
   return new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: COLORS.chuck, metalness: 0.4, roughness: 0.6 }));
 }
 
-/** The milled block: height map as a stepped top surface plus walls down to the bottom. */
+/** The milled block: a stepped top surface from the height map, walls down to the bottom, and the hollows a part brought with it from earlier setups. */
 export function millMesh(m: MillMaterial, look: WorkLook = PLAIN): THREE.Group {
   const group = new THREE.Group();
   // resample to at most ~250 cells per side for the mesh
@@ -220,24 +220,72 @@ export function millMesh(m: MillMaterial, look: WorkLook = PLAIN): THREE.Group {
   };
   const P = (x: number, y: number, z: number) => [x, z, -y];
   const bottom = m.bottom;
-  const H = (i: number, j: number) => (i < 0 || j < 0 || i >= nx || j >= ny ? bottom : heights[j * nx + i]!);
+  // Each column's metal as stretches of Z, bottom up. Cut from above only, that is one stretch
+  // from the bottom to the height map; a part that came over from an earlier setup may have
+  // hollows under its top (a pocket that is now in a side wall), kept in m.spans.
+  const NONE: number[] = [];
+  const columns: number[][] = new Array(nx * ny);
   for (let j = 0; j < ny; j++) {
     for (let i = 0; i < nx; i++) {
       const h = heights[j * nx + i]!;
+      let c: number[];
+      if (h <= bottom + 1e-4) c = NONE;
+      else if (!m.spans) c = [bottom, h];
+      else {
+        c = [];
+        const k0 = Math.min(m.ny - 1, j * k) * m.nx + Math.min(m.nx - 1, i * k);
+        for (let a = m.spans.at[k0]!; a < m.spans.at[k0 + 1]!; a += 2) {
+          const z0 = m.spans.z[a]!;
+          const z1 = Math.min(h, m.spans.z[a + 1]!);
+          if (z1 > z0 + 1e-4) c.push(z0, z1);
+        }
+      }
+      columns[j * nx + i] = c;
+    }
+  }
+  const colOf = (i: number, j: number) => (i < 0 || j < 0 || i >= nx || j >= ny ? NONE : columns[j * nx + i]!);
+  /** The parts of [a, b] that the other column's stretches do not cover: where a wall shows. */
+  const bare = (a: number, b: number, other: number[], out: number[]) => {
+    let lo = a;
+    for (let n = 0; n < other.length && lo < b; n += 2) {
+      const o0 = other[n]!;
+      const o1 = other[n + 1]!;
+      if (o1 <= lo) continue;
+      if (o0 >= b) break;
+      if (o0 > lo + 1e-4) out.push(lo, o0);
+      lo = Math.max(lo, o1);
+    }
+    if (lo < b - 1e-4) out.push(lo, b);
+  };
+  const gaps: number[] = [];
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const c = columns[j * nx + i]!;
+      if (!c.length) continue;
       const x0 = i * cw;
       const x1 = Math.min(m.sx, (i + 1) * cw);
       const y0 = j * cw;
       const y1 = Math.min(m.sy, (j + 1) * cw);
-      if (h > bottom + 1e-4) quad(P(x0, y0, h), P(x1, y0, h), P(x1, y1, h), P(x0, y1, h), h >= m.top - 1e-4);
-      // walls towards lower neighbours (+x, -x, +y, -y); the block's own outside is raw
-      const hx1 = H(i + 1, j);
-      if (hx1 < h) quad(P(x1, y0, hx1), P(x1, y1, hx1), P(x1, y1, h), P(x1, y0, h), i + 1 >= nx);
-      const hx0 = H(i - 1, j);
-      if (hx0 < h) quad(P(x0, y1, hx0), P(x0, y0, hx0), P(x0, y0, h), P(x0, y1, h), i === 0);
-      const hy1 = H(i, j + 1);
-      if (hy1 < h) quad(P(x1, y1, hy1), P(x0, y1, hy1), P(x0, y1, h), P(x1, y1, h), j + 1 >= ny);
-      const hy0 = H(i, j - 1);
-      if (hy0 < h) quad(P(x0, y0, hy0), P(x1, y0, hy0), P(x1, y0, h), P(x0, y0, h), j === 0);
+      for (let n = 0; n < c.length; n += 2) {
+        const z0 = c[n]!;
+        const z1 = c[n + 1]!;
+        // the top of the stretch, and its underside where a hollow is below it
+        quad(P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1), z1 >= m.top - 1e-4);
+        if (z0 > bottom + 1e-4) quad(P(x0, y1, z0), P(x1, y1, z0), P(x1, y0, z0), P(x0, y0, z0), false);
+        // walls where the neighbour has no metal beside it (+x, -x, +y, -y); the block's own outside is raw
+        gaps.length = 0;
+        bare(z0, z1, colOf(i + 1, j), gaps);
+        for (let q = 0; q < gaps.length; q += 2) quad(P(x1, y0, gaps[q]!), P(x1, y1, gaps[q]!), P(x1, y1, gaps[q + 1]!), P(x1, y0, gaps[q + 1]!), i + 1 >= nx);
+        gaps.length = 0;
+        bare(z0, z1, colOf(i - 1, j), gaps);
+        for (let q = 0; q < gaps.length; q += 2) quad(P(x0, y1, gaps[q]!), P(x0, y0, gaps[q]!), P(x0, y0, gaps[q + 1]!), P(x0, y1, gaps[q + 1]!), i === 0);
+        gaps.length = 0;
+        bare(z0, z1, colOf(i, j + 1), gaps);
+        for (let q = 0; q < gaps.length; q += 2) quad(P(x1, y1, gaps[q]!), P(x0, y1, gaps[q]!), P(x0, y1, gaps[q + 1]!), P(x1, y1, gaps[q + 1]!), j + 1 >= ny);
+        gaps.length = 0;
+        bare(z0, z1, colOf(i, j - 1), gaps);
+        for (let q = 0; q < gaps.length; q += 2) quad(P(x0, y0, gaps[q]!), P(x1, y0, gaps[q]!), P(x1, y0, gaps[q + 1]!), P(x0, y0, gaps[q + 1]!), j === 0);
+      }
     }
   }
   const g = new THREE.BufferGeometry();

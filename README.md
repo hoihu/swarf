@@ -367,11 +367,23 @@ are shared. The whole part is one job file.
 - **The assistant** can add and switch setups (it is told to plan them before the operations:
   what must line up goes in one setup, the first cuts the faces the next is pushed against).
 
-What it does not do yet: the new setup's stock is a plain block. The pockets and holes of the
-setups before are not in it, so the preview does not show them and the checks take the block
-for solid (a cut into an earlier pocket is checked as if the metal were there, which errs on
-the careful side). Nothing checks that features of different setups meet. It is for the mill;
-the lathe has one clamping per job. And as everything: tried on the simulator only.
+**The part comes over as it was left.** A new setup remembers which piece of the setup before
+its block is, and starts from that piece with everything cut into it. Each setup cuts from
+above, so what it leaves is whatever lies under its height map; turned, that is no longer a
+height map (a pocket in the old top is a hollow in a side wall), so the part is kept per column
+as the stretches of Z that are metal. The preview shows it: the pocket in the wall, a hole as a
+tunnel, the underside's holes coming through. The checks start from it too: a hole drilled
+where the setup before already drilled is air, an outline cut round the part in the first setup
+is the block of the second. A change in an earlier setup reaches the later ones. Working this
+out takes a few tenths of a second once per change of the earlier setups; "Start from a plain
+block instead" (under "where is what?") cuts the link.
+
+What it does not do: under the top of a column the checks still take the block for solid, so a
+cutter that breaks into a hollow from above is checked as if metal were there (the careful
+side; the picture shows the truth once the top is cut away). Hollows are told to the size of
+a grid cell (0.2 to 0.3 mm). Nothing checks that features of different setups meet where you
+meant them to: look at the preview. Setups are for the mill; the lathe has one clamping per
+job. And as everything: tried on the simulator only.
 
 ## Adaptive clearing
 

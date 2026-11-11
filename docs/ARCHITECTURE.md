@@ -39,6 +39,10 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   in `emit()`: the program turned about the zero, followed cuts in short pieces at the surface's
   height. Checks and preview stay on the block as drawn; `alignmentChecks` says what that leaves
   open.
+- **Setups** (`cam/src/setups.ts`, `carry.ts`): the job is one setup; the others wait in
+  `job.setups` and switching swaps them. `carried(job)` gives the setup in hand its start: the
+  part of the setup before, turned, as columns of metal (`MillMaterial.spans`) with the height
+  map on top; cached on everything that decides it.
 - **Files and the sheet** (`cam/src/jobfile.ts`, `sheet.ts`): a job file and a tool library file
   are JSON read back through the schema; `setupSheet(job, analysis)` gives the setup sheet as
   data (per-tool and per-operation times from the planner, reach, travel), which

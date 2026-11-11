@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EXAMPLES, emptyJob, mapPoint, faceAfter, turnedSize, setupList, setupJobs, switchSetup, addSetup, removeSetup, renameSetup, leftBy,
+  EXAMPLES, emptyJob, carried, plainSetup, unmapPoint, mapPoint, faceAfter, turnedSize, setupList, setupJobs, switchSetup, addSetup, removeSetup, renameSetup, leftBy,
   alignProgram, surfaceAt, isAligned, reviewJob, adaptivePlans, offsetRegion, inRegion,
   jobFile, openJobFile, libraryFile, openLibraryFile, keepTool, dropTool, takeTool, inLibrary, setupSheet, cutLines, toolSummary,
   Job,
@@ -1583,7 +1583,7 @@ describe('a part in several setups', () => {
     const first = Job.parse({ ...EXAMPLES.mill(), notes: 'in the vise', obstacles: [{ name: 'jaw', x0: -5, y0: 50, x1: 85, y1: 60, top: 5 }] });
     const size = leftBy(first, analyze(first));
     // the example faces 0.5 off a 15 mm block and cuts no outline
-    expect(size).toEqual({ x: 80, y: 50, z: 14.5, ox: 0, oy: 0 });
+    expect(size).toEqual({ x: 80, y: 50, z: 14.5, ox: 0, oy: 0, oz: 0 });
     let job = addSetup(first, 'front-up', undefined, size);
     expect(job.setups).toMatchObject({ at: 1, name: 'Front face up', turn: 'front-up' });
     expect(job.stock).toEqual({ kind: 'block', x: 80, y: 14.5, z: 50, top: 0 });
@@ -1631,5 +1631,126 @@ describe('a part in several setups', () => {
     // and where it sits in the stock it was cut from
     expect(Math.abs(s.ox - 10)).toBeLessThanOrEqual(0.3);
     expect(Math.abs(s.oy - 10)).toBeLessThanOrEqual(0.3);
+  });
+});
+
+describe('the part carried over a turn', () => {
+  // setup 1: a pocket in the top (X20..60, Y15..35, 5 deep) and a Ø5 hole through at X8 Y8
+  const first = withOps('mill', [
+    { type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 40, h: 20, zBottom: -5, zTop: 0, finish: 0 },
+    { type: 'mill_drill', tool: 3, points: [{ x: 8, y: 8 }], zBottom: -17, zTop: 0, peck: 3 },
+  ], { stock: { kind: 'block', x: 80, y: 50, z: 15, top: 0 } });
+  const turned = (turn: 'front-up' | 'over-y') => addSetup(first, turn, undefined, leftBy(first, analyze(first)));
+  const spansAt = (m: MillMaterial, x: number, y: number) => {
+    const k = Math.floor(y / m.cell) * m.nx + Math.floor(x / m.cell);
+    const out: number[] = [];
+    for (let a = m.spans!.at[k]!; a < m.spans!.at[k + 1]!; a++) out.push(Math.round(m.spans!.z[a]! * 10) / 10);
+    return out;
+  };
+
+  it('there and back is the same point', () => {
+    const a = { kind: 'block' as const, x: 80, y: 50, z: 15, top: 0.5 };
+    for (const turn of ['over-y', 'over-x', 'front-up', 'back-up', 'left-up', 'right-up', 'quarter', 'none'] as const) {
+      const b = { kind: 'block' as const, ...turnedSize(turn, a), top: 0 };
+      const p = { x: 12, y: 7, z: -3 };
+      const q = unmapPoint(turn, a, b, mapPoint(turn, a, b, p));
+      expect([q.x, q.y, q.z].map((v) => Math.round(v * 1e6) / 1e6)).toEqual([12, 7, -3]);
+    }
+  });
+
+  it('flipped over: the pocket is underneath, the hole shows from above', () => {
+    const job = turned('over-y');
+    expect(job.setups!.from).toEqual({ x: 80, y: 50, z: 15, ox: 0, oy: 0, oz: 0 });
+    const m = analyze(job).material as MillMaterial;
+    const at = (x: number, y: number) => m.h[Math.floor(y / m.cell) * m.nx + Math.floor(x / m.cell)]!;
+    // the top (the old underside) is whole, but for the hole: now 8 from the RIGHT
+    expect(at(40, 25)).toBeCloseTo(0, 5);
+    expect(at(72, 8)).toBeCloseTo(-15, 5);
+    expect(at(8, 8)).toBeCloseTo(0, 5);
+    // under the top where the pocket is: metal from 10 below the top only (the pocket is the 5 under that)
+    const s = spansAt(m, 40, 25);
+    expect(s).toHaveLength(2);
+    expect(Math.abs(s[0]! - -10)).toBeLessThanOrEqual(0.3);
+    expect(s[1]).toBe(0);
+    expect(spansAt(m, 10, 40).map((v) => Math.round(v))).toEqual([-15, 0]);
+    expect(spansAt(m, 72, 8)).toEqual([]);
+  });
+
+  it('front face up: the pocket is a hollow in the back wall, the hole a tunnel from front to back', () => {
+    const job = turned('front-up');
+    expect(job.stock).toMatchObject({ x: 80, y: 15, z: 50 });
+    const m = analyze(job).material as MillMaterial;
+    // the old top is at the back (Y 15): 5 deep from there, between 15 and 35 under the new top
+    const s = spansAt(m, 40, 13);
+    expect(s).toHaveLength(4);
+    expect(s[0]).toBe(-50);
+    expect(Math.abs(s[1]! - -35)).toBeLessThanOrEqual(0.3);
+    expect(Math.abs(s[2]! - -15)).toBeLessThanOrEqual(0.3);
+    expect(s[3]).toBe(0);
+    // in front of the pocket's floor the column is whole
+    expect(spansAt(m, 40, 5).map((v) => Math.round(v))).toEqual([-50, 0]);
+    // the hole: 8 from the old front is 8 under the new top, through from front to back
+    for (const y of [1, 7, 14]) {
+      const t = spansAt(m, 8, y);
+      expect(t).toHaveLength(4);
+      expect(Math.abs(t[1]! - -10.5)).toBeLessThanOrEqual(0.4);
+      expect(Math.abs(t[2]! - -5.5)).toBeLessThanOrEqual(0.4);
+    }
+    // nothing is cut yet: the top is whole
+    expect(Math.min(...m.h)).toBeCloseTo(0, 5);
+  });
+
+  it('cutting goes on from there: air where the setup before cut, metal elsewhere', () => {
+    // flipped, a hole drilled where the first setup's hole comes out: nothing to cut
+    const air = Job.parse({ ...turned('over-y'), operations: [{ type: 'mill_drill', tool: 3, points: [{ x: 72, y: 8 }], zBottom: -10, zTop: 0, peck: 3 }] });
+    const plain = plainSetup(air);
+    expect(plain.setups!.from).toBeUndefined();
+    const cut = (j: Job) => {
+      const before = carried(j);
+      const m = analyze(j).material as MillMaterial;
+      let n = 0;
+      for (let k = 0; k < m.h.length; k++) if (m.h[k]! < (before ? before.h[k]! : 0) - 0.01) n++;
+      return n;
+    };
+    expect(cut(air)).toBe(0);
+    expect(cut(plain)).toBeGreaterThan(50);
+    // a pocket from the new top down to the old one's floor: they meet, and the column is empty of metal above
+    const through = Job.parse({ ...turned('over-y'), operations: [{ type: 'mill_pocket_rect', tool: 1, x: 25, y: 20, w: 30, h: 10, zBottom: -10, zTop: 0, finish: 0 }] });
+    const m = analyze(through).material as MillMaterial;
+    expect(m.h[Math.floor(25 / m.cell) * m.nx + Math.floor(40 / m.cell)]!).toBeCloseTo(-10, 5);
+    expect(hasErrors(analyze(through).diagnostics)).toBe(false);
+  });
+
+  it('a third setup carries both before it; a change in the first reaches the last; a plain block does not', () => {
+    let job = Job.parse({ ...turned('over-y'), operations: [{ type: 'mill_drill', tool: 3, points: [{ x: 40, y: 42 }], zBottom: -17, zTop: 0, peck: 3 }] });
+    job = addSetup(job, 'front-up', undefined, leftBy(job, analyze(job)));
+    const m = analyze(job).material as MillMaterial;
+    // setup 2's hole (X40 Y42 there): after front-up it is 42 under the top, through front to back
+    const t = spansAt(m, 40, 7);
+    expect(t).toHaveLength(4);
+    expect(Math.abs((t[1]! + t[2]!) / 2 - -42)).toBeLessThanOrEqual(0.4);
+    // setup 1's hole: flipped to X72, then front-up: 8 under the top
+    const u = spansAt(m, 72, 7);
+    expect(Math.abs((u[1]! + u[2]!) / 2 - -8)).toBeLessThanOrEqual(0.4);
+    // setup 1's pocket, on the underside in setup 2, is now at the FRONT (Y 0..5)
+    // (with setup 2's tunnel under it, which runs through every column at X40)
+    expect(spansAt(m, 40, 2)).toHaveLength(6);
+    expect(spansAt(m, 40, 12)).toHaveLength(4);
+    // take the pocket out of the first setup: it is gone from the third
+    const first2 = switchSetup(job, 0);
+    const without = switchSetup({ ...first2, operations: first2.operations.slice(1) }, 2);
+    const m2 = analyze(without).material as MillMaterial;
+    expect(spansAt(m2, 40, 2)).toHaveLength(4);
+    // and as a plain block nothing comes over
+    expect((analyze(plainSetup(job)).material as MillMaterial).spans).toBeNull();
+    expect(carried(first)).toBeNull();
+  });
+
+  it('is quick the second time', () => {
+    const job = turned('front-up');
+    analyze(job);
+    const t0 = performance.now();
+    for (let i = 0; i < 20; i++) carried(job);
+    expect((performance.now() - t0) / 20).toBeLessThan(15);
   });
 });

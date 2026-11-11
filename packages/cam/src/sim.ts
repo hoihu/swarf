@@ -171,6 +171,12 @@ function lifter(tool: Tool): (d2: number) => number {
   return (d2) => Math.max(0, Math.sqrt(d2) - tip) * slope;
 }
 
+/** Stretches of metal per column of a height map's grid (see MillMaterial.spans). */
+export interface Spans {
+  at: Uint32Array;
+  z: Float32Array;
+}
+
 export class MillMaterial {
   readonly cell: number;
   readonly nx: number;
@@ -181,8 +187,14 @@ export class MillMaterial {
   readonly h: Float32Array;
   readonly sx: number;
   readonly sy: number;
+  /**
+   * What earlier setups left of each column, when the part came over from one: the stretches of Z
+   * that are metal, bottom up (`z[at[k] .. at[k + 1]]` in pairs for cell k). The height map is
+   * the top of the highest one; below it there may be hollows a view from above cannot hold.
+   */
+  readonly spans: Spans | null;
 
-  constructor(stock: Extract<Stock, { kind: 'block' }>, cell?: number) {
+  constructor(stock: Extract<Stock, { kind: 'block' }>, cell?: number, start?: { h: Float32Array; spans: Spans } | null) {
     this.cell = cell ?? Math.max(0.2, Math.min(1, Math.max(stock.x, stock.y) / 300));
     this.sx = stock.x;
     this.sy = stock.y;
@@ -191,6 +203,11 @@ export class MillMaterial {
     this.top = stock.top;
     this.bottom = stock.top - stock.z;
     this.h = new Float32Array(this.nx * this.ny).fill(stock.top);
+    this.spans = null;
+    if (start && start.h.length === this.h.length) {
+      this.h.set(start.h);
+      this.spans = start.spans;
+    }
   }
 
   /** Calls fn for every cell whose centre lies within `radius` of p (with its distance from p, squared). */
