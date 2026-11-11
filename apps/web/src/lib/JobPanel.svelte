@@ -10,7 +10,7 @@
   import { store } from './store.svelte.ts';
   import { OP_TEMPLATES } from './ops.ts';
   import { download as saveAs, fileName, files } from './files.svelte.ts';
-  import { inLibrary, toolSummary } from '@swarf/cam';
+  import { inLibrary, reviewJob, toolSummary } from '@swarf/cam';
 
   type Tab = 'ops' | 'stock' | 'tools' | 'gcode' | 'machine';
   let tab = $state<Tab>('ops');
@@ -19,6 +19,8 @@
   const diags = $derived(store.analysis.diagnostics);
   const errorsByOp = $derived(new Map(job.operations.map((o) => [o.id!, diags.filter((d) => d.opId === o.id)])));
   const jobLevel = $derived(diags.filter((d) => !d.opId));
+
+  const look = $derived(reviewJob(job, store.analysis));
 
   // ---- operation editing: a form per operation, applied as soon as it is valid
   /** The selected operation's values while they do not validate yet. */
@@ -262,6 +264,17 @@
           </li>
         {/each}
       </ol>
+      {#if look.length}
+        <details class="add look">
+          <summary>Worth a look ({look.length})</summary>
+          <p class="muted small">Not errors: what a machinist would stop at before running this. "Review" in the assistant's pane weighs them for this part.</p>
+          <ul>
+            {#each look as f, i (i)}
+              <li>{#if f.opId}<button class="link" onclick={() => (store.selected = f.opId ?? null)}>{f.opId}</button> {/if}{f.text}</li>
+            {/each}
+          </ul>
+        </details>
+      {/if}
       <details class="add">
         <summary>Add an operation</summary>
         <div class="grid">
@@ -434,6 +447,8 @@
   textarea { width: 100%; border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 8px; background: var(--panel); font: inherit; resize: vertical; }
   .lib { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   .lib li { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--line-2); border-radius: 8px; padding: 5px 8px; }
+  .look ul { margin: 4px 0 0; padding-left: 16px; font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
+  .link { border: 0; background: none; padding: 0; color: var(--link); font-weight: 600; text-decoration: underline; }
   .add summary { cursor: pointer; color: var(--ink-2); font-weight: 600; padding: 4px 0; }
   label { display: grid; grid-template-columns: 1fr 110px auto; align-items: center; gap: 8px; margin: 6px 0; color: var(--ink-2); }
   label.wide { grid-template-columns: 1fr 2fr; margin-top: 14px; }

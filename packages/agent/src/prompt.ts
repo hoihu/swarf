@@ -1,7 +1,7 @@
 /**
  * System prompt (static, cacheable) and the per-turn job state that travels with each user message.
  */
-import { MATERIALS, analyze, area, bbox, cuttingData, opLabel, profileFromDrawing, type Job } from '@swarf/cam';
+import { MATERIALS, reviewJob, analyze, area, bbox, cuttingData, opLabel, profileFromDrawing, type Job } from '@swarf/cam';
 import { formatDiagnostics } from './tools.ts';
 
 /** How to build jobs: shared by the in-app agent and the MCP instructions for Claude Code. */
@@ -25,6 +25,7 @@ How to build a job:
 - BELOW_STOCK (a warning) means a cut goes through the block into what it sits on (through holes, an outside contour to full depth): fine with a sacrificial plate or parallels clear of it; say so to the user rather than changing the depth, unless they did not want it through.
 - Obstacles (clamps, vise jaws from the laser scan) are in the job state. An OBSTACLE error on a rapid means the clearance height is below the obstacle's top: tell the user to raise the clearance in the machine settings; on a cut, keep the operation away from it (a facing pass runs past the stock by the cutter's radius).
 - Every edit answers with the checks. Errors must be fixed before you finish; warnings you can leave if they are intended (say so).
+- When the user asks you to review the job (or what you would change): do not edit anything. Go through it as a machinist would before pressing start: how the work is held and whether the cuts respect that, the order of operations, each tool's reach and stiffness for what it is asked to do, speeds and depths for the material, what the checks left as warnings, and the "worth a look" list in the job state (computed facts: weigh them, drop what does not matter for this part, add what they miss). Answer with the two or three things you would change first, each with why and what to do, then one line on what looks right. Offer to make the changes; make them only when asked.
 - If the request is ambiguous in a way that changes the part (a missing dimension, inside or outside, which end), ask one question rather than guess. Do not ask about things you can decide sensibly (number of passes, clearances).`;
 
 export const SYSTEM_PROMPT = `You are the CAM agent inside swarf, a browser app that turns a machinist's description of a part into G-code for a hobby CNC lathe or mill running grblHAL. You never write G-code yourself: you build the job from parametric operations with tools, and a deterministic generator turns them into toolpaths, checks them (machine travel, chuck, rapids into material, depth of cut) and writes a deliberately simple G-code subset. The user sees a 3D preview and the G-code and runs it themselves.
@@ -100,6 +101,11 @@ export function formatJobContext(job: Job): string {
   } else lines.push('operations: none yet');
   lines.push(formatDiagnostics(a.diagnostics));
   if (a.moves) lines.push(`estimated time: ${Math.round(a.seconds / 6) / 10} min`);
+  const look = reviewJob(job, a);
+  if (look.length) {
+    lines.push('worth a look (computed; not errors):');
+    for (const f of look) lines.push(`  ${f.code}${f.opId ? ` ${f.opId}` : ''}: ${f.text}`);
+  }
   lines.push('</job_state>');
   return lines.join('\n');
 }

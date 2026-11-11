@@ -61,6 +61,16 @@ describe('material', () => {
   });
 });
 
+describe('review', () => {
+  it('the job state carries what is worth a look, for a review to start from', () => {
+    const job = { ...EXAMPLES.mill(), operations: [...EXAMPLES.mill().operations].reverse() };
+    const ctx = formatJobContext(job);
+    expect(ctx).toMatch(/worth a look \(computed; not errors\):\n {2}ORDER_FACE op1: /);
+    expect(ctx).toContain('HOLDING_UNKNOWN: Nothing is entered about how the block is held');
+    expect(formatJobContext(EXAMPLES.lathe())).not.toContain('worth a look');
+  });
+});
+
 describe('drawings', () => {
   it('summarises drawings for the model and moves them with place_shape', () => {
     const shape = { id: 's1', name: 'plate.dxf', at: { x: 0, y: 0 }, paths: [{ closed: true, pts: [[0, 0], [40, 0], [40, 30], [0, 30]] as [number, number][] }, { closed: false, pts: [[5, 5], [10, 5]] as [number, number][] }] };

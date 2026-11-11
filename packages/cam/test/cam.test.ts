@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EXAMPLES,
-  alignProgram, surfaceAt, isAligned,
+  EXAMPLES, emptyJob,
+  alignProgram, surfaceAt, isAligned, reviewJob,
   jobFile, openJobFile, libraryFile, openLibraryFile, keepTool, dropTool, takeTool, inLibrary, setupSheet, cutLines, toolSummary,
   Job,
   LatheMaterial,
@@ -1302,5 +1302,70 @@ describe('the block as measured on the machine', () => {
     const cuts = xyz(emit(job, analyze(job).program).text).filter((p) => p.g === '1' && p.z < top(p.x, p.y) - 0.1);
     expect(cuts.length).toBeGreaterThan(10);
     for (const p of cuts) expect(p.z).toBeCloseTo(top(p.x, p.y) - 0.2, 2);
+  });
+});
+
+describe('worth a look', () => {
+  const look = (job: Job) => reviewJob(job, analyze(job)).map((f) => f.code);
+
+  it('has little to say about the examples', () => {
+    expect(look(EXAMPLES.lathe())).toEqual([]);
+    // the mill example says nothing of what holds the block
+    expect(look(EXAMPLES.mill())).toEqual(['HOLDING_UNKNOWN']);
+    expect(reviewJob(emptyJob('mill'), analyze(emptyJob('mill')))).toEqual([]);
+  });
+
+  it('mill: the order, a deep thin cutter, a thin floor, a part cut free', () => {
+    const job = withOps('mill', [
+      { type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 40, h: 20, zBottom: -14.2, zTop: 0 },
+      { type: 'mill_face', tool: 2, z: 0 },
+      { type: 'mill_drill', tool: 3, points: [{ x: 8, y: 8 }], zBottom: -10, zTop: 0, peck: 3 },
+      { type: 'mill_spot', tool: 4, points: [{ x: 8, y: 8 }], diameter: 3 },
+      { type: 'mill_chamfer', tool: 4, x: 5, y: 5, w: 70, h: 40, size: 0.5, side: 'outside' },
+      { type: 'mill_contour_rect', tool: 1, x: 5, y: 5, w: 70, h: 40, zBottom: -15, side: 'outside' },
+    ]);
+    const f = reviewJob(job, analyze(job));
+    const codes = f.map((x) => x.code);
+    for (const c of ['ORDER_FACE', 'ORDER_SPOT', 'ORDER_CHAMFER', 'THIN_FLOOR', 'CUT_FREE', 'HOLDING_UNKNOWN']) expect(codes).toContain(c);
+    expect(f.find((x) => x.code === 'THIN_FLOOR')!.text).toMatch(/floor 0\.3 mm thick/);
+    // the Ø6 end mill goes 15.5 mm under the raw top: not yet four diameters; a Ø3 one would be
+    expect(codes).not.toContain('SLENDER_TOOL');
+    const thin = { ...job, tools: job.tools.map((t) => (t.id === 1 ? { ...t, diameter: 3, fluteLength: 16 } : t)) };
+    const g = reviewJob(thin, analyze(thin));
+    expect(g.find((x) => x.code === 'SLENDER_TOOL')!.text).toMatch(/T1 \(Ø3\) goes 15\.5 mm deep, 5\.2 times its diameter/);
+    // and the spindle cannot turn a Ø3 cutter in aluminium as fast as it would like
+    expect(g.map((x) => x.code)).toContain('RPM_SHORT');
+    // clamps entered and tabs set: those two are gone
+    const held = Job.parse({ ...job, obstacles: [{ name: 'clamp', x0: -30, y0: 10, x1: -12, y1: 30, top: 5 }], operations: job.operations.map((o) => (o.type === 'mill_contour_rect' ? { ...o, tabs: 4 } : o)) });
+    expect(look(held)).not.toContain('HOLDING_UNKNOWN');
+    expect(look(held)).not.toContain('CUT_FREE');
+  });
+
+  it('lathe: a thin part hanging out, parting far from the jaws, a thread with no relief, the order', () => {
+    const job = withOps('lathe', [
+      { type: 'lathe_turn', tool: 1, diameter: 6, zEnd: -45 },
+      { type: 'lathe_face', tool: 1, z: 0 },
+      { type: 'lathe_thread', tool: 4, diameter: 6, pitch: 1, zEnd: -12 },
+      { type: 'lathe_partoff', tool: 2, z: -50 },
+      { type: 'lathe_chamfer', tool: 1, diameter: 6, z: 0, size: 0.5 },
+    ], { stock: { kind: 'bar', diameter: 12, stickout: 70, front: 1 } });
+    const f = reviewJob(job, analyze(job));
+    const codes = f.map((x) => x.code);
+    for (const c of ['ORDER_FACE', 'ORDER_PARTOFF', 'SLENDER_PART', 'THREAD_NO_RELIEF']) expect(codes).toContain(c);
+    const s = f.find((x) => x.code === 'SLENDER_PART')!.text;
+    expect(s).toMatch(/down to Ø(5\.\d|6) with 4\d(\.\d)? mm hanging beyond it \(7\.\d to 1\)/);
+    // parting 19 mm from the jaws on Ø12 is fine; 40 mm is not
+    expect(codes).not.toContain('PARTOFF_FAR');
+    const far = withOps('lathe', [{ type: 'lathe_face', tool: 1, z: 0 }, { type: 'lathe_partoff', tool: 2, z: -20 }], { stock: { kind: 'bar', diameter: 12, stickout: 70, front: 1 } });
+    // (and the bar itself, 70 mm out on Ø12, is long for its thickness)
+    expect(look(far)).toEqual(['PARTOFF_FAR', 'SLENDER_PART']);
+    // a relief groove at the thread's end answers the thread
+    const relieved = withOps('lathe', [
+      { type: 'lathe_face', tool: 1, z: 0 },
+      { type: 'lathe_turn', tool: 1, diameter: 9.85, zEnd: -20 },
+      { type: 'lathe_groove', tool: 2, diameter: 8, z: -12, width: 2.5, fromDiameter: 9.85 },
+      { type: 'lathe_thread', tool: 4, diameter: 10, pitch: 1.5, zEnd: -13 },
+    ]);
+    expect(look(relieved)).not.toContain('THREAD_NO_RELIEF');
   });
 });

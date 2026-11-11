@@ -252,6 +252,28 @@ the end of a pass: end at a groove, or the thread runs out on the shank.
 
 Not yet: profiles from DXF for the mill. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## A second pair of eyes
+
+The checks find errors. **Worth a look** (under the operations) lists what is not an error but
+what a machinist would stop at before pressing start, computed from the job with its numbers:
+
+- the order (facing after other cuts, spotting after drilling, a chamfer before the wall beside
+  it is cut, parting off before the end);
+- a cutter that goes deeper than four times its diameter (a drill: eight), a boring bar that
+  reaches further than four times its thickness;
+- on the lathe, where the part gets thin with length hanging beyond it (more than 4 to 1),
+  parting off more than three diameters from the jaws, an external thread that ends at no relief
+  groove;
+- a pocket that leaves a floor under 1 mm, an outside contour through the block with no tabs,
+  nothing entered about what holds the block;
+- a small cutter the spindle cannot turn half as fast as it would like, one operation that takes
+  most of the time.
+
+**Review** (beside Send) asks the assistant to go through the job with that list in hand, weigh
+it for this part, add what a list cannot see, and say what it would change first and why. It
+changes nothing unless you then ask it to. With no model connected, Review shows the list as it
+is. The list is rules of thumb: a part can be fine with a flag and bad without one.
+
 ## Files, your tools, and the sheet for the machine
 
 **The job as a file.** The job is kept in the browser while you work; Save (in the header, or

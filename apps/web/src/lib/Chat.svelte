@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { reviewJob } from '@swarf/cam';
   import { Agent, DEMO_FALLBACK, HARNESSES, DEMO_SCRIPTS, ScriptedProvider, apiProblem, apiProvider, formatDiagnostics, formatJobContext, type AgentEvent, type ChatEvent, type HarnessId, type Provider } from '@swarf/agent';
   import { diffJobs, isEmptyDiff, type Job, type JobDiff } from '@swarf/cam';
   import { store } from './store.svelte.ts';
@@ -89,6 +90,8 @@
     }
   });
 
+  const REVIEW = 'Review this job before I run it: what would you change, and why?';
+
   async function scroll(): Promise<void> {
     await tick();
     log?.scrollTo({ top: log.scrollHeight });
@@ -104,6 +107,17 @@
     const cur = items[items.length - 1]!;
     void scroll();
 
+    // without a model, a review is the computed list as it stands
+    if (demo && text === REVIEW) {
+      const look = reviewJob($state.snapshot(store.job) as Job, store.analysis);
+      const warn = store.analysis.diagnostics.filter((d) => d.severity !== 'error').length;
+      cur.text = look.length
+        ? `No model is connected, so this is the computed list, unweighed:\n\n${look.map((f) => `- ${f.opId ? `**${f.opId}**: ` : ''}${f.text}`).join('\n')}\n\nWith an assistant connected (settings), Review weighs these for this part and adds what a list cannot see.`
+        : `No model is connected, and the computed list has nothing: the order, the tools' reach and the holding raise no flags${warn ? `; the checks left ${warn} note${warn === 1 ? '' : 's'} in the Operations tab` : ''}. With an assistant connected (settings), Review also looks at what a list cannot see.`;
+      busy = false;
+      void scroll();
+      return;
+    }
     const before = JSON.stringify(store.job);
     const beforeJob = $state.snapshot(store.job) as Job;
     epoch = store.epoch;
@@ -328,12 +342,16 @@ ${formatDiagnostics(store.analysis.diagnostics.filter((d) => d.severity === 'err
     {#if busy}
       <button type="button" class="btn" onclick={stop}>Stop</button>
     {:else}
-      <button type="submit" class="btn pri" disabled={!input.trim()}>Send</button>
+      <div class="sendcol">
+        <button type="submit" class="btn pri" disabled={!input.trim()}>Send</button>
+        <button type="button" class="btn" disabled={!store.job.operations.length} title="The assistant goes through the job as a machinist would before pressing start: holding, order, tools, speeds. It changes nothing." onclick={() => send(REVIEW)}>Review</button>
+      </div>
     {/if}
   </form>
 </section>
 
 <style>
+  .sendcol { display: flex; flex-direction: column; gap: 4px; }
   .chat { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--panel); }
   header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex: none; }
   .model { font: inherit; font-size: 12px; color: var(--ink-3); background: var(--panel-2); border: 1px solid var(--line); padding: 1px 8px; border-radius: 10px; cursor: pointer; }
