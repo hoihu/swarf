@@ -62,6 +62,8 @@
   let between: Vec3 | null = null;
   /** The points of a move (arcs as short chords) from its start, with the length up to each: the last one asked for. */
   let way: { i: number; pts: Vec3[]; cum: number[] } | null = null;
+  /** While playing: the tool took metal off in the last stretch it went (the chips fly). */
+  let chipping = false;
   /** Program time the part in the preview is cut to, seconds: while playing it follows the tool. */
   let cutClock = 0;
   /** The part was cut since its mesh was last made; when that was (ms). */
@@ -320,13 +322,28 @@
     between = along(w, fraction(i, s) * w.cum.at(-1)!).p;
   }
 
-  /** Cut the part on, from where it was cut to, to `s` seconds into the program: the tool's way, as the checks cut it. */
+  /** Is there metal in the tool's way at this tip position (lathe), before it is cut? */
+  function inLatheMetal(m: LatheMaterial, p: Vec3, tool: Tool): boolean {
+    const outer = m.radiusAt(p.z);
+    if (outer <= 0) return false;
+    if (tool.type === 'drill') return m.boreAt(p.z) < (tool.diameter ?? 0) / 2 - 0.02;
+    if (tool.internal || tool.type === 'boring') return m.boreAt(p.z) < p.x - 0.02 && outer > p.x;
+    return outer > p.x + 0.02;
+  }
+
+  /**
+   * Cut the part on, from where it was cut to, to `s` seconds into the program: the tool's way, as
+   * the checks cut it. Notes whether anything was in the way (`chipping`): the chips come from the
+   * metal there is, not from the stock as it was.
+   */
   function cutOn(s: number): void {
     if (!material || s <= cutClock) return;
+    chipping = false;
     for (let i = moveAt(cutClock); i < moves.length; i++) {
       const move = moves[i]!.move;
       // a thread is a groove too shallow to change the outline the material keeps (as in simulate)
       const tool = move.type === 'thread' ? undefined : job.tools.find((t) => t.id === tips[i]!.tool);
+      if (move.type === 'thread' && tips[i]!.cut) chipping = true;
       const u0 = fraction(i, cutClock);
       const u1 = fraction(i, s);
       if (tool && u1 > u0) {
@@ -337,8 +354,16 @@
         const pts = [a.p];
         for (let k = a.k; k < w.pts.length && w.cum[k]! < u1 * len; k++) pts.push(w.pts[k]!);
         pts.push(b.p);
-        if (material instanceof MillMaterial) material.cutPath(pts, tool as Tool);
-        else for (let k = 1; k < pts.length; k++) material.cut(pts[k - 1]!, pts[k]!, tool as Tool);
+        const feed = move.type !== 'rapid';
+        if (material instanceof MillMaterial) {
+          const before = material.lowered;
+          material.cutPath(pts, tool);
+          if (feed && material.lowered > before) chipping = true;
+        } else {
+          const m = material;
+          if (feed && pts.some((p) => inLatheMetal(m, p, tool))) chipping = true;
+          for (let k = 1; k < pts.length; k++) m.cut(pts[k - 1]!, pts[k]!, tool);
+        }
         meshDue = true;
       }
       if (ends[i]! >= s) break;
@@ -572,7 +597,7 @@
     const rpm = live ? spindle : playing && t ? t.rpm : 0;
     const tip = tool ? tool.position : lastTip;
     const moved = haveTip && tip.distanceToSquared(lastTip) > 1e-8;
-    const cutting = !overlay && rpm > 0 && moved && (live ? engaged(live, t?.tool ?? 0) : !!t?.cut);
+    const cutting = !overlay && rpm > 0 && moved && (live ? engaged(live, t?.tool ?? 0) : chipping);
     if (rpm > 0 && !overlay) {
       const turn = dt * Math.min(40, Math.max(8, rpm / 150));
       const spin = (lathe ? fixture : tool)?.userData.spin as THREE.Object3D | undefined;

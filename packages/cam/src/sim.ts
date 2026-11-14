@@ -203,6 +203,8 @@ export class MillMaterial {
   readonly ey: Float32Array;
   /** Note the walls (ex, ey) while cutting: for the preview only, it costs time. */
   noteWalls = false;
+  /** How many times a cell has been cut down by more than a hundredth (for the preview: is it taking metal off?). */
+  lowered = 0;
 
   constructor(stock: Extract<Stock, { kind: 'block' }>, cell?: number, start?: { h: Float32Array; spans: Spans } | null) {
     this.cell = cell ?? Math.max(0.2, Math.min(1, Math.max(stock.x, stock.y) / 300));
@@ -275,7 +277,10 @@ export class MillMaterial {
       this.each(p, radius, (k, d2) => {
         const z = Math.max(p.z + lift(d2), this.bottom);
         const lowered = this.h[k]! > z + 1e-6;
-        if (lowered) this.h[k] = z;
+        if (lowered) {
+          if (this.h[k]! > z + 0.01) this.lowered++;
+          this.h[k] = z;
+        }
         // only a cell near the circle's edge has a neighbour outside it, and only one at this
         // cut's level has its wall from this cut (one already deeper has it from another)
         if (!walls || d2 < rim || (!lowered && Math.abs(this.h[k]! - z) > 1e-6)) return;
