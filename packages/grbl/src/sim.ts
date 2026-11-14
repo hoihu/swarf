@@ -116,7 +116,18 @@ export class SimGrbl implements Transport {
       this.spindleOverride = c === 0x99 ? 100 : Math.max(10, Math.min(200, this.spindleOverride + (c === 0x9a ? 10 : c === 0x9b ? -10 : c === 0x9c ? 1 : -1)));
       return;
     }
-    if (data.length === 1 && data.charCodeAt(0) >= 0x80) return; // other overrides: ignored
+    if (data.length === 1 && data.charCodeAt(0) >= 0x90 && data.charCodeAt(0) <= 0x94) {
+      // feed override: 100 %, ±10 %, ±1 % (10 to 200 %); it acts on the move under way too
+      const c = data.charCodeAt(0);
+      this.feedOverride = c === 0x90 ? 100 : Math.max(10, Math.min(200, this.feedOverride + (c === 0x91 ? 10 : c === 0x92 ? -10 : c === 0x93 ? 1 : -1)));
+      return;
+    }
+    if (data.length === 1 && data.charCodeAt(0) >= 0x95 && data.charCodeAt(0) <= 0x97) {
+      // rapid override: 100, 50 or 25 %
+      this.rapidOverride = [100, 50, 25][data.charCodeAt(0) - 0x95]!;
+      return;
+    }
+    if (data.length === 1 && data.charCodeAt(0) >= 0x80) return; // other real-time commands: ignored
     if (data === '?') return this.#emit(`${this.#report()}\r\n`);
     if (data === '!') {
       this.#hold = true;
@@ -131,7 +142,7 @@ export class SimGrbl implements Transport {
       return;
     }
     if (data === '\x18') {
-      this.spindleOverride = 100;
+      this.spindleOverride = this.feedOverride = this.rapidOverride = 100;
       this.#queue = [];
       this.#held = [];
       this.#hold = this.#m0 = false;
@@ -166,12 +177,22 @@ export class SimGrbl implements Transport {
 
   /** Spindle speed override, percent. */
   spindleOverride = 100;
+  /** Feed override, percent (feed moves and probing; jogs are not overridden). */
+  feedOverride = 100;
+  /** Rapid override, percent: 100, 50 or 25. */
+  rapidOverride = 100;
+
+  /** How fast this move goes now, mm/min: its rate with the overrides in force. */
+  #rate(m: Motion): number {
+    if (m.jog) return m.f;
+    return (m.f * (m.rapid ? this.rapidOverride : this.feedOverride)) / 100;
+  }
 
   #report(): string {
     const x = (v: V3): string => [this.lathe ? v[0] * 2 : v[0], v[1], v[2]].map(fmt).join(',');
     const pins = this.contact(this.pos) ? '|Pn:P' : '';
     const acc = this.flood || this.mist ? `|A:${this.flood ? 'F' : ''}${this.mist ? 'M' : ''}` : '';
-    return `<${this.state}|MPos:${x(this.pos)}|FS:${this.#queue.length ? this.#feed : 0},${Math.round((this.spindle * this.spindleOverride) / 100)}|WCO:${x(this.wco)}|Ov:100,100,${this.spindleOverride}${pins}${acc}>`;
+    return `<${this.state}|MPos:${x(this.pos)}|FS:${this.#moving()},${Math.round((this.spindle * this.spindleOverride) / 100)}|WCO:${x(this.wco)}|Ov:${this.feedOverride},${this.rapidOverride},${this.spindleOverride}${pins}${acc}>`;
   }
 
   /** One line: the reply ('ok', 'error:n' or the answer of a $ command); null while a probe runs (answered when it ends). */
@@ -298,6 +319,13 @@ export class SimGrbl implements Transport {
     }
   }
 
+  /** The feed rate of the move under way as the report gives it (0 when nothing moves). */
+  #moving(): number {
+    const m = this.#queue[0];
+    if (!m || m === 'M0' || this.#hold) return 0;
+    return Math.round(this.#rate(m));
+  }
+
   /** Where the queued motion ends (machine coordinates). */
   #end(): V3 {
     for (let i = this.#queue.length - 1; i >= 0; i--) {
@@ -320,8 +348,9 @@ export class SimGrbl implements Transport {
       }
       const d = m.to.map((v, i) => v - this.pos[i]!) as V3;
       const len = Math.hypot(...d);
+      const f = this.#rate(m);
       // no more than half a millimetre at a time where someone watches the way
-      const step = this.onStep ? Math.min(m.f * dt, 0.5) : m.f * dt;
+      const step = this.onStep ? Math.min(f * dt, 0.5) : f * dt;
       if (this.onStep && !m.probe) {
         const go = Math.min(step, len);
         this.onStep(len > 1e-12 ? (this.pos.map((v, i) => v + (d[i]! * go) / len) as V3) : this.pos, { jog: m.jog, probe: false, rapid: !!m.rapid });
@@ -356,10 +385,10 @@ export class SimGrbl implements Transport {
         this.pos = [...m.to] as V3;
         this.#queue.shift();
         m.then?.();
-        dt -= len / m.f;
+        dt -= len / f;
       } else {
         this.pos = this.pos.map((v, i) => v + (d[i]! * step) / len) as V3;
-        dt -= step / m.f;
+        dt -= step / f;
       }
     }
   }

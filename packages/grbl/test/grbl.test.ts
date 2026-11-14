@@ -318,6 +318,32 @@ describe('simulated controller', () => {
     await sim.close();
   });
 
+  it('feed and rapid overrides: reported, slow the moves, cleared by a reset', async () => {
+    const sim = new SimGrbl({ rapid: 6000 });
+    const s = new Streamer(sim, {}, { pollMs: 5 });
+    await s.override(RT.feedMinus10);
+    await s.override(RT.feedMinus10);
+    await s.override(RT.rapid25);
+    await wait(40);
+    expect(s.last?.ov).toEqual([80, 25, 100]);
+    // 6000 mm/min at 25 %: 25 mm/s, so a quarter of a second covers about 6 mm, not 25
+    await s.send('G0 X100');
+    await wait(250);
+    const x = s.last!.mpos![0]!;
+    expect(x).toBeGreaterThan(2);
+    expect(x).toBeLessThan(12);
+    await s.override(RT.rapid100);
+    await s.override(RT.feed100);
+    await s.override(RT.feedPlus10);
+    await wait(40);
+    expect(s.last?.ov).toEqual([110, 100, 100]);
+    await s.stop();
+    await wait(60);
+    expect([sim.feedOverride, sim.rapidOverride]).toEqual([100, 100]);
+    await s.close();
+    await sim.close();
+  });
+
   it('lathe: X as a diameter in words and reports', async () => {
     const sim = new SimGrbl({ lathe: true, wco: [-30, 0, -120], speed: 500 });
     const s = new Streamer(sim, {}, { pollMs: 5 });

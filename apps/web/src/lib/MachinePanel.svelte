@@ -313,6 +313,12 @@
       <button class="btn val" title="Back to 100 %" aria-label="Feed 100%" onclick={() => machine.feed('feed100')}>{machine.status?.ov?.[0] ?? 100} %</button>
       <button class="btn" aria-label="Feed +10%" onclick={() => machine.feed('feedPlus10')}>+</button>
     </div>
+    <div class="ov" role="group" aria-label="Rapid override">
+      <span>Rapid</span>
+      {#each [25, 50, 100] as const as pct (pct)}
+        <button class="btn" class:on={(machine.status?.ov?.[1] ?? 100) === pct} aria-pressed={(machine.status?.ov?.[1] ?? 100) === pct} aria-label="Rapids at {pct}%" onclick={() => machine.rapid(pct)}>{pct} %</button>
+      {/each}
+    </div>
     <div class="ov" role="group" aria-label="Spindle override">
       <span>Spindle</span>
       <button class="btn" aria-label="Spindle −10%" onclick={() => machine.spindleOv('spindleMinus10')}>−</button>
@@ -352,6 +358,7 @@
   .ov .btn { border-radius: 0; margin-left: -1px; padding: 3px 9px; }
   .ov .btn:first-of-type { border-radius: 6px 0 0 6px; margin-left: 0; }
   .ov .btn:last-of-type { border-radius: 0 6px 6px 0; }
+  .ov .on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
   .ov .val { min-width: 58px; font-variant-numeric: tabular-nums; font-weight: 600; }
   .pad { padding: 12px 14px 14px; }
   .empty p { margin: 0 0 8px; }

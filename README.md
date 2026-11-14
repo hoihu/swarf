@@ -75,7 +75,8 @@ the access key from `~/.swarf/server.json`.
 The 3D preview shows the work in its surroundings: the mill's table with its T-slots, cutters
 with flutes one can see turn, a chuck with jaws that goes round, the work's material (aluminium,
 steel, brass, plastic) with cut surfaces bright and the raw stock's skin duller. Press play and
-it cuts: **chips** fly off the cutter in the material's own way (curls of aluminium, blued steel,
+it cuts (beside the slider: quickly, the whole program in about ten seconds, or at its own
+time, from 50× down to real time and a quarter of it): **chips** fly off the cutter in the material's own way (curls of aluminium, blued steel,
 a spray of brass needles, long white strings of plastic), tumble, land on the work and the table
 and fade after a while; with **coolant** on, a hose looks at the cutter and the stream splashes
 off it; **sound** (off unless switched on) hums with the spindle and hisses with the cut. The
@@ -151,7 +152,7 @@ After every assistant turn the chat shows what changed (operations added, change
 **Keep** and **Revert this turn**.
 
 No machine at hand: **Connect a simulated mill/lathe** runs a pretend grblHAL in the browser that
-moves in real time, reports MPos and WCO, spindle and probe input, and jogs (`packages/grbl/src/sim.ts`). On
+moves in real time, reports MPos and WCO, spindle and probe input, and jogs (`packages/grbl/src/sim.ts`). The feed override (10–200 %) and the rapid override (100, 50 or 25 %) slow it down as they would a real one. On
 the simulated mill you choose what is on the table: the block alone, two steel blocks beside it,
 low edge clamps against a stop, strap clamps across its ends (step blocks, T-bolts and nuts
 standing 36 mm above the top) or a machine vise. The block itself is never quite where the job

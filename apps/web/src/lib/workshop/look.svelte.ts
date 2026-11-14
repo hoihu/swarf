@@ -3,6 +3,10 @@ import { loadPicture, savePicture, type SurroundName } from './surround.ts';
 
 const KEY = 'swarf.look';
 
+/** How fast Play goes: 0 the whole program in about ten seconds, else times the program's own time (1: real time). */
+export const SPEEDS = [0, 50, 10, 5, 2, 1, 0.5, 0.25] as const;
+export type PlaySpeed = (typeof SPEEDS)[number];
+
 interface Saved {
   asked?: boolean;
   surround: SurroundName;
@@ -11,6 +15,7 @@ interface Saved {
   shadows: boolean;
   sound: boolean;
   soften: boolean;
+  speed?: PlaySpeed;
 }
 
 const DEFAULTS: Saved = { surround: 'workshop', chips: true, coolant: false, shadows: true, sound: false, soften: true };
@@ -23,6 +28,8 @@ class Look {
   sound = $state(DEFAULTS.sound);
   /** Soften the user's picture a little, so the part stands out against it. */
   soften = $state(DEFAULTS.soften);
+  /** How fast Play goes (SPEEDS). */
+  speed = $state<PlaySpeed>(0);
   /** The user's picture, decoded (null: none). */
   picture = $state<ImageBitmap | null>(null);
   error = $state('');
@@ -37,6 +44,7 @@ class Look {
       this.coolant = s.coolant;
       this.shadows = s.shadows;
       this.soften = s.soften;
+      if ((SPEEDS as readonly number[]).includes(s.speed ?? 0)) this.speed = s.speed ?? 0;
       this.asked = !!s.asked;
       // sound never starts by itself
     } catch {
@@ -51,7 +59,7 @@ class Look {
 
   save(): void {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ surround: this.surround, chips: this.chips, coolant: this.coolant, shadows: this.shadows, sound: false, soften: this.soften, asked: this.asked } satisfies Saved));
+      localStorage.setItem(KEY, JSON.stringify({ surround: this.surround, chips: this.chips, coolant: this.coolant, shadows: this.shadows, sound: false, soften: this.soften, speed: this.speed, asked: this.asked } satisfies Saved));
     } catch {
       // not kept
     }

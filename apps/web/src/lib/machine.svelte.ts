@@ -210,6 +210,8 @@ class Machine {
   };
 
   feed = (cmd: 'feed100' | 'feedPlus10' | 'feedMinus10') => this.#s?.override(RT[cmd]);
+  /** Rapid override: 100, 50 or 25 %. */
+  rapid = (pct: 100 | 50 | 25) => this.#s?.override(RT[`rapid${pct}`]);
   jogCancel = () => this.#s?.override(RT.jogCancel);
 
   /** Everything sent and received since the page was opened, with times (record.ts). */

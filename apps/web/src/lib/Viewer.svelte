@@ -2,13 +2,13 @@
   import { onDestroy, onMount, untrack } from 'svelte';
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-  import { LatheMaterial, MillMaterial, simulate, walk, type Job, type Program, type Vec3 } from '@swarf/cam';
+  import { LatheMaterial, MillMaterial, moveLength, samplePath, simulate, walk, type Job, type Move, type Program, type Tool, type Vec3 } from '@swarf/cam';
   import { drawingLines, latheMesh, millMesh, obstacleMeshes, pathGeometry, sceneToWork, stockOutline, toScene, type PathGeometry } from './scene.ts';
   import { CHIPS, Chips, Coolant } from './workshop/particles.ts';
   import { METAL, bedMesh, chuckGroup, latheToolMesh, millToolMesh, nozzleMesh, tableMesh } from './workshop/stage.ts';
   import { SURROUNDS, cover, makeSurround, type Surround } from './workshop/surround.ts';
   import { MachineSound } from './workshop/sound.ts';
-  import { look } from './workshop/look.svelte.ts';
+  import { SPEEDS, look } from './workshop/look.svelte.ts';
   import { camera as cam } from './camera/camera.svelte.ts';
   import { glProjection, glView } from './camera/geometry.ts';
   import { laserScan } from './camera/laserscan.svelte.ts';
@@ -50,6 +50,23 @@
   let tool: THREE.Object3D | null = null;
   let toolKey = '';
   let tips: { p: Vec3; tool: number; cut: boolean; rpm: number }[] = [];
+  /** Each move as walked: where it starts, and the move. */
+  let moves: { from: Vec3; move: Move }[] = [];
+  /** Program time at the end of each move, seconds: length over feed, rapids at the machine's rapid rate. */
+  let ends: number[] = [];
+  /** Where Play has got to, program seconds. */
+  let clock = $state(0);
+  /** The whole program's time, seconds (shown beside the slider). */
+  let runtime = $state(0);
+  /** While playing: the tool part way along move `at` (null: at the end of move at − 1). */
+  let between: Vec3 | null = null;
+  /** The points of a move (arcs as short chords) from its start, with the length up to each: the last one asked for. */
+  let way: { i: number; pts: Vec3[]; cum: number[] } | null = null;
+  /** Program time the part in the preview is cut to, seconds: while playing it follows the tool. */
+  let cutClock = 0;
+  /** The part was cut since its mesh was last made; when that was (ms). */
+  let meshDue = false;
+  let meshAt = 0;
 
   // ---- the workshop around it: surroundings, table, chips, coolant, sound ----
   const chips = new Chips();
@@ -228,18 +245,125 @@
     todoLines = new THREE.LineSegments(path.geometry.clone(), new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.22 }));
     world.add(todoLines, doneLines);
     tips = [];
+    moves = [];
+    ends = [];
+    way = null;
+    between = null;
+    let time = 0;
+    const rapid = Math.max(1, job.machine.rapidRate);
     for (const w of walk(program)) {
       const seg = program.segments[w.seg]!;
       tips.push({ p: w.move.to, tool: seg.tool, cut: w.move.type !== 'rapid' && (engaged(w.move.to, seg.tool) || engaged(w.from, seg.tool)), rpm: seg.rpm });
+      moves.push({ from: w.from, move: w.move });
+      const f = w.move.type === 'rapid' ? rapid : w.move.f;
+      time += f > 0 ? (moveLength(w.from, w.move) / f) * 60 : 0;
+      ends.push(time);
     }
     total = tips.length;
+    runtime = time;
     if (followEnd || at > total) at = total;
+    clock = at > 0 ? ends[at - 1]! : 0;
   }
 
+  /** The whole program's time, seconds. */
+  const duration = (): number => ends.at(-1) ?? 0;
+
+  /** The move under way `s` seconds into the program: the first that ends after it (moves.length past the end). */
+  function moveAt(s: number): number {
+    let lo = 0;
+    let hi = ends.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ends[mid]! <= s) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  /** Move i's points, as the checks sample them (the material's own step: what is cut is what simulate would cut). */
+  function wayOf(i: number): { pts: Vec3[]; cum: number[] } {
+    if (way?.i === i) return way;
+    const { from, move } = moves[i]!;
+    const step = material instanceof MillMaterial ? Math.max(0.1, material.cell * 0.5) : material instanceof LatheMaterial ? 0.1 : 0.5;
+    const pts = [from, ...samplePath(from, move, step)];
+    const cum = [0];
+    for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1]! + Math.hypot(pts[k]!.x - pts[k - 1]!.x, pts[k]!.y - pts[k - 1]!.y, pts[k]!.z - pts[k - 1]!.z));
+    way = { i, pts, cum };
+    return way;
+  }
+
+  /** The point `d` mm along a way, and the index of the first point beyond it. */
+  function along(w: { pts: Vec3[]; cum: number[] }, d: number): { p: Vec3; k: number } {
+    let k = 1;
+    while (k < w.cum.length - 1 && w.cum[k]! < d) k++;
+    const a = w.pts[k - 1]!;
+    const b = w.pts[k] ?? a;
+    const l = (w.cum[k] ?? 0) - w.cum[k - 1]!;
+    const u = l > 0 ? Math.min(1, Math.max(0, (d - w.cum[k - 1]!) / l)) : 1;
+    return { p: { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, z: a.z + (b.z - a.z) * u }, k };
+  }
+
+  /** How far through move i the program is `s` seconds in, 0…1. */
+  function fraction(i: number, s: number): number {
+    const start = i > 0 ? ends[i - 1]! : 0;
+    const span = ends[i]! - start;
+    return span > 0 ? Math.min(1, Math.max(0, (s - start) / span)) : 1;
+  }
+
+  /** Where the tool is `s` seconds into the program: the moves done, and the place along the next one. */
+  function seek(s: number): void {
+    const i = moveAt(s);
+    at = i;
+    between = null;
+    if (i >= ends.length) return;
+    const w = wayOf(i);
+    between = along(w, fraction(i, s) * w.cum.at(-1)!).p;
+  }
+
+  /** Cut the part on, from where it was cut to, to `s` seconds into the program: the tool's way, as the checks cut it. */
+  function cutOn(s: number): void {
+    if (!material || s <= cutClock) return;
+    for (let i = moveAt(cutClock); i < moves.length; i++) {
+      const move = moves[i]!.move;
+      // a thread is a groove too shallow to change the outline the material keeps (as in simulate)
+      const tool = move.type === 'thread' ? undefined : job.tools.find((t) => t.id === tips[i]!.tool);
+      const u0 = fraction(i, cutClock);
+      const u1 = fraction(i, s);
+      if (tool && u1 > u0) {
+        const w = wayOf(i);
+        const len = w.cum.at(-1)!;
+        const a = along(w, u0 * len);
+        const b = along(w, u1 * len);
+        const pts = [a.p];
+        for (let k = a.k; k < w.pts.length && w.cum[k]! < u1 * len; k++) pts.push(w.pts[k]!);
+        pts.push(b.p);
+        if (material instanceof MillMaterial) material.cutPath(pts, tool as Tool);
+        else for (let k = 1; k < pts.length; k++) material.cut(pts[k - 1]!, pts[k]!, tool as Tool);
+        meshDue = true;
+      }
+      if (ends[i]! >= s) break;
+    }
+    cutClock = s;
+  }
+
+  /** The move the tool is on or has just finished: what it cuts with and how fast it turns. */
+  const current = () => (between && at < total ? tips[at] : at > 0 ? tips[at - 1] : null) ?? null;
+
+  /** The part as the program leaves it after `at` moves (and, while playing, cut on to where the tool is). */
   function buildPart(): void {
-    dirty = true;
-    dispose(part);
     material = simulate(job, program, at).material;
+    way = null; // sampled at the new material's step
+    cutClock = at > 0 ? ends[at - 1]! : 0;
+    if (playing) cutOn(clock);
+    meshPart();
+  }
+
+  /** The part's mesh, from the material as it is cut now. */
+  function meshPart(): void {
+    dirty = true;
+    meshDue = false;
+    meshAt = performance.now();
+    dispose(part);
     const metal = METAL[job.workMaterial] ?? METAL.aluminium!;
     if (material instanceof LatheMaterial) part = latheMesh(material, metal, job.stock.kind === 'bar' ? job.stock.diameter / 2 : Infinity);
     else if (material instanceof MillMaterial) part = millMesh(material, metal);
@@ -299,8 +423,8 @@
 
   function placeTool(): void {
     const lathe = program.kind === 'lathe';
-    const t = at > 0 ? tips[at - 1] : null;
-    const p = t?.p ?? program.home;
+    const t = current();
+    const p = between ?? (at > 0 ? tips[at - 1]!.p : program.home);
     const id = t?.tool ?? program.segments[0]?.tool ?? 0;
     const spec = job.tools.find((x) => x.id === id);
     const d = spec?.diameter ?? 6;
@@ -438,7 +562,7 @@
   /** Chips, coolant, the turning of the cutter and the chuck, the sound: `dt` seconds on. */
   function effects(dt: number): void {
     const lathe = program.kind === 'lathe';
-    const t = at > 0 ? tips[at - 1] : null;
+    const t = current();
     // the simulated run, or the machine itself
     const rpm = live ? spindle : playing && t ? t.rpm : 0;
     const tip = tool ? tool.position : lastTip;
@@ -500,10 +624,26 @@
     const dt = Math.min(0.12, lastTime ? (now - lastTime) / 1000 : 0.016);
     lastTime = now;
     if (playing) {
-      if (at >= total) playing = false;
-      else {
-        at = Math.min(total, at + Math.max(1, Math.round(total / 600)));
-        onScrub();
+      if (at >= total) {
+        playing = false;
+        between = null;
+      } else {
+        // quick: the whole program in about ten seconds; else times its own time
+        const rate = look.speed === 0 ? duration() / 10 : look.speed;
+        clock = Math.min(duration(), clock + dt * rate);
+        seek(clock);
+        if (clock >= duration()) {
+          at = total;
+          between = null;
+        }
+        followEnd = at >= total;
+        dirty = true;
+        updateRange();
+        placeTool();
+        // the part is cut along with the tool, its mesh made again a few times a second
+        clearTimeout(simTimer);
+        cutOn(clock);
+        if (meshDue && (now - meshAt > 90 || at >= total)) meshPart();
       }
     }
     effects(dt);
@@ -550,6 +690,10 @@
 
   function onScrub(): void {
     dirty = true;
+    if (!playing) {
+      between = null;
+      clock = at > 0 ? ends[at - 1]! : 0;
+    }
     followEnd = at >= total;
     updateRange();
     placeTool();
@@ -557,8 +701,25 @@
   }
 
   function play(): void {
-    if (at >= total) at = 0;
+    if (at >= total) {
+      at = 0;
+      clock = 0;
+      between = null;
+      updateRange();
+      placeTool();
+      clearTimeout(simTimer);
+      buildPart();
+    }
     playing = !playing;
+  }
+
+  /** m:ss (h:mm:ss from an hour). */
+  function clockText(s: number): string {
+    const t = Math.round(s);
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const sec = String(t % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
   }
 
   onMount(() => {
@@ -751,7 +912,6 @@
     else sound.stop();
   });
 
-  const pct = $derived(total ? Math.round((at / total) * 100) : 0);
 </script>
 
 <div
@@ -812,7 +972,10 @@
       {/if}
     </button>
     <input type="range" min="0" max={total} bind:value={at} oninput={() => { playing = false; onScrub(); }} aria-label="Program position" />
-    <span class="pos">{at} / {total} moves · {pct}%</span>
+    <span class="pos">{clockText(clock)} / {clockText(runtime)} · {at} / {total} moves</span>
+    <select class="speed" bind:value={look.speed} onchange={() => look.save()} aria-label="Playing speed" title="How fast Play goes">
+      {#each SPEEDS as s (s)}<option value={s}>{s === 0 ? 'Quick (10 s)' : s === 1 ? 'Real time' : `${s}×`}</option>{/each}
+    </select>
   </div>
 </div>
 
@@ -853,6 +1016,8 @@
   .scrub input { flex: 1; accent-color: var(--accent); }
   .play { width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--accent); color: #1c1a10; display: grid; place-items: center; flex: none; }
   .play svg { fill: currentColor; }
+  .speed { flex: none; font-size: 12px; padding: 4px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); color: var(--on-iron); border: 1px solid rgba(255, 255, 255, 0.14); color-scheme: dark; }
+  .speed option { background: #1f2326; color: #eef0f1; }
   .pos { font-size: 12px; color: var(--on-iron-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
   @media (max-width: 560px) { .pos { display: none; } }
 </style>
