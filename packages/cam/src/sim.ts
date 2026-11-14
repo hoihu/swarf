@@ -193,6 +193,16 @@ export class MillMaterial {
    * the top of the highest one; below it there may be hollows a view from above cannot hold.
    */
   readonly spans: Spans | null;
+  /**
+   * Where a wall stands between two neighbouring cells, as the cutter's round edge left it: on
+   * the line from cell k's centre to the next cell's in X (ex) or Y (ey), as a fraction of the
+   * way (NaN: not known). For the picture: the heights alone only say which centres were cut, so
+   * a round wall drawn from them steps along the grid. The checks do not use it.
+   */
+  readonly ex: Float32Array;
+  readonly ey: Float32Array;
+  /** Note the walls (ex, ey) while cutting: for the preview only, it costs time. */
+  noteWalls = false;
 
   constructor(stock: Extract<Stock, { kind: 'block' }>, cell?: number, start?: { h: Float32Array; spans: Spans } | null) {
     this.cell = cell ?? Math.max(0.2, Math.min(1, Math.max(stock.x, stock.y) / 300));
@@ -203,6 +213,8 @@ export class MillMaterial {
     this.top = stock.top;
     this.bottom = stock.top - stock.z;
     this.h = new Float32Array(this.nx * this.ny).fill(stock.top);
+    this.ex = new Float32Array(this.nx * this.ny).fill(NaN);
+    this.ey = new Float32Array(this.nx * this.ny).fill(NaN);
     this.spans = null;
     if (start && start.h.length === this.h.length) {
       this.h.set(start.h);
@@ -254,10 +266,47 @@ export class MillMaterial {
     let worst = 0;
     for (const p of points) worst = Math.max(worst, this.engagement(p, tool));
     const lift = lifter(tool);
+    // a cutter with straight sides leaves a wall where its circle ends: noted between the cells
+    const walls = this.noteWalls && tool.type !== 'chamfer';
+    const c = this.cell;
+    const r2 = radius * radius;
+    const rim = Math.max(0, radius - c * 1.01) ** 2;
     for (const p of points) {
       this.each(p, radius, (k, d2) => {
         const z = Math.max(p.z + lift(d2), this.bottom);
-        if (this.h[k]! > z) this.h[k] = z;
+        const lowered = this.h[k]! > z + 1e-6;
+        if (lowered) this.h[k] = z;
+        // only a cell near the circle's edge has a neighbour outside it, and only one at this
+        // cut's level has its wall from this cut (one already deeper has it from another)
+        if (!walls || d2 < rim || (!lowered && Math.abs(this.h[k]! - z) > 1e-6)) return;
+        const i = k % this.nx;
+        const j = (k - i) / this.nx;
+        const fx = (i + 0.5) * c - p.x;
+        const fy = (j + 0.5) * c - p.y;
+        for (let q = 0; q < 4; q++) {
+          const di = q < 2 ? 1 - 2 * q : 0;
+          const dj = q < 2 ? 0 : 5 - 2 * q;
+          const ni = i + di;
+          const nj = j + dj;
+          if (ni < 0 || nj < 0 || ni >= this.nx || nj >= this.ny) continue;
+          const n = nj * this.nx + ni;
+          // the neighbour is not higher, or inside this circle too: no wall of this cut there
+          if (this.h[n]! <= z + EPS) continue;
+          const gx = fx + di * c;
+          const gy = fy + dj * c;
+          if (gx * gx + gy * gy <= r2) continue;
+          // where the circle leaves the line from this centre to the neighbour's: |f + t·d| = r
+          const b = (fx * di + fy * dj) * c;
+          const cc = fx * fx + fy * fy - r2;
+          const t = Math.min(1, Math.max(0, (-b + Math.sqrt(Math.max(0, b * b - c * c * cc))) / (c * c)));
+          // kept per edge from the lower-numbered cell; the furthest any circle at this level reached
+          const e = di ? this.ex : this.ey;
+          const at = di > 0 || dj > 0 ? k : n;
+          const v = di > 0 || dj > 0 ? t : 1 - t;
+          const old = e[at]!;
+          if (lowered || Number.isNaN(old)) e[at] = v;
+          else e[at] = di > 0 || dj > 0 ? Math.max(old, v) : Math.min(old, v);
+        }
       });
     }
     return worst;

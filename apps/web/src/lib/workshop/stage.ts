@@ -168,30 +168,40 @@ export function millToolMesh(type: 'endmill' | 'drill' | 'chamfer' | 'threadmill
   return g as never;
 }
 
-/** The lathe's tool: a gold insert on a black holder, its tip at the origin, the holder going up and back. */
+/**
+ * The lathe's tool: a gold insert lying flat on a black holder, as on the cross slide's tool post:
+ * its tip at the origin (centre height, the insert's top face level with it), the holder going
+ * out towards the operator (scene +Z).
+ */
 export function latheToolMesh(): THREE.Group {
   const g = new THREE.Group();
+  const dark = new THREE.MeshStandardMaterial({ color: '#23272a', metalness: 0.7, roughness: 0.5 });
+  // the insert's outline in the plane of X along the spindle and Y towards the operator
   const shape = new THREE.Shape();
   shape.moveTo(0, 0);
   shape.lineTo(5, 2.5);
   shape.lineTo(3.5, 9);
   shape.lineTo(-1.5, 6.5);
   shape.closePath();
-  const insert = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 3, bevelEnabled: true, bevelSize: 0.25, bevelThickness: 0.25, bevelSegments: 2 }), new THREE.MeshStandardMaterial({ color: '#d8a520', metalness: 0.85, roughness: 0.28 }));
-  insert.geometry.translate(0, 0, -1.5);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 3, bevelEnabled: true, bevelSize: 0.25, bevelThickness: 0.25, bevelSegments: 2 });
+  // laid flat: the outline's Y out towards the operator, its thickness downwards from the top face
+  geo.rotateX(Math.PI / 2);
+  const insert = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#d8a520', metalness: 0.85, roughness: 0.28 }));
   insert.castShadow = true;
   g.add(insert);
-  // the screw in the middle of the insert
+  // the screw in the middle of the insert, from above
   const screw = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.6, 16), steel('#2a2d30', 0.4));
-  screw.rotation.x = Math.PI / 2;
-  screw.position.set(1.8, 4.6, 1.9);
+  screw.position.set(1.8, 0.2, 4.6);
   g.add(screw);
-  const holder = new THREE.Mesh(new THREE.BoxGeometry(12, 46, 12), new THREE.MeshStandardMaterial({ color: '#23272a', metalness: 0.7, roughness: 0.5 }));
-  holder.position.set(3.2, 29, -7.6);
+  // the shank under the insert, out to the tool post
+  const holder = new THREE.Mesh(new THREE.BoxGeometry(12, 12, 48), dark);
+  holder.position.set(3.2, -9, 28);
   holder.castShadow = true;
   g.add(holder);
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(9, 9, 3), new THREE.MeshStandardMaterial({ color: '#23272a', metalness: 0.7, roughness: 0.5 }));
-  seat.position.set(2.2, 6.2, -3.1);
+  // the clamp behind the insert
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(9, 3.4, 7), dark);
+  seat.position.set(2.6, -1.7, 12);
+  seat.castShadow = true;
   g.add(seat);
   return g;
 }

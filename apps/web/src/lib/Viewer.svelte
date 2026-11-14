@@ -351,7 +351,7 @@
 
   /** The part as the program leaves it after `at` moves (and, while playing, cut on to where the tool is). */
   function buildPart(): void {
-    material = simulate(job, program, at).material;
+    material = simulate(job, program, at, { walls: true }).material;
     way = null; // sampled at the new material's step
     cutClock = at > 0 ? ends[at - 1]! : 0;
     if (playing) cutOn(clock);
@@ -437,7 +437,7 @@
       if (look.coolant) {
         const size = Math.max(1.6, Math.min(3.2, d * 0.35));
         const top = (made.userData.top as number | undefined) ?? 30;
-        nozzle = lathe ? nozzleMesh(new THREE.Vector3(26, 44, 10), new THREE.Vector3(12, 16, 7), size) : nozzleMesh(new THREE.Vector3(-d - 13, top * 0.85, d + 9), new THREE.Vector3(-d * 0.8 - 7, Math.max(9, d * 1.7), d * 0.6 + 5), size);
+        nozzle = lathe ? nozzleMesh(new THREE.Vector3(26, 44, 6), new THREE.Vector3(12, 16, 3), size) : nozzleMesh(new THREE.Vector3(-d - 13, top * 0.85, d + 9), new THREE.Vector3(-d * 0.8 - 7, Math.max(9, d * 1.7), d * 0.6 + 5), size);
         made.add(nozzle);
       }
       tool = made;
@@ -513,7 +513,8 @@
     if (s.kind === 'bar') {
       center = new THREE.Vector3(s.front - s.stickout / 2, 0, 0);
       size = Math.max(s.stickout * 1.25, s.diameter * 2);
-      dir = new THREE.Vector3(0.25, 0.55, 1);
+      // from the operator's side and above: the tool comes in from the front, the cuts lie level
+      dir = new THREE.Vector3(0.3, 0.85, 1);
     } else {
       center = new THREE.Vector3(s.x / 2, s.top - s.z / 2, -s.y / 2);
       size = Math.max(s.x, s.y, s.z) * 1.15;
@@ -537,6 +538,10 @@
     }
     camera.near = size / 200;
     camera.far = size * 50;
+    // zoom no further out than the work stays in sight, nor in closer than its finest detail: out
+    // past that it vanishes, and coming back takes as long as going out did
+    controls.minDistance = size * 0.05;
+    controls.maxDistance = size * 8;
     camera.updateProjectionMatrix();
     controls.update();
     if (keyLight) {
@@ -744,10 +749,15 @@
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.12;
-    // kept when the hand lets go, and again once the view has come to rest (it glides on a little)
+    // kept once the view has come to rest (it glides on a little): not at every turn of the wheel
+    // (a trackpad sends a hundred a second, and more as it coasts on)
     controls.addEventListener('end', () => {
-      rememberView();
       viewMoved = true;
+    });
+    // the wheel zooms at once, in its own event (controls.update() in the frame then sees nothing
+    // left to do): draw whenever the view changed, however it changed
+    controls.addEventListener('change', () => {
+      dirty = true;
     });
     window.addEventListener('pagehide', leaving);
 

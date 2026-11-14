@@ -25,7 +25,8 @@ export interface Analysis {
 const fmt = (p: Vec3, lathe: boolean) => (lathe ? `X${(p.x * 2).toFixed(2)} Z${p.z.toFixed(2)}` : `X${p.x.toFixed(2)} Y${p.y.toFixed(2)} Z${p.z.toFixed(2)}`);
 
 /** Run the material model over the first `upTo` moves (all by default) and report problems. */
-export function simulate(job: Job, program: Program, upTo = Infinity): { material: LatheMaterial | MillMaterial | null; diagnostics: Diagnostic[] } {
+/** `walls`: note where the cutter leaves walls in the material, for drawing it (MillMaterial.ex/ey); the checks do not need it. */
+export function simulate(job: Job, program: Program, upTo = Infinity, o: { walls?: boolean } = {}): { material: LatheMaterial | MillMaterial | null; diagnostics: Diagnostic[] } {
   const docOf = (tool: Tool) => cuttingData(tool, job.workMaterial).doc;
   const diagnostics: Diagnostic[] = [];
   const lathe = program.kind === 'lathe';
@@ -34,6 +35,7 @@ export function simulate(job: Job, program: Program, upTo = Infinity): { materia
   // (a later setup of a part starts from what the ones before left: carry.ts)
   const material = job.stock.kind === 'bar' ? new LatheMaterial(job.stock) : new MillMaterial(job.stock, undefined, carried(job));
   if ((lathe && !(material instanceof LatheMaterial)) || (!lathe && !(material instanceof MillMaterial))) return { material: null, diagnostics };
+  if (material instanceof MillMaterial) material.noteWalls = !!o.walls;
 
   const env = job.machine.envelope;
   const chuckR = job.stock.kind === 'bar' ? (job.machine.chuckDiameter ?? job.stock.diameter * 2.5) / 2 : 0;
