@@ -28,6 +28,12 @@ export const simWorld = {
   /** What the simulated machine ran into while moving (not probing): the first time for each thing. */
   crashes: [] as { what: string; at: V3; move: 'rapid' | 'feed' | 'jog' }[],
   plate: null as null | { x: number; y: number; size: number; thickness: number },
+  /**
+   * The printed table marker lying flat on the block's top (camera: "Marker on the stock"),
+   * centred at (x, y) in work coordinates of the original zero, edges along X and Y, its top edge
+   * towards +Y; `size`: its black square.
+   */
+  tableMarker: null as null | { x: number; y: number; size: number },
   /** Diameter of the tool in the spindle (for contact). */
   toolDiameter: 6,
   /** Length of the tool below the spindle (contact with its side). */

@@ -6,13 +6,32 @@
   import { machine } from '../machine.svelte.ts';
   import { store } from '../store.svelte.ts';
   import { tooling } from '../tooling.svelte.ts';
+  import { simWorld } from '../simworld.ts';
 
   const lathe = $derived(store.job.machine.kind === 'lathe');
   const lens = $derived(camera.calib.lens);
   const pose = $derived(camera.calib.pose?.kind === store.job.machine.kind ? camera.calib.pose : undefined);
   let method = $state<'machine' | 'marker'>('machine');
   let span = $state({ x: 40, y: 25, z: 30 });
-  let markerAt = $state({ x: 20, y: 20, size: 40 });
+  /** Where the table marker goes to start with: the middle of the block, as big as fits on it with its white border (in 5 mm steps). */
+  const markerStart = () => {
+    const s = store.job.stock;
+    if (s.kind !== 'block') return { x: 20, y: 20, size: 40 };
+    const fits = Math.floor((Math.min(s.x, s.y) * 0.8 * 6) / 8 / 5) * 5;
+    return { x: Math.round(s.x / 2), y: Math.round(s.y / 2), size: Math.max(10, Math.min(40, fits)) };
+  };
+  let markerAt = $state(markerStart());
+  /** The fields were typed in: they no longer follow the stock. */
+  let markerTyped = false;
+  $effect(() => {
+    void store.job.stock;
+    if (!markerTyped) markerAt = markerStart();
+  });
+  // the simulated camera: the table marker lies on the stock where the fields say, while that way is chosen
+  $effect(() => {
+    const on = camera.source === SIM_SOURCE && method === 'marker' && !lathe && Number.isFinite(markerAt.x) && Number.isFinite(markerAt.y) && markerAt.size >= 10;
+    simWorld.tableMarker = on ? { x: markerAt.x, y: markerAt.y, size: markerAt.size } : null;
+  });
   let problem = $state('');
   const stockNow = $derived(store.job.stock);
   /** How far off the measured block is, and whether it matters (camera precision is a few tenths). */
@@ -285,9 +304,9 @@
         {:else}
           <p class="small">Lay the table marker flat on the stock top, edges along X and Y, its top edge towards +Y. Where is its centre, and how big is its black square (measured)?</p>
           <div class="grid">
-            <label>X <input type="number" bind:value={markerAt.x} /> mm</label>
-            <label>Y <input type="number" bind:value={markerAt.y} /> mm</label>
-            <label>Square <input type="number" bind:value={markerAt.size} min="10" /> mm</label>
+            <label>X <input type="number" bind:value={markerAt.x} oninput={() => (markerTyped = true)} /> mm</label>
+            <label>Y <input type="number" bind:value={markerAt.y} oninput={() => (markerTyped = true)} /> mm</label>
+            <label>Square <input type="number" bind:value={markerAt.size} oninput={() => (markerTyped = true)} min="10" /> mm</label>
           </div>
           <button class="btn pri" onclick={() => run(() => camera.calibratePoseFromMarker({ x: markerAt.x, y: markerAt.y }, markerAt.size))}>Measure</button>
           <p class="muted small">Quicker, less exact than letting the machine move a marker{machine.connected ? '' : '; without the machine connected it is tied to the current work zero'}.</p>

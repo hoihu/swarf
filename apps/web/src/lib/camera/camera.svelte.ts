@@ -495,7 +495,7 @@ class Camera {
       if (m) seen.push(m);
       await sleep(80);
     }
-    if (!seen.length) throw new Error(`The camera does not see the table marker (number ${TABLE_MARKER}).`);
+    if (!seen.length) throw new Error(`The camera does not see the table marker (number ${TABLE_MARKER}). All of it must be in view, its white border too: move the spindle up or aside if it hides part of it, and keep the paper flat on the stock.`);
     const c = [0, 1, 2, 3].map((k) => [seen.reduce((s, m) => s + m.corners[k]![0], 0) / seen.length, seen.reduce((s, m) => s + m.corners[k]![1], 0) / seen.length]) as V2[];
     const h = size / 2;
     // IPPE_SQUARE wants the corners in the marker's own frame, in this order

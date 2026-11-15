@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three';
 import type { Job } from '@swarf/cam';
-import { BOARD, TOOL_MARKER, boardImage, markerImage, type CV } from './cv.ts';
+import { BOARD, TABLE_MARKER, TOOL_MARKER, boardImage, markerImage, type CV } from './cv.ts';
 import { glProjection, glView, project, type Lens, type Pose, type V3 } from './geometry.ts';
 import { simWorld } from '../simworld.ts';
 import { topOf, type Solid } from '../sim/solids.ts';
@@ -78,6 +78,8 @@ export class SimCamera {
   #board: THREE.Mesh;
   #boardUntil = 0;
   #key = '';
+  /** The table marker's picture (made once). */
+  #tableTex: THREE.Texture;
   readonly laser = LASER;
   #laserMat: THREE.ShaderMaterial;
   #noise: THREE.ShaderMaterial;
@@ -129,6 +131,7 @@ export class SimCamera {
     const plate = new THREE.Mesh(new THREE.PlaneGeometry((MARKER_SIZE * 8) / 6, (MARKER_SIZE * 8) / 6), new THREE.MeshBasicMaterial({ map: markerTex, side: THREE.DoubleSide }));
     plate.name = 'marker';
     this.#tool.add(plate);
+    this.#tableTex = texture(markerImage(cv, TABLE_MARKER, 256));
 
     // lens distortion: the sharp pinhole picture, resampled the way the lens bends it
     const L = this.lens;
@@ -233,7 +236,7 @@ export class SimCamera {
     const { job } = w;
     // what is really there sits where the simulator's work zero started (a new zero does not move it)
     const [ox, oy, oz] = simWorld.origin ?? w.wco;
-    const key = `${job.machine.kind}:${JSON.stringify(job.stock)}:${[ox, oy, oz].join(',')}:${JSON.stringify([simWorld.stockError, simWorld.setup, simWorld.plate, simWorld.toolDiameter, simWorld.stickout, simWorld.barError])}`;
+    const key = `${job.machine.kind}:${JSON.stringify(job.stock)}:${[ox, oy, oz].join(',')}:${JSON.stringify([simWorld.stockError, simWorld.setup, simWorld.plate, simWorld.toolDiameter, simWorld.stickout, simWorld.barError, simWorld.tableMarker, simWorld.tableMarker ? w.wco : null])}`;
     if (key === this.#key) return;
     this.#key = key;
     this.#fixed.clear();
@@ -256,6 +259,17 @@ export class SimCamera {
       };
       const world = simWorld.world(job);
       for (const sol of world.solids) this.#fixed.add(solidMesh(sol, looks[sol.look], [ox, oy, oz]));
+      // the printed table marker lying on the top where it was put (the paper a hair above it):
+      // its place is given from the work zero now, which may not be the one the simulator started with
+      const tm = simWorld.tableMarker;
+      if (tm) {
+        const side = (tm.size * 8) / 6;
+        const paper = new THREE.Mesh(new THREE.PlaneGeometry(side, side), new THREE.MeshBasicMaterial({ map: this.#tableTex }));
+        const mx = w.wco[0] + tm.x;
+        const my = w.wco[1] + tm.y;
+        paper.position.set(mx, my, oz + simWorld.topAt(job, mx - ox, my - oy) + 0.05);
+        this.#fixed.add(paper);
+      }
       const table = new THREE.Mesh(new THREE.BoxGeometry(600, 300, 20), dark);
       table.position.set(ox + s.x / 2, oy + s.y / 2, oz + world.floor - 10);
       this.#fixed.add(table);
