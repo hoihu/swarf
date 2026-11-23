@@ -1051,6 +1051,29 @@ describe('more mill operations', () => {
     expect(errors(run([{ type: 'mill_engrave', tool: 4, text: 'A@B', x: 10, y: 20 }]))[0]).toMatch(/font has no "@"/);
   });
 
+  it('after a face, the next operations start from the faced top, not the raw one', () => {
+    const stock = { kind: 'block' as const, x: 80, y: 50, z: 15, top: 0.2 };
+    const face: OperationInput = { type: 'mill_face', tool: 1, z: 0 };
+    const go = (ops: OperationInput[]) => analyze(withOps('mill', ops, { tools, stock }));
+    const opCuts = (a: ReturnType<typeof analyze>, label: string) =>
+      a.program.segments.filter((s) => s.label.startsWith(label)).flatMap((s) => s.moves).filter((m) => m.type !== 'rapid');
+    // engraving 0.2 deep into the faced top: down to Z-0.2, and the material shows it
+    const e = go([face, { type: 'mill_engrave', tool: 4, text: 'A', x: 10, y: 20, height: 6, depth: 0.2 }]);
+    expect(errors(e)).toEqual([]);
+    const ez = opCuts(e, 'Engrave').map((m) => +m.to.z.toFixed(9));
+    expect(ez.length).toBeGreaterThan(0);
+    expect(ez.every((z) => z === -0.2)).toBe(true);
+    expect(Math.min(...(e.material as MillMaterial).h)).toBeLessThan(-0.1);
+    // a chamfer 0.5 wide on the faced top: the point runs 0.5 + tipClear below Z0
+    const contour: OperationInput = { type: 'mill_contour_rect', tool: 1, x: 15, y: 10, w: 40, h: 25, zBottom: -5, side: 'outside' };
+    const c = go([face, contour, { type: 'mill_chamfer', tool: 4, x: 15, y: 10, w: 40, h: 25, size: 0.5 }]);
+    expect(errors(c)).toEqual([]);
+    expect(Math.min(...opCuts(c, 'Chamfer').map((m) => m.to.z))).toBeCloseTo(-1.5, 9);
+    // an explicit zTop still wins
+    const x = go([face, { type: 'mill_engrave', tool: 4, text: 'A', x: 10, y: 20, height: 6, depth: 0.2, zTop: 0.2 }]);
+    expect(opCuts(x, 'Engrave').every((m) => Math.abs(m.to.z) < 1e-9)).toBe(true);
+  });
+
   it('thread milling: in a drilled hole from the bottom up, one pitch a turn, to the nominal diameter', () => {
     const drill: OperationInput = { type: 'mill_drill', tool: 3, points: [{ x: 30, y: 25 }], zBottom: -12, peck: 3 };
     const a = run([drill, { type: 'mill_thread', tool: 5, cx: 30, cy: 25, diameter: 8, pitch: 1.25, zBottom: -10 }]);

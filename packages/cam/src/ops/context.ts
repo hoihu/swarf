@@ -10,6 +10,8 @@ export interface OpContext {
   from: Vec3;
   /** Clearance for rapids, mm. */
   c: number;
+  /** Mill: the top as the last mill_face of this setup left it (undefined: not faced yet, the stock top). */
+  faced?: number | undefined;
 }
 
 /** Lathe: the radius and Z where rapids are always in the air (above the bar, in front of its face). */

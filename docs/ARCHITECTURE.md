@@ -21,7 +21,8 @@ user text ──► agent ──tool calls──► Job (zod-validated)
 
 - **Job** (`cam/src/schema.ts`): machine, tool table, stock and an ordered list of operations.
   Lathe X is a radius internally; the emitter writes diameters (G7). Mill X0 Y0 is the stock's
-  front-left corner, Z0 the top after facing.
+  front-left corner, Z0 the top after facing. A mill operation without `zTop` starts from the Z
+  of the last `mill_face` before it in the same setup, else from the stock top.
 - **Operations** (`cam/src/ops/`): each is a pure function from parameters to moves. They only
   rapid where the air is known to be free (above the bar, in front of the face, above the safe
   plane, or inside material the same operation just removed).
