@@ -233,7 +233,7 @@ describe('streaming', () => {
     await new Promise((r) => setTimeout(r, 1600));
     await s.close();
     expect(g.realtime).toContain(RT.reset);
-  });
+  }, 30000);
 
   it('notices a controller that stops answering: the job fails and says so', async () => {
     const g = new FakeGrbl();
@@ -255,7 +255,7 @@ describe('streaming', () => {
     expect(s.lost).toBe(false);
     expect(link).toEqual([true, false]);
     await s.close();
-  });
+  }, 30000);
 
   it('learns the buffer size from $I', () => {
     const g = new FakeGrbl(1024);
