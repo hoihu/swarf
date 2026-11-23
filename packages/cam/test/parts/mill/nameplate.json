@@ -1,0 +1,120 @@
+{
+  "swarf": "job",
+  "version": 1,
+  "job": {
+    "name": "Nameplate",
+    "machine": {
+      "kind": "mill",
+      "name": "grblHAL mill",
+      "envelope": {
+        "min": {
+          "x": -30,
+          "y": -30,
+          "z": -80
+        },
+        "max": {
+          "x": 300,
+          "y": 200,
+          "z": 60
+        }
+      },
+      "minRpm": 500,
+      "maxRpm": 6000,
+      "maxFeed": 2000,
+      "rapidRate": 3000,
+      "xMode": "diameter",
+      "spindleSync": false,
+      "clearance": 2,
+      "accel": 300,
+      "junctionDeviation": 0.01,
+      "arcTolerance": 0.005
+    },
+    "tools": [
+      {
+        "id": 1,
+        "name": "Endmill Ø6 3F carbide",
+        "type": "endmill",
+        "diameter": 6,
+        "fluteLength": 15,
+        "flutes": 3,
+        "centerCutting": true
+      },
+      {
+        "id": 2,
+        "name": "Endmill Ø10 3F carbide",
+        "type": "endmill",
+        "diameter": 10,
+        "fluteLength": 22,
+        "flutes": 3,
+        "centerCutting": true
+      },
+      {
+        "id": 3,
+        "name": "Drill Ø5 HSS",
+        "type": "drill",
+        "diameter": 5,
+        "fluteLength": 40
+      },
+      {
+        "id": 4,
+        "name": "Chamfer mill Ø6 90° carbide",
+        "type": "chamfer",
+        "diameter": 6,
+        "flutes": 2,
+        "angle": 90
+      }
+    ],
+    "stock": {
+      "kind": "block",
+      "x": 60,
+      "y": 20,
+      "z": 5,
+      "top": 0.2
+    },
+    "operations": [
+      {
+        "type": "mill_face",
+        "id": "op1",
+        "label": "Skim top",
+        "tool": 2,
+        "z": 0,
+        "stepover": 0.6
+      },
+      {
+        "type": "mill_engrave",
+        "id": "op2",
+        "label": "Engrave",
+        "tool": 4,
+        "text": "SWARF 01",
+        "x": 8,
+        "y": 7,
+        "height": 6,
+        "depth": 0.2,
+        "angle": 0,
+        "spacing": 1,
+        "zTop": 0,
+        "follow": false
+      },
+      {
+        "type": "mill_chamfer",
+        "id": "op3",
+        "label": "Chamfer top edge",
+        "tool": 4,
+        "size": 0.5,
+        "x": 0,
+        "y": 0,
+        "w": 60,
+        "h": 20,
+        "side": "outside",
+        "zTop": 0,
+        "tipClear": 1,
+        "direction": "climb"
+      }
+    ],
+    "shapes": [],
+    "obstacles": [],
+    "workMaterial": "aluminium",
+    "material": "6082 T6",
+    "notes": "A nameplate, 60 x 20 mm, the text \"SWARF 01\" engraved 0.2 mm deep with the 90° chamfer mill, the top edge chamfered 0.5 mm all round. The plate is a ready-cut 60 x 20 x 5 blank held in the vise; the top is skimmed flat first so the engraving is even."
+  }
+}

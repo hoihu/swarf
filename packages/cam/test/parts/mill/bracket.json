@@ -1,0 +1,163 @@
+{
+  "swarf": "job",
+  "version": 1,
+  "job": {
+    "name": "Mounting bracket 50 x 30 x 5.5",
+    "machine": {
+      "kind": "mill",
+      "name": "grblHAL mill",
+      "envelope": {
+        "min": {
+          "x": -30,
+          "y": -30,
+          "z": -80
+        },
+        "max": {
+          "x": 300,
+          "y": 200,
+          "z": 60
+        }
+      },
+      "minRpm": 500,
+      "maxRpm": 6000,
+      "maxFeed": 2000,
+      "rapidRate": 3000,
+      "xMode": "diameter",
+      "spindleSync": false,
+      "clearance": 2,
+      "accel": 300,
+      "junctionDeviation": 0.01,
+      "arcTolerance": 0.005
+    },
+    "tools": [
+      {
+        "id": 1,
+        "name": "Endmill Ø6 3F carbide",
+        "type": "endmill",
+        "diameter": 6,
+        "fluteLength": 15,
+        "flutes": 3,
+        "centerCutting": true
+      },
+      {
+        "id": 2,
+        "name": "Endmill Ø10 3F carbide",
+        "type": "endmill",
+        "diameter": 10,
+        "fluteLength": 22,
+        "flutes": 3,
+        "centerCutting": true
+      },
+      {
+        "id": 3,
+        "name": "Drill Ø5 HSS",
+        "type": "drill",
+        "diameter": 5,
+        "fluteLength": 40
+      },
+      {
+        "id": 4,
+        "name": "Chamfer mill Ø6 90° carbide",
+        "type": "chamfer",
+        "diameter": 6,
+        "flutes": 2,
+        "angle": 90
+      }
+    ],
+    "stock": {
+      "kind": "block",
+      "x": 60,
+      "y": 40,
+      "z": 6,
+      "top": 0.5
+    },
+    "operations": [
+      {
+        "type": "mill_face",
+        "id": "op1",
+        "label": "Face top",
+        "tool": 2,
+        "z": 0,
+        "stepover": 0.6
+      },
+      {
+        "type": "mill_spot",
+        "id": "op2",
+        "label": "Spot holes",
+        "tool": 4,
+        "points": [
+          {
+            "x": 10,
+            "y": 10
+          },
+          {
+            "x": 50,
+            "y": 10
+          },
+          {
+            "x": 50,
+            "y": 30
+          },
+          {
+            "x": 10,
+            "y": 30
+          }
+        ],
+        "diameter": 6,
+        "zTop": 0
+      },
+      {
+        "type": "mill_drill",
+        "id": "op3",
+        "label": "Drill Ø5 through",
+        "tool": 3,
+        "points": [
+          {
+            "x": 10,
+            "y": 10
+          },
+          {
+            "x": 50,
+            "y": 10
+          },
+          {
+            "x": 50,
+            "y": 30
+          },
+          {
+            "x": 10,
+            "y": 30
+          }
+        ],
+        "zBottom": -5.8,
+        "zTop": 0,
+        "peck": 3
+      },
+      {
+        "type": "mill_contour_rect",
+        "id": "op4",
+        "label": "Cut out, tabs",
+        "tool": 1,
+        "x": 5,
+        "y": 5,
+        "w": 50,
+        "h": 30,
+        "zBottom": -5.8,
+        "zTop": 0,
+        "side": "outside",
+        "entry": "ramp",
+        "rampAngle": 3,
+        "finish": 0.2,
+        "direction": "climb",
+        "tabs": 4,
+        "tabWidth": 5,
+        "tabHeight": 1
+      }
+    ],
+    "shapes": [],
+    "obstacles": [],
+    "workMaterial": "aluminium",
+    "material": "6082 T6",
+    "notes": "A flat mounting bracket, 50 x 30 x 5.5 mm, with four Ø5 holes on a 40 x 20 pitch, cut out of a 60 x 40 x 6 plate of 6082. The cutter runs round the edge of the plate, so hold it down on a sacrificial board with double-sided tape, not clamps: the holes and the outline go 0.3 mm into the board. Face the top, spot and drill the holes, then cut the outline with four holding tabs; break the tabs and file them flush."
+  }
+}
