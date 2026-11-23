@@ -245,7 +245,7 @@ const rect = {
 };
 const depthFields = {
   zBottom: mm.describe('Final depth (negative)'),
-  zTop: mm.optional().describe('Material top here (default: stock top, or 0 after facing)'),
+  zTop: mm.optional().describe('Material top here (default: the Z of the last mill_face before it in this setup, else the stock top)'),
   stepDown: pos.optional().describe('Z per level (default: tool maxDoc)'),
 };
 
@@ -397,7 +397,7 @@ export const MillChamfer = z.object({
   cy: mm.optional(),
   diameter: pos.optional(),
   side: z.enum(['outside', 'inside']).default('outside').describe('outside: the edge of a part (the tool runs around it); inside: the edge of a pocket or hole'),
-  zTop: mm.optional().describe('Height of the edge (default: stock top, or 0 after facing)'),
+  zTop: mm.optional().describe('Height of the edge (default: the Z of the last mill_face before it in this setup, else the stock top)'),
   tipClear: z.number().min(0).max(10).default(1).describe('How far below the chamfer the point of the tool runs (its very tip does not cut well)'),
   direction: wallFinish.direction,
 });

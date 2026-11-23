@@ -35,7 +35,7 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
     rapid(x, y, safeZ);
     if (zTop + 1 < safeZ) rapid(x, y, zTop + 1);
   };
-  const zTopOf = (o: { zTop?: number | undefined }) => o.zTop ?? stock.top;
+  const zTopOf = (o: { zTop?: number | undefined }) => o.zTop ?? ctx.faced ?? stock.top;
 
   /**
    * From (ax, ay, zFrom) down to zTo, zigzagging along a→b at the ramp angle; ends at a.

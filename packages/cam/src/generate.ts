@@ -137,6 +137,8 @@ export function generate(job: Job): Generated {
   }
 
   let at = program.home;
+  // the job is one setup: a face earlier in it sets the top the operations after it start from
+  let faced: number | undefined;
   for (const op of withIds(job.operations)) {
     const opId = op.id!;
     const err = (code: string, message: string) => diagnostics.push({ severity: 'error', code, message, opId });
@@ -176,12 +178,13 @@ export function generate(job: Job): Generated {
       at = program.home;
     }
     try {
-      const ctx = { job, tool, cut, from: at, c: job.machine.clearance };
+      const ctx = { job, tool, cut, from: at, c: job.machine.clearance, faced };
       let moves = kind === 'lathe' ? generateLathe(op as never, ctx) : generateMill(op as never, ctx);
       if (job.machine.arcTolerance > 0) moves = fitArcs(moves, at, job.machine.arcTolerance, 2000, kind === 'lathe' ? 'zx' : 'xy');
       const seg: Segment = { opId, label: opLabel(op), tool: tool.id, rpm: cut.rpm, moves };
       program.segments.push(seg);
       if (moves.length) at = moves.at(-1)!.to;
+      if (op.type === 'mill_face') faced = op.z;
     } catch (e) {
       if (e instanceof CamError) err('OP_INVALID', e.message);
       else throw e;
