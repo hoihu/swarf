@@ -1,0 +1,128 @@
+{
+  "swarf": "job",
+  "version": 1,
+  "job": {
+    "name": "Pin Ø12 with clip groove",
+    "machine": {
+      "kind": "lathe",
+      "name": "grblHAL lathe",
+      "envelope": {
+        "min": {
+          "x": -1,
+          "y": 0,
+          "z": -200
+        },
+        "max": {
+          "x": 70,
+          "y": 0,
+          "z": 60
+        }
+      },
+      "minRpm": 80,
+      "maxRpm": 2500,
+      "maxFeed": 1500,
+      "rapidRate": 3000,
+      "xMode": "diameter",
+      "spindleSync": false,
+      "chuckDiameter": 100,
+      "clearance": 2,
+      "accel": 200,
+      "junctionDeviation": 0.01,
+      "arcTolerance": 0.005
+    },
+    "tools": [
+      {
+        "id": 1,
+        "name": "Turning, CCMT 09 R0.4 carbide",
+        "type": "turning",
+        "noseRadius": 0.4,
+        "edgeLength": 3
+      },
+      {
+        "id": 2,
+        "name": "Parting blade 2 mm",
+        "type": "grooving",
+        "width": 2
+      },
+      {
+        "id": 3,
+        "name": "Drill Ø6 HSS",
+        "type": "drill",
+        "diameter": 6,
+        "fluteLength": 50
+      },
+      {
+        "id": 4,
+        "name": "Threading insert 60°, 16ER",
+        "type": "threading",
+        "edgeLength": 1.5
+      },
+      {
+        "id": 5,
+        "name": "Boring bar, min. bore Ø10",
+        "type": "boring",
+        "diameter": 10,
+        "internal": true,
+        "noseRadius": 0.2,
+        "edgeLength": 2,
+        "fluteLength": 30
+      },
+      {
+        "id": 6,
+        "name": "Internal threading bar 60°, min. bore Ø12",
+        "type": "threading",
+        "diameter": 12,
+        "internal": true,
+        "edgeLength": 1.5,
+        "fluteLength": 25
+      }
+    ],
+    "stock": {
+      "kind": "bar",
+      "diameter": 16,
+      "stickout": 45,
+      "front": 1
+    },
+    "operations": [
+      {
+        "type": "lathe_face",
+        "tool": 1,
+        "z": 0
+      },
+      {
+        "type": "lathe_turn",
+        "tool": 1,
+        "diameter": 12,
+        "zEnd": -33,
+        "zStart": 0,
+        "finish": 0.2
+      },
+      {
+        "type": "lathe_chamfer",
+        "tool": 1,
+        "diameter": 12,
+        "z": 0,
+        "size": 1
+      },
+      {
+        "type": "lathe_groove",
+        "tool": 2,
+        "diameter": 10,
+        "z": -24,
+        "width": 2,
+        "fromDiameter": 12
+      },
+      {
+        "type": "lathe_partoff",
+        "tool": 2,
+        "z": -30,
+        "toDiameter": 0
+      }
+    ],
+    "shapes": [],
+    "obstacles": [],
+    "workMaterial": "steel",
+    "material": "C45",
+    "notes": "Steel pin Ø12 x 30 from Ø16 bar: a clip groove Ø10 near the back, front chamfer, parted off."
+  }
+}
