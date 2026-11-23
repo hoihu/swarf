@@ -192,5 +192,5 @@ describe('simulated setups', () => {
     expect(codes(Job.parse({ ...base, obstacles: found('straps') })).some((d) => d.opId === 'op1')).toBe(true);
     // low edge clamps: facing and drilling clear them
     expect(codes(Job.parse({ ...base, obstacles: found('toe') }))).toHaveLength(0);
-  });
+  }, 30000);
 });

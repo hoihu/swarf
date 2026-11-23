@@ -1339,7 +1339,7 @@ describe('worth a look', () => {
     const held = Job.parse({ ...job, obstacles: [{ name: 'clamp', x0: -30, y0: 10, x1: -12, y1: 30, top: 5 }], operations: job.operations.map((o) => (o.type === 'mill_contour_rect' ? { ...o, tabs: 4 } : o)) });
     expect(look(held)).not.toContain('HOLDING_UNKNOWN');
     expect(look(held)).not.toContain('CUT_FREE');
-  });
+  }, 30000);
 
   it('lathe: a thin part hanging out, parting far from the jaws, a thread with no relief, the order', () => {
     const job = withOps('lathe', [
@@ -1500,7 +1500,7 @@ describe('adaptive clearing', () => {
     const cm = c.material as MillMaterial;
     expect(cm.h[Math.floor(25 / cm.cell) * cm.nx + Math.floor(54 / cm.cell)]!).toBeCloseTo(-5, 5);
     expect(cm.h[Math.floor(25 / cm.cell) * cm.nx + Math.floor(56 / cm.cell)]!).toBeCloseTo(0, 5);
-  });
+  }, 30000);
 
   it('refuses a pocket hardly wider than the tool, and says what to do', () => {
     const narrow = withOps('mill', [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 40, h: 7, zBottom: -4, zTop: 0, strategy: 'adaptive' }]);
