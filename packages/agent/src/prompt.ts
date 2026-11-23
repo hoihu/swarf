@@ -56,7 +56,8 @@ export function formatJobContext(job: Job): string {
     `machine: ${m.name} (${m.kind}), spindle ${m.minRpm}–${m.maxRpm} rpm, feed ≤ ${m.maxFeed} mm/min, travel X${m.envelope.min.x}..${m.envelope.max.x}` +
       (m.kind === 'mill' ? ` Y${m.envelope.min.y}..${m.envelope.max.y}` : '') +
       ` Z${m.envelope.min.z}..${m.envelope.max.z}${m.kind === 'lathe' ? ' (X as radius)' : ''}` +
-      (m.chuckDiameter ? `, chuck Ø${m.chuckDiameter}` : ''),
+      (m.chuckDiameter ? `, chuck Ø${m.chuckDiameter}` : '') +
+      (m.chuckMaxRpm ? `, chuck ≤ ${m.chuckMaxRpm} rpm` : ''),
   );
   const mat = MATERIALS[job.workMaterial];
   lines.push(`stock: ${stockText(job)}; material: ${job.workMaterial} (${mat.name}${job.material ? `, ${job.material}` : ''}), speeds and feeds from it`);

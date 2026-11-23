@@ -7,6 +7,8 @@ import {
   LatheMaterial,
   MillMaterial,
   analyze,
+  simulate,
+  generate,
   resumeFrom,
   textStrokes,
   hasErrors,
@@ -510,6 +512,32 @@ describe('checks', () => {
   it('turning into the chuck', () => {
     const job = withOps('lathe', [{ type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -70 }]);
     expect(codes(job)).toContain('CHUCK');
+  });
+
+  it('says when the chuck size is a guess', () => {
+    const turn: OperationInput[] = [{ type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -20 }];
+    const unknown = withOps('lathe', turn, { machine: { ...EXAMPLES.lathe().machine, chuckDiameter: undefined } });
+    const d = analyze(unknown).diagnostics.find((x) => x.code === 'CHUCK_UNKNOWN');
+    expect(d?.severity).toBe('warning');
+    expect(d?.message).toMatch(/chuck Ø/);
+    expect(codes(withOps('lathe', turn))).not.toContain('CHUCK_UNKNOWN');
+    expect(codes(withOps('mill', []))).not.toContain('CHUCK_UNKNOWN');
+  });
+
+  it("keeps under the chuck's rated rpm", () => {
+    const turn: OperationInput[] = [{ type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -20, rpm: 1500 }];
+    const limited = (chuckMaxRpm: number) => withOps('lathe', turn, { machine: { ...EXAMPLES.lathe().machine, chuckMaxRpm } });
+    // a program made before the limit was set (or by anything else) is caught by the check
+    const fast = simulate(limited(1200), generate(withOps('lathe', turn)).program).diagnostics.find((x) => x.code === 'CHUCK_RPM');
+    expect(fast?.severity).toBe('error');
+    expect(fast?.message).toMatch(/1500 rpm.*1200/);
+    expect(fast?.opId).toBe('op1');
+    // generating with the limit keeps under it
+    const a = analyze(limited(1200));
+    expect(a.program.segments.every((s) => s.rpm <= 1200)).toBe(true);
+    expect(a.diagnostics.map((x) => x.code)).not.toContain('CHUCK_RPM');
+    expect(codes(limited(1500))).not.toContain('CHUCK_RPM');
+    expect(codes(limited(2000))).not.toContain('CHUCK_RPM');
   });
 
   it('leaving the travel', () => {

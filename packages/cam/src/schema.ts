@@ -33,6 +33,8 @@ export const Machine = z.object({
   spindleSync: z.boolean().default(false),
   /** Lathe: chuck jaw outer diameter, used for the chuck collision check. */
   chuckDiameter: pos.optional(),
+  /** Lathe: the chuck's rated maximum speed, rpm; spindle speeds are kept under it and a faster one is an error. */
+  chuckMaxRpm: pos.optional(),
   /** Clearance kept above / beside the stock for rapids, mm. */
   clearance: pos.default(2),
   /** Acceleration, mm/s² (grbl $120…), for the time estimate. */
