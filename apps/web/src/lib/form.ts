@@ -85,6 +85,7 @@ const LABELS: Record<string, [string, string?]> = {
   xMode: ['X in G-code as'],
   spindleSync: ['Spindle sync (G33 threading)'],
   chuckDiameter: ['Chuck Ø', 'mm'],
+  chuckMaxRpm: ['Chuck max speed', 'rpm'],
   clearance: ['Clearance', 'mm'],
   accel: ['Acceleration', 'mm/s²'],
   junctionDeviation: ['Junction deviation', 'mm'],
@@ -176,6 +177,6 @@ const machineSchema = z.toJSONSchema(Machine, { io: 'input', unrepresentable: 'a
 
 /** Machine settings (the travel envelope stays out of the form for now). */
 export function machineFields(kind: MachineKind): Field[] {
-  const latheOnly = ['xMode', 'spindleSync', 'chuckDiameter'];
+  const latheOnly = ['xMode', 'spindleSync', 'chuckDiameter', 'chuckMaxRpm'];
   return fields(machineSchema, ['kind', 'envelope', ...(kind === 'mill' ? latheOnly : [])]).map((f) => ({ ...f, required: true }));
 }

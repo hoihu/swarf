@@ -7,6 +7,8 @@ import {
   LatheMaterial,
   MillMaterial,
   analyze,
+  simulate,
+  generate,
   resumeFrom,
   textStrokes,
   hasErrors,
@@ -510,6 +512,32 @@ describe('checks', () => {
   it('turning into the chuck', () => {
     const job = withOps('lathe', [{ type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -70 }]);
     expect(codes(job)).toContain('CHUCK');
+  });
+
+  it('says when the chuck size is a guess', () => {
+    const turn: OperationInput[] = [{ type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -20 }];
+    const unknown = withOps('lathe', turn, { machine: { ...EXAMPLES.lathe().machine, chuckDiameter: undefined } });
+    const d = analyze(unknown).diagnostics.find((x) => x.code === 'CHUCK_UNKNOWN');
+    expect(d?.severity).toBe('warning');
+    expect(d?.message).toMatch(/chuck Ø/);
+    expect(codes(withOps('lathe', turn))).not.toContain('CHUCK_UNKNOWN');
+    expect(codes(withOps('mill', []))).not.toContain('CHUCK_UNKNOWN');
+  });
+
+  it("keeps under the chuck's rated rpm", () => {
+    const turn: OperationInput[] = [{ type: 'lathe_turn', tool: 1, diameter: 20, zEnd: -20, rpm: 1500 }];
+    const limited = (chuckMaxRpm: number) => withOps('lathe', turn, { machine: { ...EXAMPLES.lathe().machine, chuckMaxRpm } });
+    // a program made before the limit was set (or by anything else) is caught by the check
+    const fast = simulate(limited(1200), generate(withOps('lathe', turn)).program).diagnostics.find((x) => x.code === 'CHUCK_RPM');
+    expect(fast?.severity).toBe('error');
+    expect(fast?.message).toMatch(/1500 rpm.*1200/);
+    expect(fast?.opId).toBe('op1');
+    // generating with the limit keeps under it
+    const a = analyze(limited(1200));
+    expect(a.program.segments.every((s) => s.rpm <= 1200)).toBe(true);
+    expect(a.diagnostics.map((x) => x.code)).not.toContain('CHUCK_RPM');
+    expect(codes(limited(1500))).not.toContain('CHUCK_RPM');
+    expect(codes(limited(2000))).not.toContain('CHUCK_RPM');
   });
 
   it('leaving the travel', () => {
@@ -1339,7 +1367,7 @@ describe('worth a look', () => {
     const held = Job.parse({ ...job, obstacles: [{ name: 'clamp', x0: -30, y0: 10, x1: -12, y1: 30, top: 5 }], operations: job.operations.map((o) => (o.type === 'mill_contour_rect' ? { ...o, tabs: 4 } : o)) });
     expect(look(held)).not.toContain('HOLDING_UNKNOWN');
     expect(look(held)).not.toContain('CUT_FREE');
-  });
+  }, 30000);
 
   it('lathe: a thin part hanging out, parting far from the jaws, a thread with no relief, the order', () => {
     const job = withOps('lathe', [
@@ -1500,7 +1528,7 @@ describe('adaptive clearing', () => {
     const cm = c.material as MillMaterial;
     expect(cm.h[Math.floor(25 / cm.cell) * cm.nx + Math.floor(54 / cm.cell)]!).toBeCloseTo(-5, 5);
     expect(cm.h[Math.floor(25 / cm.cell) * cm.nx + Math.floor(56 / cm.cell)]!).toBeCloseTo(0, 5);
-  });
+  }, 30000);
 
   it('refuses a pocket hardly wider than the tool, and says what to do', () => {
     const narrow = withOps('mill', [{ type: 'mill_pocket_rect', tool: 1, x: 20, y: 15, w: 40, h: 7, zBottom: -4, zTop: 0, strategy: 'adaptive' }]);

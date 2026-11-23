@@ -487,9 +487,11 @@ What is checked before a program may run (errors block **Run program**):
   clamps, straps, vise jaws from the laser scan or typed in), rapids too, and the way to and
   from the tool-change position;
 - rapids into material; plunges with a cutter that is not centre-cutting; cuts deeper than the
-  flutes; boring where there is no hole; threading without spindle sync;
+  flutes; boring where there is no hole; threading without spindle sync; a spindle speed above the
+  chuck's rated maximum, when it is set (speeds are kept under it);
 - as warnings: depth per pass well above what the tool and material take, speeds outside the
-  spindle's range, cuts through the block into what it sits on.
+  spindle's range, cuts through the block into what it sits on, a lathe job whose chuck size
+  is not set (the chuck check then guesses it from the bar).
 
 What the automatic routines do for themselves: probing moves near the work are guarded (they
 stop on contact), probing refuses to start with the spindle on or before the probe circuit has

@@ -32,8 +32,9 @@ user text ──► agent ──tool calls──► Job (zod-validated)
 - **Materials** (`cam/src/materials.ts`, `feeds.ts`): a small table of conservative hobby-machine
   cutting data per workpiece material and kind of cut, for HSS and carbide; `cuttingData(tool,
   material)` fills in what the tool does not set, `cutting()` turns it into rpm and mm/min for an
-  operation (no G96/G95: the speed is set for the largest diameter the operation cuts).
-- **Checks** (`cam/src/check.ts`): travel, chuck, rapids into material, depth of cut, plunging.
+  operation (no G96/G95: the speed is set for the largest diameter the operation cuts; kept under
+  the spindle's and the chuck's maximum).
+- **Checks** (`cam/src/check.ts`): travel, chuck (its size, a warning when it is a guess, and its rated rpm), rapids into material, depth of cut, plunging.
   Errors block the agent from finishing (fix budget 4) and the G-code download.
 - **The block as measured** (`cam/src/align.ts`): `Job.measured` (angle, touched top) is applied
   in `emit()`: the program turned about the zero, followed cuts in short pieces at the surface's
