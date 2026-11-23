@@ -3,6 +3,7 @@ export * from './program.ts';
 export { cutting, cuttingData, rpmFor, type Cutting, type CuttingData } from './feeds.ts';
 export { generate, withIds, opLabel, homeOf, type Diagnostic, type Generated } from './generate.ts';
 export { analyze, simulate, hasErrors, resumeFrom, type Analysis } from './check.ts';
+export { lintGcode, type LintDiagnostic } from './lint-gcode.ts';
 export { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
 export { emit, num, type Emitted } from './emit.ts';
 export { parseGcode, type Parsed, type ParsedMove } from './parse.ts';
