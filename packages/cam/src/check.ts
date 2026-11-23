@@ -46,6 +46,11 @@ export function simulate(job: Job, program: Program, upTo = Infinity, o: { walls
     flagged.add(key);
     diagnostics.push(d);
   };
+  if (lathe && job.machine.chuckDiameter === undefined && program.segments.length)
+    once({ severity: 'warning', code: 'CHUCK_UNKNOWN', message: `The chuck's size is not set, so the chuck check guesses it as Ø${(chuckR * 2).toFixed(0)} (2.5 × the bar): set the chuck Ø in the machine settings.` });
+  if (lathe && job.machine.chuckMaxRpm !== undefined)
+    for (const s of program.segments)
+      if (s.rpm > job.machine.chuckMaxRpm) once({ severity: 'error', code: 'CHUCK_RPM', message: `${s.label} runs the spindle at ${s.rpm} rpm, above the chuck's rated ${job.machine.chuckMaxRpm} rpm.`, opId: s.opId });
   const step = lathe ? 0.1 : Math.max(0.1, (material as MillMaterial).cell * 0.5);
   let prevType: string | null = null;
 

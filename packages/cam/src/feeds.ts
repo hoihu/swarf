@@ -78,7 +78,11 @@ export function cutting(
   const notes: string[] = [];
   const data = cuttingData(tool, material);
   let rpm = override.rpm ?? rpmFor(data.vc, diameter);
-  if (rpm > machine.maxRpm) {
+  if (machine.kind === 'lathe' && machine.chuckMaxRpm !== undefined && machine.chuckMaxRpm < machine.maxRpm && rpm > machine.chuckMaxRpm) {
+    // a chuck flies apart above its rated speed: always say so
+    notes.push(`spindle ${Math.round(rpm)} rpm limited to the chuck's rated ${machine.chuckMaxRpm}`);
+    rpm = machine.chuckMaxRpm;
+  } else if (rpm > machine.maxRpm) {
     // the table's speeds for aluminium and plastics are above most hobby spindles: running at the
     // top speed is normal there, so only a speed someone set is worth a warning
     if (override.rpm !== undefined || data.fromTool.vc) notes.push(`spindle ${Math.round(rpm)} rpm limited to the machine's ${machine.maxRpm}`);
