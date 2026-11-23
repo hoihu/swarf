@@ -1,0 +1,336 @@
+{
+  "swarf": "job",
+  "version": 1,
+  "job": {
+    "name": "Cover with boss pocket",
+    "machine": {
+      "kind": "mill",
+      "name": "grblHAL mill",
+      "envelope": {
+        "min": {
+          "x": -30,
+          "y": -30,
+          "z": -80
+        },
+        "max": {
+          "x": 300,
+          "y": 200,
+          "z": 60
+        }
+      },
+      "minRpm": 500,
+      "maxRpm": 6000,
+      "maxFeed": 2000,
+      "rapidRate": 3000,
+      "xMode": "diameter",
+      "spindleSync": false,
+      "clearance": 2,
+      "accel": 300,
+      "junctionDeviation": 0.01,
+      "arcTolerance": 0.005
+    },
+    "tools": [
+      {
+        "id": 1,
+        "name": "Endmill Ø6 3F carbide",
+        "type": "endmill",
+        "diameter": 6,
+        "fluteLength": 15,
+        "flutes": 3,
+        "centerCutting": true
+      },
+      {
+        "id": 2,
+        "name": "Endmill Ø10 3F carbide",
+        "type": "endmill",
+        "diameter": 10,
+        "fluteLength": 22,
+        "flutes": 3,
+        "centerCutting": true
+      },
+      {
+        "id": 3,
+        "name": "Drill Ø5 HSS",
+        "type": "drill",
+        "diameter": 5,
+        "fluteLength": 40
+      },
+      {
+        "id": 4,
+        "name": "Chamfer mill Ø6 90° carbide",
+        "type": "chamfer",
+        "diameter": 6,
+        "flutes": 2,
+        "angle": 90
+      }
+    ],
+    "stock": {
+      "kind": "block",
+      "x": 50,
+      "y": 40,
+      "z": 10,
+      "top": 0.3
+    },
+    "operations": [
+      {
+        "type": "mill_face",
+        "id": "op1",
+        "label": "Face top",
+        "tool": 2,
+        "z": 0,
+        "stepover": 0.6
+      },
+      {
+        "type": "mill_pocket",
+        "id": "op2",
+        "label": "Pocket round the boss",
+        "tool": 1,
+        "shape": "cover",
+        "zBottom": -3,
+        "zTop": 0,
+        "stepDown": 1.5,
+        "stepover": 0.45,
+        "entry": "ramp",
+        "rampAngle": 10,
+        "finish": 0,
+        "direction": "climb",
+        "strategy": "rings",
+        "load": 0.15
+      }
+    ],
+    "shapes": [
+      {
+        "id": "cover",
+        "name": "cover.dxf",
+        "paths": [
+          {
+            "closed": true,
+            "pts": [
+              [
+                0,
+                0
+              ],
+              [
+                30,
+                0
+              ],
+              [
+                30,
+                20
+              ],
+              [
+                0,
+                20
+              ]
+            ]
+          },
+          {
+            "closed": true,
+            "pts": [
+              [
+                19,
+                10
+              ],
+              [
+                18.9658,
+                10.5221
+              ],
+              [
+                18.8637,
+                11.0353
+              ],
+              [
+                18.6955,
+                11.5307
+              ],
+              [
+                18.4641,
+                12
+              ],
+              [
+                18.1734,
+                12.435
+              ],
+              [
+                17.8284,
+                12.8284
+              ],
+              [
+                17.435,
+                13.1734
+              ],
+              [
+                17,
+                13.4641
+              ],
+              [
+                16.5307,
+                13.6955
+              ],
+              [
+                16.0353,
+                13.8637
+              ],
+              [
+                15.5221,
+                13.9658
+              ],
+              [
+                15,
+                14
+              ],
+              [
+                14.4779,
+                13.9658
+              ],
+              [
+                13.9647,
+                13.8637
+              ],
+              [
+                13.4693,
+                13.6955
+              ],
+              [
+                13,
+                13.4641
+              ],
+              [
+                12.565,
+                13.1734
+              ],
+              [
+                12.1716,
+                12.8284
+              ],
+              [
+                11.8266,
+                12.435
+              ],
+              [
+                11.5359,
+                12
+              ],
+              [
+                11.3045,
+                11.5307
+              ],
+              [
+                11.1363,
+                11.0353
+              ],
+              [
+                11.0342,
+                10.5221
+              ],
+              [
+                11,
+                10
+              ],
+              [
+                11.0342,
+                9.4779
+              ],
+              [
+                11.1363,
+                8.9647
+              ],
+              [
+                11.3045,
+                8.4693
+              ],
+              [
+                11.5359,
+                8
+              ],
+              [
+                11.8266,
+                7.565
+              ],
+              [
+                12.1716,
+                7.1716
+              ],
+              [
+                12.565,
+                6.8266
+              ],
+              [
+                13,
+                6.5359
+              ],
+              [
+                13.4693,
+                6.3045
+              ],
+              [
+                13.9647,
+                6.1363
+              ],
+              [
+                14.4779,
+                6.0342
+              ],
+              [
+                15,
+                6
+              ],
+              [
+                15.5221,
+                6.0342
+              ],
+              [
+                16.0353,
+                6.1363
+              ],
+              [
+                16.5307,
+                6.3045
+              ],
+              [
+                17,
+                6.5359
+              ],
+              [
+                17.435,
+                6.8266
+              ],
+              [
+                17.8284,
+                7.1716
+              ],
+              [
+                18.1734,
+                7.565
+              ],
+              [
+                18.4641,
+                8
+              ],
+              [
+                18.6955,
+                8.4693
+              ],
+              [
+                18.8637,
+                8.9647
+              ],
+              [
+                18.9658,
+                9.4779
+              ]
+            ]
+          }
+        ],
+        "at": {
+          "x": 10,
+          "y": 10
+        }
+      }
+    ],
+    "obstacles": [],
+    "workMaterial": "aluminium",
+    "material": "6082 T6",
+    "notes": "A 30 x 20 pocket, 3 mm deep, with a Ø8 boss left standing in its middle (a bearing seat or a locating post), milled into the top of a 50 x 40 x 10 block. The outline is a drawing: the pocket and the boss as two closed loops; mill_pocket leaves the inner loop standing as an island."
+  }
+}
