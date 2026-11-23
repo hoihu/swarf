@@ -1,0 +1,246 @@
+(swarf: Stepped shaft M8)
+(grblHAL lathe, lathe, mm)
+(stock: bar Ø20, 60 out of the chuck, raw face at Z1)
+(X is a diameter; Z0 = finished front face)
+G21 G90 G94 G54
+G18 G7 G97
+
+(op1: Profile Ø7.85–Ø20 to Z-40, T1 Turning, CCMT 09 R0.4 carbide)
+(Load T1: Turning, CCMT 09 R0.4 carbide, touch off, then cycle start)
+(from wherever it is then, the tool goes along Z to Z23, then to X34)
+M0
+G21 G90 G94 G54
+G18 G7 G97
+G0 Z23
+G0 X34
+S2387 M3
+G4 P2
+X24 Z3
+Z2
+X18.6
+G1 Z-39.8 F239
+X19.6 Z-39.3
+G0 Z2
+X24
+X17.2
+G1 Z-39.8
+X18.2 Z-39.3
+G0 Z2
+X24
+X15.8
+G1 Z-28.351
+X16.8 Z-27.851
+G0 Z2
+X24
+X14.4
+G1 Z-27.809
+X15.4 Z-27.309
+G0 Z2
+X24
+X13
+G1 Z-27.8
+X14 Z-27.3
+G0 Z2
+X24
+X11.6
+G1 Z-15.251
+X12.6 Z-14.751
+G0 Z2
+X24
+X10.2
+G1 Z-14.8
+X11.2 Z-14.3
+G0 Z2
+X24
+X8.8
+G1 Z-14.8
+X9.8 Z-14.3
+G0 Z2
+X24
+X7.4
+G1 Z-0.726
+X8.4 Z-0.226
+G0 Z2
+X24
+X6
+G1 Z-0.026
+X7 Z0.474
+G0 Z2
+X24
+X0.4
+G1 Z0.2
+X5.05
+G3 X5.899 Z0.024 I0 K-0.6
+G1 X7.899 Z-0.976
+G3 X8.25 Z-1.4 I-0.424 K-0.424
+G1 Z-14.8
+X10.2
+G3 X11.049 Z-14.976 I0 K-0.6
+G1 X12.049 Z-15.476
+G3 X12.4 Z-15.9 I-0.424 K-0.424
+G1 Z-27.8
+X14.2
+G3 X15.049 Z-27.976 I0 K-0.6
+G1 X16.049 Z-28.476
+G3 X16.4 Z-28.9 I-0.424 K-0.424
+G1 Z-39.8
+X19.2
+X21
+G0 X24
+Z3
+Z2
+X0
+G1 Z0
+X5.05
+G3 X5.616 Z-0.117 I0 K-0.4
+G1 X7.616 Z-1.117
+G3 X7.85 Z-1.4 I-0.283 K-0.283
+G1 Z-15
+X10.2
+G3 X10.766 Z-15.117 I0 K-0.4
+G1 X11.766 Z-15.617
+G3 X12 Z-15.9 I-0.283 K-0.283
+G1 Z-28
+X14.2
+G3 X14.766 Z-28.117 I0 K-0.4
+G1 X15.766 Z-28.617
+G3 X16 Z-28.9 I-0.283 K-0.283
+G1 Z-40
+X19.2
+X21
+G0 X24
+Z3
+Z23
+X34
+
+(op2: Groove Ø6.4 × 2.5 at Z-12.5, T2 Parting blade 2 mm)
+M5
+(Change to T2: Parting blade 2 mm, touch off, then cycle start)
+(from wherever it is then, the tool goes along Z to Z23, then to X34)
+M0
+G21 G90 G94 G54
+G18 G7 G97
+G0 Z23
+G0 X34
+S2500 M3
+G4 P2
+X24 Z3
+Z-12.5
+X8.85
+G1 X6.4 F100
+G0 X8.85
+X24 Z-13
+X8.85
+G1 X6.4
+G0 X8.85
+X24
+Z3
+Z23
+X34
+
+(op3: Thread M8×1.25 to Z-13, T4 Threading insert 60°, 16ER)
+M5
+(Change to T4: Threading insert 60°, 16ER, touch off, then cycle start)
+(from wherever it is then, the tool goes along Z to Z23, then to X34)
+M0
+G21 G90 G94 G54
+G18 G7 G97
+G0 Z23
+G0 X34
+S960 M3
+G4 P2
+X24 Z3
+Z3.613
+X10
+X7.515
+G33 Z-13 K1.25
+G0 X10
+Z3.613
+X24 Z3.556
+X10
+X7.314
+G33 Z-13 K1.25
+G0 X10
+Z3.556
+X24 Z3.512
+X10
+X7.16
+G33 Z-13 K1.25
+G0 X10
+Z3.512
+X24 Z3.476
+X10
+X7.03
+G33 Z-13 K1.25
+G0 X10
+Z3.476
+X24 Z3.443
+X10
+X6.916
+G33 Z-13 K1.25
+G0 X10
+Z3.443
+X24 Z3.414
+X10
+X6.812
+G33 Z-13 K1.25
+G0 X10
+Z3.414
+X24 Z3.387
+X10
+X6.717
+G33 Z-13 K1.25
+G0 X10
+Z3.387
+X24 Z3.362
+X10
+X6.628
+G33 Z-13 K1.25
+G0 X10
+Z3.362
+X24 Z3.338
+X10
+X6.545
+G33 Z-13 K1.25
+G0 X10
+Z3.338
+X24 Z3.316
+X10
+X6.466
+G33 Z-13 K1.25
+G0 X10
+Z3.316
+X24
+X10
+X6.466
+G33 Z-13 K1.25
+G0 X10
+Z3.316
+X24 Z3.75
+Z3
+Z23
+X34
+
+(op4: Part off at Z-45, T2 Parting blade 2 mm)
+M5
+(Change to T2: Parting blade 2 mm, touch off, then cycle start)
+(from wherever it is then, the tool goes along Z to Z23, then to X34)
+M0
+G21 G90 G94 G54
+G18 G7 G97
+G0 Z23
+G0 X34
+S1273 M3
+G4 P2
+X24 Z3
+Z-45
+X21
+G1 X0 F51
+G0 X21
+X24
+Z3
+Z23
+X34
+
+M5
+M30
