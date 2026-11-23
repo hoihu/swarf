@@ -1,0 +1,149 @@
+{
+  "swarf": "job",
+  "version": 1,
+  "job": {
+    "name": "Clamp block M8",
+    "machine": {
+      "kind": "mill",
+      "name": "grblHAL mill",
+      "envelope": {
+        "min": {
+          "x": -30,
+          "y": -30,
+          "z": -80
+        },
+        "max": {
+          "x": 300,
+          "y": 200,
+          "z": 60
+        }
+      },
+      "minRpm": 500,
+      "maxRpm": 6000,
+      "maxFeed": 2000,
+      "rapidRate": 3000,
+      "xMode": "diameter",
+      "spindleSync": false,
+      "clearance": 2,
+      "accel": 300,
+      "junctionDeviation": 0.01,
+      "arcTolerance": 0.005
+    },
+    "tools": [
+      {
+        "id": 1,
+        "name": "Endmill Ø6 3F carbide",
+        "type": "endmill",
+        "diameter": 6,
+        "fluteLength": 15,
+        "flutes": 3,
+        "centerCutting": true
+      },
+      {
+        "id": 2,
+        "name": "Endmill Ø10 3F carbide",
+        "type": "endmill",
+        "diameter": 10,
+        "fluteLength": 22,
+        "flutes": 3,
+        "centerCutting": true
+      },
+      {
+        "id": 3,
+        "name": "Drill Ø5 HSS",
+        "type": "drill",
+        "diameter": 5,
+        "fluteLength": 40
+      },
+      {
+        "id": 4,
+        "name": "Chamfer mill Ø6 90° carbide",
+        "type": "chamfer",
+        "diameter": 6,
+        "flutes": 2,
+        "angle": 90
+      },
+      {
+        "id": 5,
+        "name": "Thread mill Ø5, single form 60°",
+        "type": "threadmill",
+        "diameter": 5,
+        "fluteLength": 15,
+        "flutes": 3
+      },
+      {
+        "id": 6,
+        "name": "Drill Ø6.8 HSS",
+        "type": "drill",
+        "diameter": 6.8,
+        "fluteLength": 50
+      }
+    ],
+    "stock": {
+      "kind": "block",
+      "x": 30,
+      "y": 30,
+      "z": 15,
+      "top": 0.3
+    },
+    "operations": [
+      {
+        "type": "mill_face",
+        "id": "op1",
+        "label": "Face top",
+        "tool": 2,
+        "z": 0,
+        "stepover": 0.6
+      },
+      {
+        "type": "mill_spot",
+        "id": "op2",
+        "label": "Spot",
+        "tool": 4,
+        "points": [
+          {
+            "x": 15,
+            "y": 15
+          }
+        ],
+        "diameter": 6,
+        "zTop": 0
+      },
+      {
+        "type": "mill_drill",
+        "id": "op3",
+        "label": "Core hole Ø6.8",
+        "tool": 6,
+        "points": [
+          {
+            "x": 15,
+            "y": 15
+          }
+        ],
+        "zBottom": -13,
+        "zTop": 0,
+        "peck": 3
+      },
+      {
+        "type": "mill_thread",
+        "id": "op4",
+        "label": "Thread M8",
+        "tool": 5,
+        "cx": 15,
+        "cy": 15,
+        "diameter": 8,
+        "pitch": 1.25,
+        "zBottom": -10,
+        "zTop": 0,
+        "side": "internal",
+        "hand": "right",
+        "passes": 2
+      }
+    ],
+    "shapes": [],
+    "obstacles": [],
+    "workMaterial": "aluminium",
+    "material": "6082 T6",
+    "notes": "A 30 x 30 x 15 clamp block with an M8 x 1.25 thread milled 10 mm deep in its centre: spot, drill the Ø6.8 core hole 13 mm deep, then thread mill from the bottom up in two passes. Held in the vise on parallels."
+  }
+}
