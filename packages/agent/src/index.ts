@@ -8,5 +8,5 @@ export { OpenAICompatProvider, type OpenAICompatOptions } from './providers/open
 export { API_SERVICES, apiProblem, apiProvider, apiService, type ApiChoice, type ApiService, type ApiServiceId } from './providers/services.ts';
 export { ScriptedProvider, type Script, type ScriptStep } from './providers/scripted.ts';
 export { CAM_GUIDE } from './prompt.ts';
-export { CHAT_RULES, MCP_INSTRUCTIONS, MCP_TOOL_NAMES, chatTools, mcpTools, runTabTool } from './mcp.ts';
+export { CHAT_RULES, MCP_INSTRUCTIONS, MCP_TOOL_NAMES, TAB_GCODE_FILE, chatTools, mcpTools, runTabTool, type GcodeForFile } from './mcp.ts';
 export { HARNESSES, SERVER_PORTS, SERVER_PROTOCOL, isHarnessId, parseConnect, type ChatCapability, type ChatEvent, type HarnessId, type HarnessInfo, type ServerToTab, type TabToServer } from './protocol.ts';

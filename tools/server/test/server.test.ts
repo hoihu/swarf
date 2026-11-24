@@ -6,7 +6,7 @@ import WebSocket from 'ws';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { SERVER_PROTOCOL, runTabTool, type ServerToTab, type TabToServer } from '@swarf/agent';
-import { emptyJob, type Job } from '@swarf/cam';
+import { analyze, emit, emptyJob, openJobFile, type Job } from '@swarf/cam';
 import { createMcpServer } from '../src/mcp.ts';
 import { LocalServer } from '../src/server.ts';
 
@@ -25,8 +25,8 @@ async function startServer(): Promise<LocalServer> {
 }
 
 /** A tab that runs tools against an in-memory job, like the app does. */
-async function fakeTab(s: LocalServer, opts: { key?: string; origin?: string; pictures?: { data: string; mimeType: string }[] } = {}): Promise<{ ws: WebSocket; job: () => Job; first: ServerToTab }> {
-  let job = emptyJob('lathe');
+async function fakeTab(s: LocalServer, opts: { key?: string; origin?: string; job?: Job; pictures?: { data: string; mimeType: string }[] } = {}): Promise<{ ws: WebSocket; job: () => Job; first: ServerToTab }> {
+  let job = opts.job ?? emptyJob('lathe');
   const port = { get: () => job, set: (j: Job) => (job = j), pictures: () => opts.pictures ?? [] };
   const ws = new WebSocket(`ws://127.0.0.1:${s.port}`, { origin: opts.origin ?? 'http://localhost:5173' });
   cleanup.push(async () => ws.close());
@@ -128,6 +128,18 @@ describe('MCP', () => {
     const refused = await c.callTool({ name: 'save_gcode', arguments: { path: join(dir, 'bad.nc') } });
     expect(refused.isError).toBe(true);
     expect(text(refused)).toMatch(/CHUCK/);
+  });
+
+  it('saves a job with an imported drawing, the same G-code the tab shows', async () => {
+    const s = await startServer();
+    const job = openJobFile(readFileSync(new URL('../../../packages/cam/test/parts/mill/pocket-island.json', import.meta.url), 'utf8'));
+    expect(job.shapes).toHaveLength(1);
+    await fakeTab(s, { job });
+    const c = await mcpClient(s);
+    const dir = mkdtempSync(join(tmpdir(), 'swarf-out-'));
+    const saved = await c.callTool({ name: 'save_gcode', arguments: { path: join(dir, 'cover') } });
+    expect(text(saved)).toMatch(/Wrote \d+ lines/);
+    expect(readFileSync(join(dir, 'cover.nc'), 'utf8')).toBe(emit(job, analyze(job).program).text);
   });
 
   it('tells the tab which agent is driving', async () => {

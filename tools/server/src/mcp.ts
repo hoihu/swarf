@@ -1,7 +1,7 @@
 /**
  * The MCP side: lists swarf's tools and forwards calls to the app tab through the relay.
- * save_gcode runs here instead (it writes a file): it reads the job from the tab, checks it,
- * and writes the same G-code the app shows.
+ * save_gcode runs here instead (it writes a file): the tab checks the job and writes the G-code
+ * (the same the app shows); this side only refuses on check errors or writes the file.
  */
 import { timingSafeEqual } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
@@ -10,8 +10,7 @@ import { extname, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { MCP_INSTRUCTIONS, MCP_TOOL_NAMES, chatTools, mcpTools } from '@swarf/agent';
-import { Job, analyze, emit, hasErrors } from '@swarf/cam';
+import { MCP_INSTRUCTIONS, MCP_TOOL_NAMES, TAB_GCODE_FILE, chatTools, mcpTools, type GcodeForFile } from '@swarf/agent';
 import type { CallResult, LocalServer } from './server.ts';
 
 export const VERSION = '0.1.0';
@@ -102,19 +101,13 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 async function saveGcode(relay: LocalServer, input: Record<string, unknown>, cwd: string): Promise<CallResult> {
   const raw = typeof input.path === 'string' ? input.path.trim() : '';
   if (!raw) return { isError: true, text: 'path is required' };
-  const got = await relay.call('get_job', {});
+  const got = await relay.call(TAB_GCODE_FILE, {});
   if (got.isError) return got;
-  const parsed = Job.safeParse((JSON.parse(got.text) as { job?: unknown }).job);
-  if (!parsed.success) return { isError: true, text: `The app sent a job this server cannot read: ${parsed.error.message}` };
-  const job = parsed.data;
-  const a = analyze(job);
-  if (hasErrors(a.diagnostics)) {
-    return { isError: true, text: `Not saved: the job has errors.\n${a.diagnostics.filter((d) => d.severity === 'error').map((d) => `- ${d.code}${d.opId ? ` [${d.opId}]` : ''}: ${d.message}`).join('\n')}` };
-  }
+  const g = JSON.parse(got.text) as GcodeForFile;
+  if (g.errors.length || !g.text) return { isError: true, text: `Not saved: the job has errors.\n${g.errors.map((e) => `- ${e}`).join('\n')}` };
   const path = resolve(cwd, extname(raw) ? raw : `${raw}.nc`);
-  const { text } = emit(job, a.program);
-  await writeFile(path, text);
-  return { isError: false, text: `Wrote ${text.split('\n').length} lines to ${path} (${job.name}, ${a.program.segments.length} operations, about ${Math.round(a.seconds / 60)} min).` };
+  await writeFile(path, g.text);
+  return { isError: false, text: `Wrote ${g.text.split('\n').length} lines to ${path} (${g.name}, ${g.operations} operations, about ${Math.round(g.seconds / 60)} min).` };
 }
 
 function prettyAgent(name: string): string {

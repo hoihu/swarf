@@ -41,7 +41,8 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   the spindle's and the chuck's maximum).
 - **Checks** (`cam/src/check.ts`): travel, chuck (its size, a warning when it is a guess, and its rated rpm), rapids into material, depth of cut, plunging.
   Errors block the agent from finishing (fix budget 4), the G-code download (Job panel and
-  File menu), the relay's `save_gcode` and **Run program**. `get_gcode` still answers.
+  File menu), the relay's `save_gcode` (the tab checks the job and writes the G-code; the relay
+  only writes the file) and **Run program**. `get_gcode` still answers.
 - **G-code lint** (`cam/src/lint-gcode.ts`): `lintGcode(text, kind)` reads only the emitted text,
   so it does not share check.ts's assumptions: modes (G21 G90 G94, the plane, G7/G8 and G97 on
   the lathe) before the first move, F > 0 before G1–G3 and K on G33, M3/M4 with S > 0 before a
