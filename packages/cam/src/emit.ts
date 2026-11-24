@@ -2,8 +2,8 @@
  * Program → G-code in a deliberately "boring" subset that grblHAL, LinuxCNC and most other
  * controllers run the same way: G0/G1/G2/G3 (XY arcs on the mill, ZX arcs on the lathe), G33 Z K for
  * threading (spindle sync), G17/G18, G21,
- * G90, G94, G54, G4, G7/G8 (lathe diameter/radius mode), S/M3/M5, M0 for manual tool changes,
- * M30. No cutter compensation, canned cycles, macros or tool length offsets: the generator does
+ * G90, G94, G54, G97, G4, G7/G8 (lathe diameter/radius mode), S/M3/M5, M0 for manual tool changes,
+ * M30 (the full list: README "What works", G-code). No cutter compensation, canned cycles, macros or tool length offsets: the generator does
  * all of that, so the preview shows exactly what the machine will do.
  */
 import { alignPieces, alignmentLines } from './align.ts';

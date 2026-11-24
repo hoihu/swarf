@@ -47,15 +47,15 @@ Do not break these; they are what makes the tool safe to point at a machine.
   function from parameters to moves. (README intro; ARCHITECTURE "Data flow", Operations.)
 - **Rapids only where the air is known to be free**: above the bar, in front of the face, above
   the safe plane, or inside material the same operation just removed. (ARCHITECTURE, Operations.)
-- **Lathe X is a radius internally**; the emitter writes diameters (G7). (ARCHITECTURE, Job.)
+- **Lathe X is a radius internally**; the emitter writes diameters (G7), or radii (G8) with
+  `xMode: 'radius'`. (ARCHITECTURE, Job.)
 - **Mill X0 Y0 is the stock's front-left corner, Z0 the top after facing.** (ARCHITECTURE, Job.)
 - **Check errors block** the agent from finishing, the G-code download, `save_gcode` and
   **Run program**. (ARCHITECTURE, Checks; README "Safety", "Claude Code in the terminal drives
   the app".) Never weaken, skip or bypass a check to make a test pass; fix the cause.
-- **Emitted G-code stays the boring subset** (G0–G3, G17/G18, G7/G8, G21, G90, G94, G54, M0
-  tool changes) that runs the same on grblHAL, LinuxCNC and most others. (README "What works",
-  G-code.) Threading adds G33 passes and needs spindle sync; no G96/G95 (ARCHITECTURE,
-  Materials).
+- **Emitted G-code stays the boring subset** that runs the same on grblHAL, LinuxCNC and most
+  others; the full list is in README "What works", G-code, and nowhere else. Threading adds G33
+  passes and needs spindle sync; no G96/G95 (ARCHITECTURE, Materials).
 - Every consumer reads the one Program IR (moves grouped by operation). (ARCHITECTURE, Program.)
 
 ## House style

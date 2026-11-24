@@ -1,9 +1,11 @@
 # Architecture
 
 ```
-apps/web          Svelte 5 + Vite + three.js: job panel, 3D preview, chat
-packages/agent    agent loop, tools, prompt, providers (ported from 4k7)
+apps/web          Svelte 5 + Vite + three.js: job panel, 3D preview, chat, Machine mode, simulated workshop
+packages/agent    agent loop, tools, prompt, providers (ported from 4k7), MCP tool definitions
 packages/cam      job model, operations, toolpath IR, material model, checks, G-code
+packages/grbl     grbl/grblHAL status parsing, character-counting streamer, simulated controller
+tools/server      local relay: MCP server for Claude Code, coding-agent CLI harnesses for the chat
 ```
 
 ## Data flow
@@ -20,13 +22,15 @@ user text ──► agent ──tool calls──► Job (zod-validated)
 ```
 
 - **Job** (`cam/src/schema.ts`): machine, tool table, stock and an ordered list of operations.
-  Lathe X is a radius internally; the emitter writes diameters (G7). Mill X0 Y0 is the stock's
+  Lathe X is a radius internally; the emitter writes diameters (G7), or radii (G8) with
+  `xMode: 'radius'`. Mill X0 Y0 is the stock's
   front-left corner, Z0 the top after facing. A mill operation without `zTop` starts from the Z
   of the last `mill_face` before it in the same setup, else from the stock top.
 - **Operations** (`cam/src/ops/`): each is a pure function from parameters to moves. They only
   rapid where the air is known to be free (above the bar, in front of the face, above the safe
   plane, or inside material the same operation just removed).
-- **Program** (`cam/src/program.ts`): moves (rapid, feed, XY arc) grouped by operation. Every
+- **Program** (`cam/src/program.ts`): moves (rapid, feed, arc in the XY plane on the mill or
+  the ZX plane on the lathe, and thread: a spindle-synchronised G33 pass along Z) grouped by operation. Every
   consumer reads this one IR.
 - **Material model** (`cam/src/sim.ts`): lathe = outer and bore radius per 0.05 mm slice of Z;
   mill = a height map. Fast enough to rerun on every edit and while scrubbing.
@@ -36,7 +40,8 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   operation (no G96/G95: the speed is set for the largest diameter the operation cuts; kept under
   the spindle's and the chuck's maximum).
 - **Checks** (`cam/src/check.ts`): travel, chuck (its size, a warning when it is a guess, and its rated rpm), rapids into material, depth of cut, plunging.
-  Errors block the agent from finishing (fix budget 4) and the G-code download.
+  Errors block the agent from finishing (fix budget 4), the G-code download (Job panel and
+  File menu), the relay's `save_gcode` and **Run program**. `get_gcode` still answers.
 - **G-code lint** (`cam/src/lint-gcode.ts`): `lintGcode(text, kind)` reads only the emitted text,
   so it does not share check.ts's assumptions: modes (G21 G90 G94, the plane, G7/G8 and G97 on
   the lathe) before the first move, F > 0 before G1–G3 and K on G33, M3/M4 with S > 0 before a
