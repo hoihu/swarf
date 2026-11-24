@@ -3,7 +3,9 @@
  * emitter bugs that share assumptions with check.ts. Program-level and modal-state rules: the
  * modes said before the first move, a feed before the first cut, the spindle on before any cut
  * (and off again after the M0 of a tool change), nothing outside the boring subset emit.ts
- * writes, and an end with M5 and M30 (or M2) and no motion after it.
+ * writes, and an end with M5 and M30 (or M2) and no motion after it. Geometric rules: arcs whose
+ * end lies on the circle their start and centre give, G33 passes that move along Z only, and on
+ * the mill no sideways rapid below a height the program already rapided up to since its last cut.
  */
 import type { MachineKind } from './schema.ts';
 
@@ -28,6 +30,13 @@ const MODES: Record<MachineKind, [string[], string][]> = {
   mill: [[['21'], 'G21 (mm)'], [['90'], 'G90 (absolute)'], [['94'], 'G94 (feed per minute)'], [['17'], 'G17 (XY plane)']],
 };
 const MOTION = new Set(['0', '1', '2', '3', '33']);
+/**
+ * How far the end of an arc may be off the circle through its start (mm). The arc fitter's circle
+ * goes exactly through both ends (arcfit.ts) and the lathe's own arcs are exact, so only the printed
+ * digits differ: start, I/J/K and end each rounded to 0.0005 per axis, at most ~3 µm together.
+ * 5 µm (the default arc tolerance) on top of that leaves room without hiding a real mistake.
+ */
+const ARC_TOL = 0.005 + 0.003;
 
 export function lintGcode(text: string, kind: MachineKind): LintDiagnostic[] {
   const out: LintDiagnostic[] = [];
@@ -40,6 +49,10 @@ export function lintGcode(text: string, kind: MachineKind): LintDiagnostic[] {
   let spindle = false;
   let ended = 0; // line of M30/M2
   let last = 0;
+  let dia = false; // lathe X in G7 is a diameter
+  // where the tool is (NaN: not known, as at the start and after the M0 of a tool change)
+  const at = { X: NaN, Y: NaN, Z: NaN };
+  let top = -Infinity; // mill: the highest Z rapided to since the last cut
 
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
@@ -68,6 +81,8 @@ export function lintGcode(text: string, kind: MachineKind): LintDiagnostic[] {
       } else val[w.l] = Number(w.v);
     }
     for (const c of g) seen.add(c);
+    if (g.includes('7')) dia = true;
+    if (g.includes('8')) dia = false;
     if (val.F !== undefined) feed = val.F;
     if (val.S !== undefined) rpm = val.S;
     // the motion mode of this line (modal: axis words alone repeat the last one)
@@ -90,6 +105,35 @@ export function lintGcode(text: string, kind: MachineKind): LintDiagnostic[] {
       if (motion === '33') {
         if (!(Number(val.K) > 0)) err(ln, 'NO_PITCH', 'G33 without a pitch K > 0 on the line');
       } else if (!(feed > 0)) err(ln, 'NO_FEED', `${what} with no feed F > 0 set`);
+    }
+    // the target, X as a radius on the lathe
+    const to = { ...at };
+    for (const a of ['X', 'Y', 'Z'] as const) if (val[a] !== undefined) to[a] = val[a] / (a === 'X' && dia ? 2 : 1);
+    const b = kind === 'lathe' ? 'Z' : ('Y' as const); // the arc plane is X and b
+    if (moves && (motion === '2' || motion === '3')) {
+      if (Number.isNaN(at.X) || Number.isNaN(at[b])) err(ln, 'ARC_NO_START', `G${motion} before the start point (X and ${b}) is known`);
+      else {
+        // I is a radius even in G7 (grblHAL halves only the X target)
+        const cx = at.X + (val.I ?? 0);
+        const cb = at[b] + (val[kind === 'lathe' ? 'K' : 'J'] ?? 0);
+        const r0 = Math.hypot(at.X - cx, at[b] - cb);
+        const r1 = Math.hypot(to.X - cx, to[b] - cb);
+        if (Math.abs(r1 - r0) > ARC_TOL) err(ln, 'ARC_RADIUS', `G${motion} ends ${(r1 - r0).toFixed(3)} mm off the circle (radius ${r0.toFixed(3)} at the start, ${r1.toFixed(3)} at the end)`);
+      }
+    }
+    if (moves && motion === '33') {
+      if (val.Z === undefined || to.Z === at.Z) err(ln, 'G33_NO_Z', 'G33 with no Z travel (a thread pass runs along Z)');
+      if (val.X !== undefined && to.X !== at.X) err(ln, 'G33_MOVES_X', 'G33 also moves X (swarf has no thread pull-out yet)');
+    }
+    if (kind === 'mill' && moves && motion === '0') {
+      const sideways = (val.X !== undefined && to.X !== at.X) || (val.Y !== undefined && to.Y !== at.Y);
+      if (sideways && Math.min(at.Z, to.Z) < Math.min(top, 0)) err(ln, 'RAPID_LOW', `G0 sideways at Z${Math.min(at.Z, to.Z)}, below Z${top} rapided to since the last cut`);
+      if (!Number.isNaN(to.Z)) top = Math.max(top, to.Z);
+    } else if (moves) top = -Infinity;
+    if (moves) Object.assign(at, to);
+    if (m.includes('0')) {
+      at.X = at.Y = at.Z = NaN;
+      top = -Infinity;
     }
     if (!ended && (m.includes('30') || m.includes('2'))) {
       ended = ln;

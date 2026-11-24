@@ -41,7 +41,10 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   so it does not share check.ts's assumptions: modes (G21 G90 G94, the plane, G7/G8 and G97 on
   the lathe) before the first move, F > 0 before G1–G3 and K on G33, M3/M4 with S > 0 before a
   cut (M5 and the M0 of a tool change turn it off), only the subset emit.ts writes, M5 then
-  M30/M2 at the end with no motion after. Not wired into the app yet.
+  M30/M2 at the end with no motion after; geometry: G2/G3 from a known start whose end lies on
+  the circle within 8 µm (I is a radius in G7), G33 moving Z and not X (no pull-out yet), and on
+  the mill no sideways G0 below Z0 lower than a Z rapided to since the last cut. No rapid rule
+  for the lathe: where the air is free there depends on the bar. Not wired into the app yet.
 - **The block as measured** (`cam/src/align.ts`): `Job.measured` (angle, touched top) is applied
   in `emit()`: the program turned about the zero, followed cuts in short pieces at the surface's
   height. Checks and preview stay on the block as drawn; `alignmentChecks` says what that leaves
