@@ -4,11 +4,24 @@
  * get_context (the job state the in-app agent gets with every message) and save_gcode (run by
  * the local server, which can write files).
  */
+import { analyze, emit } from '@swarf/cam';
 import { formatJobContext, CAM_GUIDE } from './prompt.ts';
 import { CAM_TOOLS, TOOL_NAMES, runCamTool, type JobPort, type ToolOutcome } from './tools.ts';
 import type { ToolDefinition } from './types.ts';
 
 export const MCP_TOOL_NAMES = { context: 'get_context', save: 'save_gcode', pictures: 'look_at_pictures' } as const;
+
+/** Asked of the tab by the server's save_gcode, never listed to a model: the tab's own checks and G-code. */
+export const TAB_GCODE_FILE = 'gcode_for_file';
+
+/** What the tab answers to TAB_GCODE_FILE (as JSON): no text while there are check errors. */
+export interface GcodeForFile {
+  text: string;
+  errors: string[];
+  name: string;
+  operations: number;
+  seconds: number;
+}
 
 export const MCP_INSTRUCTIONS = `swarf: CAM for a hobby CNC lathe or mill (grblHAL), open in the user's browser. You build the job from parametric operations with these tools; swarf generates the toolpaths, checks them and writes simple G-code, and the user watches the 3D preview update as you work. Never write G-code by hand.
 
@@ -67,6 +80,13 @@ export function runTabTool(port: JobPort, name: string, input: unknown): ToolOut
     return pics.length
       ? { content: `${pics.length} picture${pics.length === 1 ? '' : 's'} attached by the user.`, isError: false, label: 'looked at the picture', detail: `${pics.length} picture${pics.length === 1 ? '' : 's'}`, images: pics }
       : { content: 'No picture is attached to the current message.', isError: true, label: 'look at the picture', detail: 'none attached' };
+  }
+  if (name === TAB_GCODE_FILE) {
+    const job = port.get();
+    const a = analyze(job);
+    const errors = a.diagnostics.filter((d) => d.severity === 'error').map((d) => `${d.code}${d.opId ? ` [${d.opId}]` : ''}: ${d.message}`);
+    const out: GcodeForFile = { text: errors.length ? '' : emit(job, a.program).text, errors, name: job.name, operations: a.program.segments.length, seconds: a.seconds };
+    return { content: JSON.stringify(out), isError: false, label: 'G-code for a file', detail: errors.length ? 'job has errors' : job.name };
   }
   if (name === TOOL_NAMES.ask) return { content: 'ask_user is not available here; ask your user directly.', isError: true, label: name, detail: 'not available' };
   return runCamTool(port, name, input) ?? { content: `Unknown tool ${name}`, isError: true, label: name, detail: 'unknown tool' };
