@@ -57,6 +57,29 @@ describe('lintGcode', () => {
     expect(codes(HEAD + 'G1 X1 oops\n' + END)).toEqual(['UNREADABLE@3']);
   });
 
+  it('wants every arc to end on its circle, from a known start', () => {
+    const MILL = 'G21 G90 G94 G54\nG17\nS6000 M3\n';
+    // centre X10 Y0 radius 10: ends on it, then 0.1 mm inside it
+    expect(codes(MILL + 'G0 X0 Y0 Z1\nG1 Z-1 F300\nG2 X10 Y10 I10 J0\nG2 X19.9 Y0 I0 J-10\n' + END, 'mill')).toEqual(['ARC_RADIUS@7']);
+    // the lathe: I is a radius in G7 (X20 is a radius of 10), K along Z
+    expect(codes(HEAD + 'S1000 M3\nG0 X0 Z1\nG1 Z0 F100\nG3 X20 Z-10 I0 K-10\nG3 X40.2 Z-20 I0 K-10\n' + END)).toEqual(['ARC_RADIUS@7']);
+    expect(codes(MILL + 'G0 Z1\nG2 X10 Y10 I10 J0 F300\n' + END, 'mill')).toEqual(['ARC_NO_START@5']);
+  });
+
+  it('wants a G33 pass to move along Z only', () => {
+    const T = HEAD + 'S300 M3\nG0 X10 Z2\n';
+    expect(codes(T + 'G33 Z2 K1.5\n' + END)).toEqual(['G33_NO_Z@5']);
+    expect(codes(T + 'G33 X9 Z-10 K1.5\n' + END)).toEqual(['G33_MOVES_X@5']);
+  });
+
+  it('wants sideways rapids on the mill below Z0 no lower than the last retract', () => {
+    const MILL = 'G21 G90 G94 G54\nG17\nS6000 M3\nG0 X5 Y5 Z2\nG1 Z-3 F300\nG0 Z2\n';
+    expect(codes(MILL + 'X20 Z-1\n' + END, 'mill')).toEqual(['RAPID_LOW@7']);
+    expect(codes(MILL + 'Z-1\nY20\n' + END, 'mill')).toEqual(['RAPID_LOW@8']);
+    // straight down into the cut, or sideways above Z0, is fine
+    expect(codes(MILL + 'X20 Z0.5\nZ-1\n' + END, 'mill')).toEqual([]);
+  });
+
   it('wants M5 and M30 at the end, and nothing moving after', () => {
     expect(codes(HEAD + 'G0 Z5\nM5\n')).toEqual(['NO_END@4']);
     expect(codes(HEAD + 'S1000 M3\nM30\n')).toEqual(['SPINDLE_ON_AT_END@4']);
