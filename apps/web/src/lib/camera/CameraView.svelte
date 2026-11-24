@@ -155,7 +155,7 @@
     return out;
   }
 
-  /** A click on the picture, in image pixels (exposed for tests: `window.__swarfCameraClick`). */
+  /** A click on the picture, in image pixels. */
   function toImage(clientX: number, clientY: number): [number, number] {
     const r = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -168,11 +168,6 @@
 
   onMount(() => {
     draw();
-    (window as unknown as { __swarfImageToClient?: unknown }).__swarfImageToClient = (u: number, v: number) => {
-      const r = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      return [r.left + (fit.x + (u + 0.5) * fit.s) / dpr, r.top + (fit.y + (v + 0.5) * fit.s) / dpr];
-    };
   });
   onDestroy(() => cancelAnimationFrame(raf));
 </script>

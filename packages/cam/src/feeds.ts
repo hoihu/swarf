@@ -29,8 +29,6 @@ export interface CuttingData {
   fromTool: { vc: boolean; feed: boolean; doc: boolean };
 }
 
-const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
-
 /** Spindle speed for a cutting speed vc (m/min) at a diameter (mm). */
 export function rpmFor(vc: number, diameter: number): number {
   return (vc * 1000) / (Math.PI * Math.max(diameter, 0.1));
@@ -105,5 +103,3 @@ export function cutting(
   const plunge = Math.max(1, Math.round(tool.type === 'drill' ? feed : feed * 0.35));
   return { rpm, feed, plunge, doc: data.doc, notes };
 }
-
-export const clampRpm = (rpm: number, m: Machine) => clamp(rpm, m.minRpm, m.maxRpm);

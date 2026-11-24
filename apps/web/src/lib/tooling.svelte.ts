@@ -229,4 +229,3 @@ class Tooling {
 }
 
 export const tooling = new Tooling();
-if (typeof window !== 'undefined') (window as unknown as { __swarfTooling?: Tooling }).__swarfTooling = tooling;

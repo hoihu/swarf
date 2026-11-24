@@ -4,7 +4,7 @@ export { CAM_TOOLS, TOOL_NAMES, runCamTool, formatDiagnostics, type JobPort, typ
 export { SYSTEM_PROMPT, formatJobContext } from './prompt.ts';
 export { DEMO_SCRIPTS, DEMO_FALLBACK } from './demo.ts';
 export { AnthropicProvider, ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL, costUsd, type Effort, type AnthropicOptions } from './providers/anthropic.ts';
-export { OpenAICompatProvider, listOpenAIModels, type OpenAICompatOptions } from './providers/openai.ts';
+export { OpenAICompatProvider, type OpenAICompatOptions } from './providers/openai.ts';
 export { API_SERVICES, apiProblem, apiProvider, apiService, type ApiChoice, type ApiService, type ApiServiceId } from './providers/services.ts';
 export { ScriptedProvider, type Script, type ScriptStep } from './providers/scripted.ts';
 export { CAM_GUIDE } from './prompt.ts';

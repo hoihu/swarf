@@ -80,12 +80,6 @@ export function pixelToRay(lens: Lens, u: number, v: number): V2 {
   return undistortNormalized((u - lens.cx) / lens.fx, (v - lens.cy) / lens.fy, lens.dist);
 }
 
-/** A pixel of the undistorted image (same intrinsics, no distortion) → the pixel of the camera image it shows. */
-export function undistortedToDistorted(lens: Lens, u: number, v: number): V2 {
-  const [xd, yd] = distort((u - lens.cx) / lens.fx, (v - lens.cy) / lens.fy, lens.dist);
-  return [lens.fx * xd + lens.cx, lens.fy * yd + lens.cy];
-}
-
 /**
  * The GL projection matrix (column-major, as THREE.Matrix4.elements) of a pinhole camera with
  * these intrinsics, for an image of the calibrated size: a point at GL camera coordinates (x, y,

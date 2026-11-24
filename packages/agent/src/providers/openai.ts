@@ -127,20 +127,6 @@ export class OpenAICompatProvider implements Provider {
   }
 }
 
-/** The models the API offers (GET /models), sorted; throws with a readable message. */
-export async function listOpenAIModels(baseURL: string, apiKey: string, signal?: AbortSignal): Promise<string[]> {
-  let res: Response;
-  try {
-    res = await fetch(`${trimSlash(baseURL)}/models`, { headers: headers(apiKey), ...(signal ? { signal } : {}) });
-  } catch (e) {
-    throw new Error(unreachable(baseURL, e));
-  }
-  if (!res.ok) throw new Error(await apiError(res));
-  const json = (await res.json()) as { data?: { id?: string }[]; models?: { name?: string }[] };
-  const ids = (json.data ?? []).map((m) => m.id).filter((id): id is string => !!id);
-  return [...new Set(ids)].sort();
-}
-
 function headers(apiKey: string): Record<string, string> {
   return { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) };
 }

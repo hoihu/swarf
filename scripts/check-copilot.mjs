@@ -9,7 +9,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { SERVER_PROTOCOL, chatTools } from '@swarf/agent';
-import { ChatRunner, CopilotHarness, LocalServer, mcpHttpHandler } from '../tools/server/src/index.ts';
+import { ChatRunner } from '../tools/server/src/chat.ts';
+import { CopilotHarness } from '../tools/server/src/harness/copilot.ts';
+import { mcpHttpHandler } from '../tools/server/src/mcp.ts';
+import { LocalServer } from '../tools/server/src/server.ts';
 
 const bin = process.argv[2] ?? 'copilot';
 let failures = 0;

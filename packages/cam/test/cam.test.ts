@@ -26,7 +26,6 @@ import {
   cuttingData,
   samplePath,
   MATERIALS,
-  estimateSeconds,
   type Program,
   type JobInput,
   type OperationInput,
@@ -495,10 +494,10 @@ describe('time estimate', () => {
   });
 
   it('is longer than the plain length/feed estimate for real jobs', () => {
+    // the plain estimate (path length over feed, rapids at the rapid rate): 58.5 s and 214.9 s
+    const plain = { lathe: 58, mill: 214 };
     for (const kind of ['lathe', 'mill'] as const) {
-      const job = EXAMPLES[kind]();
-      const a = analyze(job);
-      expect(a.seconds).toBeGreaterThan(estimateSeconds(a.program, job.machine.rapidRate));
+      expect(analyze(EXAMPLES[kind]()).seconds).toBeGreaterThan(plain[kind]);
     }
   });
 });

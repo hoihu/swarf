@@ -182,49 +182,46 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
 
   /** Pocket the region inside closed loops (loops inside loops are islands): rings from the wall inwards, level by level. */
   const pocketLoops = (closed: Loop[], op: { zTop?: number | undefined; zBottom: number; stepDown?: number | undefined; stepover: number; entry: 'ramp' | 'plunge'; rampAngle: number }) => {
-    {
-      const zTop = zTopOf(op);
-      checkDepth(zTop, op.zBottom);
-      const g = { closed };
-      // (no allowance where it would leave the levels no room at all)
-      const a = allow > 0 && offsetRegion(g.closed, -(r + allow)).length ? allow : 0;
-      // rings from the wall inwards, every stepover; cut from the inside out, the wall last
-      const rings: Loop[][] = [];
-      for (let k = 0; ; k++) {
-        const ring = offsetRegion(g.closed, -(r + a + k * op.stepover * d));
-        if (!ring.length) break;
-        rings.push(orient(ring, false));
-        if (k > 2000) throw new CamError('the pocket needs too many passes; use a bigger tool or stepover');
-      }
-      if (!rings.length) throw new CamError(`the pocket is too small for the Ø${d} tool`);
-      const order = [...rings].reverse().flat();
-      let zPrev = zTop + 0.2;
-      for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
-        let at: Pt = [ctx.from.x, ctx.from.y];
-        for (const l0 of order) {
-          const l = way(startNear(l0, at));
-          // above everything (islands stand up to the top), down through what is already cleared
-          approach(l[0]![0], l[0]![1], zTop);
-          feed(l[0]![0], l[0]![1], zPrev, cut.plunge);
-          cutLoop(l, zPrev, zl, { ramp: op.entry === 'ramp', angle: op.rampAngle });
-          rapid(l[0]![0], l[0]![1], zTop + 1);
-          at = l[0]!;
-        }
-        zPrev = zl;
-      }
-      if (a > 0) {
-        // the finishing pass along every wall (the outline and the islands) at full depth
-        let at: Pt = [ctx.from.x, ctx.from.y];
-        for (const l0 of orient(offsetRegion(g.closed, -r), false)) {
-          const l = way(startNear(l0, at));
-          approach(l[0]![0], l[0]![1], zTop);
-          cutLoop(l, op.zBottom, op.zBottom, { ramp: false, angle: op.rampAngle });
-          rapid(l[0]![0], l[0]![1], zTop + 1);
-          at = l[0]!;
-        }
-      }
-      rapid(ctx.from.x, ctx.from.y, safeZ);
+    const zTop = zTopOf(op);
+    checkDepth(zTop, op.zBottom);
+    // (no allowance where it would leave the levels no room at all)
+    const a = allow > 0 && offsetRegion(closed, -(r + allow)).length ? allow : 0;
+    // rings from the wall inwards, every stepover; cut from the inside out, the wall last
+    const rings: Loop[][] = [];
+    for (let k = 0; ; k++) {
+      const ring = offsetRegion(closed, -(r + a + k * op.stepover * d));
+      if (!ring.length) break;
+      rings.push(orient(ring, false));
+      if (k > 2000) throw new CamError('the pocket needs too many passes; use a bigger tool or stepover');
     }
+    if (!rings.length) throw new CamError(`the pocket is too small for the Ø${d} tool`);
+    const order = [...rings].reverse().flat();
+    let zPrev = zTop + 0.2;
+    for (const zl of levels(zTop, op.zBottom, stepOf(op))) {
+      let at: Pt = [ctx.from.x, ctx.from.y];
+      for (const l0 of order) {
+        const l = way(startNear(l0, at));
+        // above everything (islands stand up to the top), down through what is already cleared
+        approach(l[0]![0], l[0]![1], zTop);
+        feed(l[0]![0], l[0]![1], zPrev, cut.plunge);
+        cutLoop(l, zPrev, zl, { ramp: op.entry === 'ramp', angle: op.rampAngle });
+        rapid(l[0]![0], l[0]![1], zTop + 1);
+        at = l[0]!;
+      }
+      zPrev = zl;
+    }
+    if (a > 0) {
+      // the finishing pass along every wall (the outline and the islands) at full depth
+      let at: Pt = [ctx.from.x, ctx.from.y];
+      for (const l0 of orient(offsetRegion(closed, -r), false)) {
+        const l = way(startNear(l0, at));
+        approach(l[0]![0], l[0]![1], zTop);
+        cutLoop(l, op.zBottom, op.zBottom, { ramp: false, angle: op.rampAngle });
+        rapid(l[0]![0], l[0]![1], zTop + 1);
+        at = l[0]!;
+      }
+    }
+    rapid(ctx.from.x, ctx.from.y, safeZ);
   };
 
   /**
@@ -519,15 +516,12 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
         // open path: back and forth along it, one level per direction, ramping in on the way
         let path = line;
         approach(path[0]![0], path[0]![1], zTop);
-        let zPrev = zTop + 0.2;
-        feed(path[0]![0], path[0]![1], zPrev, cut.plunge);
+        feed(path[0]![0], path[0]![1], zTop + 0.2, cut.plunge);
         for (const zl of lv) {
           feed(path[0]![0], path[0]![1], zl, cut.plunge);
           for (const [x, y] of path.slice(1)) feed(x, y, zl);
           path = [...path].reverse();
-          zPrev = zl;
         }
-        void zPrev;
         rapid(path[0]![0], path[0]![1], safeZ);
       }
       return out;
@@ -646,7 +640,7 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       const t = textStrokes(op.text, op.height, op.spacing);
       if (!t.paths.length) throw new CamError(`nothing to engrave: the font has none of "${op.text}"`);
       if (t.missing.length) throw new CamError(`the engraving font has no ${[...new Set(t.missing)].map((c) => `"${c}"`).join(', ')}: capitals, digits and - + = _ . , : ! ? / \\ ( ) # * % ° Ø ' " < > × only`);
-      if (tool.type === 'endmill' && op.depth > (cut.doc ?? Infinity) + 1e-9) throw new CamError(`${op.depth} mm is more than T${tool.id} takes in one pass (${cut.doc} mm): engrave shallower`);
+      if (tool.type === 'endmill' && op.depth > cut.doc + 1e-9) throw new CamError(`${op.depth} mm is more than T${tool.id} takes in one pass (${cut.doc} mm): engrave shallower`);
       const [ca, sa] = [Math.cos((op.angle * Math.PI) / 180), Math.sin((op.angle * Math.PI) / 180)];
       const z = zTop - op.depth;
       const hop = zTop + 1;
@@ -706,7 +700,7 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
         if (internal) arc(op.cx, op.cy, zB, op.cx + rp / 2, op.cy, !ccw, f);
         else feed(op.cx + park, op.cy, zB, f);
         if (i < op.passes) {
-          if (internal) rapid(op.cx, op.cy, Math.max(zA, zB) + 0);
+          if (internal) rapid(op.cx, op.cy, Math.max(zA, zB));
           else rapid(op.cx + park, op.cy, Math.max(zA, zB, zTop + 1));
         }
       }
