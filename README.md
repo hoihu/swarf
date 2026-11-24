@@ -12,7 +12,7 @@ and the preview show that before anything reaches the machine.
 ```
 npm install
 npm run dev        # the web app at http://localhost:5173
-npm test           # CAM core and agent loop
+npm test           # vitest over all five workspaces (cam, grbl, agent, server, web)
 npm run typecheck
 ```
 
@@ -322,7 +322,7 @@ whole flow without hardware and is how it is tested.
 | Entry and finish | ramped entry for pockets and contours, helical entry for circular pockets; lathe chamfers compensated for the insert's nose radius |
 | Time | estimated like grbl's planner: acceleration and junction deviation, forward and backward pass |
 | Checks | machine travel, chuck collision, rapids into material, boring into solid material, boring bars that don't fit or reach, cuts deeper than the flutes or the depth of cut for the material, plunging with a non-centre-cutting endmill, impossible operations; a separate lint of the written G-code text alone (modes before the first move, feed and spindle before cutting, only the boring subset, M5 and M30 at the end, arcs that end on their circle, thread passes along Z only, no sideways mill rapid below Z0 lower than the last retract), not yet shown in the app |
-| G-code | a "boring" subset (G0–G3, G17/G18, G7/G8, G21, G90, G94, G54, M0 tool changes) that runs the same on grblHAL, LinuxCNC and most others |
+| G-code | a "boring" subset that runs the same on grblHAL, LinuxCNC and most others. This is the full list the emitter writes: G0 G1 G2 G3 (XY arcs with I J on the mill, ZX arcs with I K on the lathe), G33 Z K (thread passes, needs spindle sync), G4 P (spindle dwell), G17 (mill) / G18 (lathe), G7 / G8 (lathe X as diameter / radius), G21, G90, G94, G54, G97, S with M3, M5, M0 (tool changes), M30; words X Y Z I J K F S P. No G96/G95, cutter compensation, canned cycles or tool length offsets |
 | Preview | three.js: toolpath (feeds blue, rapids orange), the part as it is cut, timeline scrubber, tool marker |
 | Job files | Save the job as a file (`<name>.swarf.json`: machine, stock, tools, operations, drawings, notes) and open it again, here or on another computer. A file is checked like any other input before it becomes the job |
 | Tool library | your own cutters, entered once: "Keep in the library" on a tool, "Add to the job" in any later job (lathe tools keep their stored offset in the tool post). Kept in this browser; saved and read as a file to move it |

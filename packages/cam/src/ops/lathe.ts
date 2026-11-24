@@ -2,7 +2,8 @@
  * Lathe operations (2 axes, X = radius, Z along the spindle). Tools cut towards the chuck
  * (-Z) and face towards the centre. Rapids only happen above the bar (x > stock radius),
  * in front of its face, or inside material this operation has already removed.
- * Tool nose radius compensation is not applied yet (tier 2).
+ * Paths are for the imaginary tool tip; nose radius compensation is applied in lathe_profile
+ * (tipPath, profile.ts) and lathe_chamfer (legs lengthened by rn·(2 − √2)), not elsewhere.
  */
 import { CamError, levels, v, type Move } from '../program.ts';
 import type { Job, Operation } from '../schema.ts';

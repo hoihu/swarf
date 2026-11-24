@@ -1,5 +1,6 @@
 /**
- * 2.5D mill operations with a flat endmill (or a drill for holes). Climb milling with M3:
+ * 2.5D mill operations. Tool kinds (OP_TOOLS in schema.ts): flat endmill, drill (or endmill)
+ * for holes, pointed chamfer cutter (spot, chamfer, engrave) and thread mill. Climb milling with M3:
  * pockets and inside contours run counter-clockwise, outside contours clockwise.
  * Entry into each level is a ramp along the first pass (pockets, contours) or a helix (circular
  * pockets) at a shallow angle, or a straight plunge at the plunge feed if asked for (that needs a
