@@ -24,7 +24,9 @@ addition.
    `analyze` (236 ms for the 147-move example), and `analyze` runs two to three times per edit (R20, R21).
 9. Tests take 22 s wall because one 1,807-line file holds 120 tests (20.7 s); splitting it is free (R22).
 10. The bundle is one 1,496 kB chunk (439 kB gzip): three.js 38 %, the Anthropic SDK 13 %. OpenCV
-    (13.3 MB) is already lazy. Recommendation: keep the architecture, do the 13 small PRs below.
+    (13.3 MB) is already lazy. Recommendation: keep the architecture, do the 14 small PRs below.
+11. The seven open questions are answered in "Decisions (2026-11-24)"; where a finding's "Proposed
+    change" still names a question, the decision and the PR table are what count.
 
 ## How this was done, and what it does not cover
 
@@ -200,24 +202,26 @@ npm run build` green. Deletions first.
 
 | PR | Contents | Acceptance |
 |---|---|---|
-| 1 | Delete dead code: R8, R9, R14 | `npx knip` no longer lists them; pinned `.nc` files unchanged; `src` −95 lines |
-| 2 | Docs in step: R23 (text only), R24, README sentence of R5 | every G/M word in the two examples and the eight golden files is in the README list; ARCHITECTURE names five workspaces |
+| 1 | Delete dead code: R8, R9, R14; the 14 unreferenced Playwright scripts of R11 and the `window.__swarf*` hooks nothing reads any more (Q5) | `npx knip` no longer lists them; pinned `.nc` files unchanged; `src` −95 lines; `scripts/` has 8 `.cjs` and 3 `.mjs` files; every `__swarf` name in `apps/web/src` is read by a kept script or by the app itself; CLAUDE.md's repo map no longer names `shot-*.cjs` |
+| 2 | Docs in step: R23 (text only), R24 | every G/M word in the two examples and the eight golden files is in the README list; ARCHITECTURE names five workspaces |
 | 3 | `save_gcode` with drawings: R1 | new test fails before, passes after: a job with one shape is written to a temp dir and equals the tab's G-code |
 | 4 | The review card sees material and clamps: R6 | new `diffJobs` tests for `workMaterial`, `obstacles`, `notes`, `setups` |
-| 5 | Parser to test support: R10 (after Q4) | `rg parseGcode packages/*/src apps tools` empty; tests unchanged |
-| 6 | cam dedupe: R16, R17, R18, R19, `words()` of R15 | golden `.nc` unchanged except a reviewed fourth-decimal change from R17; tool JSON schemas byte-identical (assert in `agent.test.ts`) |
-| 7 | Small helpers: R21, R13 | `rg "severity === 'error'"` only in cam; one secret comparison; server test still refuses a wrong protocol |
+| 5 | Parser to test support: R10 (Q4) | `rg parseGcode packages/*/src apps tools` empty; no "previewing files from elsewhere" left in comments or docs; tests unchanged |
+| 6 | cam dedupe: R16, R17, R18, R19, `words()` of R15 (exported from `lint-gcode.ts`; the test parser of PR 5 imports it from there) | golden `.nc` unchanged except a reviewed fourth-decimal change from R17; tool JSON schemas byte-identical (assert in `agent.test.ts`) |
+| 7 | Small helpers: R21, R13 including both localStorage migrations (no "one more release") | `rg "severity === 'error'"` only in cam; one secret comparison; server test still refuses a wrong protocol; `rg "ccModel\|welcome.chat" apps packages tools` empty and `store.svelte.ts` no longer maps `'claude-code'` |
 | 8 | Web persistence: R20 | `rg localStorage apps/web/src` only in `persist.ts`; a manual reload keeps job, mode, look, sections |
-| 9 | One gate, lint wired: R3, R7, R2 (Option A, steps 2–3) | tests: `runnable` refuses on a check error and on a lint error; `machine.run` has no `string` overload; `get_gcode` on a job with errors starts with the warning line |
-| 10 | One Diagnostic, no cycle: R25 (Option A, step 1), R12 | `madge`-style check or a test importing `check.ts` alone; barrel is a named list |
+| 9 | One gate, lint wired: R3, R7, R2 (Option A, steps 2–3). `get_gcode` and `save_gcode` take their text only from `runnable` (Q1). The hooks exist only in dev and the 8 kept scripts run against `npm run dev` (Q2); `playwright` and `ws` become root devDependencies and `npm run check:ui` runs the 8 (Q5) | tests: `runnable` refuses on a check error and on a lint error; `machine.run` has no `string` overload; `get_gcode` on a job with errors (with or without `opId`) answers `isError: true` with the errors and not one line of G-code; after `npm run build`, `rg __swarf apps/web/dist` is empty; `npm run check:ui` passes from a clean checkout after `npx playwright install chromium`; README "Safety" names all blocked outputs and CLAUDE.md's repo map says `npm run check:ui` instead of port 4173 |
+| 10 | One Diagnostic, no cycle: R25 (Option A, step 1), R12; knip in CI (Q6) | `madge`-style check or a test importing `check.ts` alone; barrel is a named list; `knip` is a devDependency with a config, `npm run knip` exits 0 and is the fourth step in `ci.yml`, README and CLAUDE.md "Commands" |
 | 11 | Split `cam.test.ts`, fake timers in grbl tests: R30 | same 288 tests; `npm test` wall under 12 s on the same machine |
 | 12 | `analyze` cache, then faster height map: R28, R29 | cache: second `analyze` of an equal job under 1 ms, existing "is quick the second time" style test; height map: golden files and height assertions unchanged, mill example `analyze` under 100 ms |
 | 13 | Lazy API provider: R31 | `npm run build`: main chunk under 1,320 kB; the SDK in its own chunk; chat with a key still answers (manual) |
 
-After Q3 and Q5 are answered: a PR for R4 (aligned travel and clamp checks, test first with a
-turned block next to a clamp) and one for the scripts (R11).
+| 14 | Travel and clamps are checked where the machine really goes: R4 (Q3) and R5 (Q7). Needs PR 9 | tests written first: a turned block next to a clamp gives an obstacle error, a turned program that leaves the travel gives `OUT_OF_RANGE`, and both jobs have no error without `measured`; a job without `measured` has the same diagnostics as before; `runnable` emits the same aligned program that was checked (one `alignPieces` call); the six travel numbers are in Machine settings, lathe X as a diameter, and a form test shows an edited limit turning a passing job into `OUT_OF_RANGE`; the `TURNED` text and README "Safety" / "What is not checked" and ARCHITECTURE "The block as measured" say what is now checked |
 
-## Open questions for Martin
+The scripts need no PR of their own: the deletions are in PR 1, the rest in PR 9, which has to
+touch the hooks and `machine.run` anyway and is verified by those scripts.
+
+## Open questions for Martin (answered in Decisions below)
 
 - **Q1 (R2).** Should `get_gcode` refuse while the job has errors, or answer with a warning line on
   top? Refusing is stricter; the agent then debugs from diagnostics alone.
@@ -233,3 +237,54 @@ turned block next to a clamp) and one for the scripts (R11).
 - **Q6 (R12).** Add `knip` to CI so unused exports and files do not come back? It needs a small
   config for the scripts and the `.svelte` entry points.
 - **Q7 (R5).** Travel envelope in the Machine settings form now, or only the README correction?
+
+## Decisions (2026-11-24)
+
+Martin handed the seven questions over on 2026-11-24 with these ground rules: the tool is not
+released, maintainability comes first, and nothing is kept for backward compatibility if it can be
+dropped. The answers below are final; the PR table above already includes them.
+
+- **Q1: `get_gcode` refuses while the job has errors.** It answers `isError: true` with the errors
+  (check and lint) and no G-code, for the whole program and for a single `opId` alike. Reason: a
+  warning line on top is not a gate, since a client with a file system can still save the text;
+  with the refusal every way to get text goes through `runnable`, and the diagnostics already
+  carry the operation and the move the agent needs to fix the job. Changes PR 9 (contents and
+  acceptance); the tool description, the agent prompt and README "Safety" say so in the same PR.
+- **Q2: The `window.__swarf*` hooks are built only in dev (`import.meta.env.DEV`), and the scripts
+  run against `npm run dev`.** Reason: a production build should carry no back door to
+  `machine.run`, and one target for the scripts is less to keep than a gated production variant.
+  `machine.run` takes only the `runnable` result regardless, so the gate does not depend on the
+  hooks being absent. Changes PR 9.
+- **Q3: With a measured block, the travel and clamp checks also run on the turned program, and
+  what they find are errors.** They run in addition to the checks on the block as drawn, so no
+  check is dropped and a job can only gain errors; jobs that pass today and fail afterwards were
+  never safe to run. The `TURNED` warning stays only to say that the preview shows the block as
+  drawn, without "keep that much to spare". This is the one new step: PR 14, after PR 9.
+- **Q4: Previewing G-code from elsewhere is not planned; `parse.ts` moves to the tests.** Reason:
+  145 lines of production code for a feature that does not exist, and reading foreign G-code is at
+  odds with "every consumer reads the one Program IR". If the feature is ever wanted it gets
+  designed then. PR 5 goes ahead as written.
+- **Q5: Delete the 14 scripts nothing refers to and make the 8 others run.** Kept: `check-jog`,
+  `-laser`, `-listen`, `-measured`, `-probe`, `-round`, `-run` and `tour.cjs`, with `playwright`
+  and `ws` as root devDependencies and one `npm run check:ui` that starts the dev server and runs
+  them. Reason: a script that cannot run from a clean checkout is dead code, and the 8 are the only
+  end-to-end walk through the simulated workshop, which PR 9 needs. They stay out of CI (browser
+  download). Changes PR 1 (deletions, with the hooks only those 14 used) and PR 9 (the rest).
+- **Q6: knip runs in CI.** `npm run knip` becomes the fourth check after typecheck, test and build.
+  Reason: PRs 1, 5 and 10 remove the unused code once; without a check it comes back, and the
+  review found knip's output accurate here. Changes PR 10, where the barrel becomes a named list
+  and the tree is clean for the first time; that PR also updates `ci.yml`, README and CLAUDE.md
+  "Commands".
+- **Q7: The travel envelope goes into the Machine settings form now.** Reason: `OUT_OF_RANGE` is a
+  blocking safety check, and it is worth little while it compares against a preset that is nobody's
+  machine and can only be changed by editing the job file; correcting the README would document the
+  hole instead of closing it. Lathe X limits are typed as diameters and stored as radii. Changes
+  PR 2 (the README sentence is no longer touched there) and PR 14, where it sits beside Q3.
+
+The same ground rules settle two "keep for now" notes in the findings:
+
+- **R13:** the two localStorage migrations (`'claude-code'` → `'local'`, `swarf.ccModel`) are
+  deleted with the rest in PR 7, not kept for one more release. Nobody has stored state to migrate.
+- **R27:** "they are in saved job files" is no longer a reason to keep a name. The field renames
+  are still not in the sequence, because they buy too little for a change to the agent's schema;
+  the file renames happen when those files are next touched, as written.
