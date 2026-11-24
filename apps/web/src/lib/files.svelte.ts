@@ -121,4 +121,3 @@ class Files {
 }
 
 export const files = new Files();
-if (typeof window !== 'undefined') Object.assign(window, { __swarfFiles: files });

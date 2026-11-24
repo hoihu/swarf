@@ -7,7 +7,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { SERVER_PROTOCOL, runTabTool, type ServerToTab, type TabToServer } from '@swarf/agent';
 import { emptyJob, type Job } from '@swarf/cam';
-import { LocalServer, createMcpServer } from '../src/index.ts';
+import { createMcpServer } from '../src/mcp.ts';
+import { LocalServer } from '../src/server.ts';
 
 const KEY = 'test-key-0123456789abcdef';
 let cleanup: (() => Promise<void>)[] = [];

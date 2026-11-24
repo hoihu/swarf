@@ -62,11 +62,6 @@ export class CodexHarness implements Harness {
     return { id: this.id, name: this.name, ...cap };
   }
 
-  async models(): Promise<string[]> {
-    const out = await capture(this.bin, ['debug', 'models'], { env: this.#env(), cwd: this.#cwd });
-    return (parseLine<{ models?: { slug: string; visibility?: string }[] }>(out ?? '')?.models ?? []).filter((m) => m.visibility === 'list').map((m) => m.slug);
-  }
-
   /** The servers from the user's settings. Connectors and plugins are off for the run, so not among them (switching off one that is not in the settings is an error). */
   async #userServers(): Promise<string[]> {
     const out = await capture(this.bin, ['mcp', 'list', '--json', ...settings({ features: off(['apps', 'plugins']) })], { env: this.#env(), cwd: this.#cwd });

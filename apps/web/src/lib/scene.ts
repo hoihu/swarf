@@ -22,8 +22,6 @@ export const COLORS = {
   selected: new THREE.Color('#f2d16b'),
   material: new THREE.Color('#b8c2c2'),
   stock: new THREE.Color('#8d9a94'),
-  chuck: new THREE.Color('#3a423e'),
-  tool: new THREE.Color('#e0a400'),
   drawing: new THREE.Color('#d9e6a8'),
 };
 
@@ -179,15 +177,6 @@ export function latheMesh(m: LatheMaterial, look: WorkLook = PLAIN, rawRadius = 
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
-}
-
-/** The chuck body behind the stock, for orientation. */
-export function chuckMesh(chuckZ: number, diameter: number): THREE.Mesh {
-  const len = Math.max(20, diameter * 0.35);
-  const g = new THREE.CylinderGeometry(diameter / 2, diameter / 2, len, 64);
-  g.rotateZ(-Math.PI / 2);
-  g.translate(chuckZ - len / 2, 0, 0);
-  return new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: COLORS.chuck, metalness: 0.4, roughness: 0.6 }));
 }
 
 /**
@@ -604,25 +593,4 @@ export function millMesh(m: MillMaterial, look: WorkLook = PLAIN): THREE.Group {
   box.translate(m.sx / 2, (m.top + bottom) / 2, -m.sy / 2);
   group.add(new THREE.LineSegments(new THREE.EdgesGeometry(box), new THREE.LineBasicMaterial({ color: COLORS.stock, transparent: true, opacity: 0.6 })));
   return group;
-}
-
-/** The tool at its tip position: an insert on the lathe, a cutter body on the mill. */
-export function toolMesh(lathe: boolean, diameter: number): THREE.Object3D {
-  const mat = new THREE.MeshStandardMaterial({ color: COLORS.tool, metalness: 0.3, roughness: 0.45, transparent: true, opacity: 0.9 });
-  if (lathe) {
-    // a rhombic insert pointing at the work, holder going up and back
-    const shape = new THREE.Shape();
-    shape.moveTo(0, 0);
-    shape.lineTo(5, 2.5);
-    shape.lineTo(3.5, 9);
-    shape.lineTo(-1.5, 6.5);
-    shape.closePath();
-    const g = new THREE.ExtrudeGeometry(shape, { depth: 3, bevelEnabled: false });
-    g.translate(0, 0, -1.5);
-    return new THREE.Mesh(g, mat);
-  }
-  const len = Math.max(15, diameter * 3);
-  const g = new THREE.CylinderGeometry(diameter / 2, diameter / 2, len, 32);
-  g.translate(0, len / 2, 0);
-  return new THREE.Mesh(g, mat);
 }

@@ -174,8 +174,8 @@ export class Streamer {
     this.#rx = Math.max(64, bytes - 1);
   }
 
-  /** Start streaming a program. Refused while another job runs. */
   /**
+   * Start streaming a program. Refused while another job runs.
    * `skipLeadingPause`: a pause (M0) before the program's first move is passed over (the first tool
    * is loaded and whoever starts the program has said so).
    */
@@ -423,8 +423,6 @@ export class Streamer {
         if (opt) this.setRxBuffer(Number(opt[2]));
         return;
       }
-      default:
-        return;
     }
   }
 

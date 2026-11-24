@@ -111,13 +111,3 @@ export function moveLength(from: Vec3, m: Move): number {
   }
   return len;
 }
-
-/** Cycle time in seconds: path length over feed (rapids at the machine's rapid rate). No acceleration model yet. */
-export function estimateSeconds(p: Program, rapidRate: number): number {
-  let min = 0;
-  for (const { from, move } of walk(p)) {
-    const len = moveLength(from, move);
-    min += len / (move.type === 'rapid' ? rapidRate : move.f);
-  }
-  return min * 60;
-}

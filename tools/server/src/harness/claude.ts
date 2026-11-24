@@ -7,9 +7,6 @@
 import { CHAT_RULES, type HarnessInfo } from '@swarf/agent';
 import { detectCli, findCli, rulesFile, type ChatJob, type Harness, type Invocation, type RunSink } from './types.ts';
 
-/** `bin` itself when it is a path, else the first match on the PATH or in the usual install folders. */
-export const findClaude = findCli;
-
 /**
  * Environment for the headless Claude: never the markers of a Claude Code session that may have
  * started this server (the run is not nested inside it).

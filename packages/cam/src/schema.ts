@@ -298,7 +298,6 @@ export const MillContourRect = z.object({
   tabHeight: pos.default(1).describe('Tab height above the bottom'),
 });
 
-/** Imported 2D geometry (DXF, SVG) in mm, placed on the stock by `at`. */
 /** Something on the mill table the tool must stay clear of (a clamp, a vise jaw): its outline in X/Y and its top, work coordinates. */
 export const Obstacle = z.object({
   name: z.string().default('obstacle'),
@@ -310,6 +309,7 @@ export const Obstacle = z.object({
 });
 export type Obstacle = z.infer<typeof Obstacle>;
 
+/** Imported 2D geometry (DXF, SVG) in mm, placed on the stock by `at`. */
 export const Shape = z.object({
   id: z.string().min(1),
   name: z.string(),

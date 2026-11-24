@@ -21,7 +21,7 @@ docs/ARCHITECTURE.md.
   open app tab, and the harnesses that let Claude Code, Codex, Copilot CLI or OpenCode answer
   the app's chat (`src/harness/`).
 - `scripts`: manual checks outside CI: Playwright walks through the built app (`check-*.cjs`,
-  `shot-*.cjs`, `tour.cjs`; need `npm run build` and `vite preview` on port 4173) and checks of
+  `tour.cjs`; need `npm run build` and `vite preview` on port 4173) and checks of
   the real coding-agent CLIs (`check-codex.mjs`, `check-copilot.mjs`, `check-opencode.mjs`).
 
 ## Commands

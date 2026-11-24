@@ -4,7 +4,7 @@
  * shows: the 3D preview, the raw camera picture (while calibrating), or the toolpath drawn over
  * the camera picture.
  */
-import { BOARD, TABLE_MARKER, TOOL_MARKER, calibrateLens, detectBoard, detectMarkers, loadCv, solvePose, type BoardView, type CV, type Marker } from './cv.ts';
+import { TABLE_MARKER, TOOL_MARKER, calibrateLens, detectBoard, detectMarkers, loadCv, solvePose, type BoardView, type CV, type Marker } from './cv.ts';
 import { pixelToRay, project, quadCenter, rodrigues, shiftPose, sub, mulMV, tipOffset, type Lens, type Pose, type V2, type V3 } from './geometry.ts';
 import { SimCamera } from './sim.ts';
 import { measureBlock, toGrey, type BlockFit, type Grey } from './setup.ts';
@@ -109,7 +109,6 @@ class Camera {
     if (this.#cv) return this.#cv;
     this.status = 'Loading OpenCV (13 MB, once)…';
     this.#cv = await loadCv();
-    (window as unknown as { __swarfCv?: unknown }).__swarfCv = { cv: this.#cv, detectMarkers, detectBoard };
     this.status = '';
     return this.#cv;
   }
@@ -577,4 +576,3 @@ function differs(a: BoardView, b: BoardView, width: number): boolean {
 export const camera = new Camera();
 // for tests and the curious: the calibration and the live state
 if (typeof window !== "undefined") (window as unknown as { __swarfCamera?: Camera }).__swarfCamera = camera;
-export { BOARD, TABLE_MARKER, TOOL_MARKER };

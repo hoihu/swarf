@@ -6,7 +6,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { SERVER_PROTOCOL, runTabTool, type ChatEvent, type HarnessId, type ServerToTab, type TabToServer } from '@swarf/agent';
 import { emptyJob, type Job } from '@swarf/cam';
-import { ChatRunner, ClaudeHarness, CodexHarness, CopilotHarness, OpenCodeHarness, LocalServer, mcpHttpHandler, streamReader, type Harness } from '../src/index.ts';
+import { ChatRunner } from '../src/chat.ts';
+import { ClaudeHarness, streamReader } from '../src/harness/claude.ts';
+import { CodexHarness } from '../src/harness/codex.ts';
+import { CopilotHarness } from '../src/harness/copilot.ts';
+import { OpenCodeHarness } from '../src/harness/opencode.ts';
+import type { Harness } from '../src/harness/types.ts';
+import { mcpHttpHandler } from '../src/mcp.ts';
+import { LocalServer } from '../src/server.ts';
 
 const FAKE = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
 const FAKE_COPILOT = fileURLToPath(new URL('./fake-copilot.mjs', import.meta.url));

@@ -12,10 +12,7 @@ const EPS = 0.02;
 
 /** Points along a move, at most `step` apart (start excluded, end included). */
 export function samplePath(from: Vec3, m: Move, step: number): Vec3[] {
-  if (m.type === 'arc') {
-    const pts = arcPoints(from, m, step);
-    return pts;
-  }
+  if (m.type === 'arc') return arcPoints(from, m, step);
   const len = Math.hypot(m.to.x - from.x, m.to.y - from.y, m.to.z - from.z);
   const n = Math.max(1, Math.ceil(len / step));
   const out: Vec3[] = [];

@@ -24,8 +24,10 @@ export interface Analysis {
 
 const fmt = (p: Vec3, lathe: boolean) => (lathe ? `X${(p.x * 2).toFixed(2)} Z${p.z.toFixed(2)}` : `X${p.x.toFixed(2)} Y${p.y.toFixed(2)} Z${p.z.toFixed(2)}`);
 
-/** Run the material model over the first `upTo` moves (all by default) and report problems. */
-/** `walls`: note where the cutter leaves walls in the material, for drawing it (MillMaterial.ex/ey); the checks do not need it. */
+/**
+ * Run the material model over the first `upTo` moves (all by default) and report problems.
+ * `walls`: note where the cutter leaves walls in the material, for drawing it (MillMaterial.ex/ey); the checks do not need it.
+ */
 export function simulate(job: Job, program: Program, upTo = Infinity, o: { walls?: boolean } = {}): { material: LatheMaterial | MillMaterial | null; diagnostics: Diagnostic[] } {
   const docOf = (tool: Tool) => cuttingData(tool, job.workMaterial).doc;
   const diagnostics: Diagnostic[] = [];

@@ -206,6 +206,4 @@ class LaserScan {
 const round = (v: number) => Math.round(v * 10) / 10;
 
 export const laserScan = new LaserScan();
-// for tests: the pieces, to look at a single frame
-if (typeof window !== 'undefined') (window as unknown as { __swarfLaserLib?: unknown }).__swarfLaserLib = { extractLine, triangulate };
 if (typeof window !== 'undefined') (window as unknown as { __swarfLaser?: LaserScan }).__swarfLaser = laserScan;

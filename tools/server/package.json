@@ -5,7 +5,6 @@
   "type": "module",
   "description": "Local relay: offers swarf's tools to Claude Code (MCP) and forwards each call to the open app tab",
   "bin": { "swarf-server": "./src/main.ts" },
-  "exports": { ".": "./src/index.ts" },
   "scripts": { "start": "node src/main.ts" },
   "engines": { "node": ">=22.18" },
   "dependencies": {
