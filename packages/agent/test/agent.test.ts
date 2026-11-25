@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES, analyze, emptyJob, type Job } from '@swarf/cam';
 import { toApi as anthropicApi } from '../src/providers/anthropic.ts';
@@ -20,6 +21,11 @@ const use = (name: string, input: unknown): Block => ({ type: 'tool_use', id: ''
 describe('tools', () => {
   it('have plain object schemas', () => {
     for (const t of CAM_TOOLS) expect(t.input_schema.type).toBe('object');
+  });
+
+  it('send the model the same schemas as before (refactors of the job schema must not change them)', () => {
+    const expected = readFileSync(new URL('./tool-schemas.json', import.meta.url), 'utf8');
+    expect(JSON.stringify(CAM_TOOLS, null, 1) + '\n').toBe(expected);
   });
 
   it('validate edits and answer with the checks', () => {

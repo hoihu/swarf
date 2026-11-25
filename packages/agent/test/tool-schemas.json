@@ -1,0 +1,2242 @@
+[
+ {
+  "name": "get_job",
+  "description": "The whole job as JSON (machine, tools, stock, operations) plus the current check results. The per-turn job state already has a summary; call this for exact values.",
+  "input_schema": {
+   "type": "object",
+   "properties": {}
+  }
+ },
+ {
+  "name": "set_stock",
+  "description": "Set the raw stock (a bar on the lathe, a block on the mill) and/or the workpiece material. The material sets speeds, feeds and depth per pass for every operation.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "stock": {
+     "description": "The raw stock (leave out to change only the material)",
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "bar"
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "stickout": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "front": {
+         "default": 1,
+         "type": "number"
+        }
+       },
+       "required": [
+        "kind",
+        "diameter",
+        "stickout"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "block"
+        },
+        "x": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "y": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "z": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "top": {
+         "default": 0,
+         "type": "number"
+        }
+       },
+       "required": [
+        "kind",
+        "x",
+        "y",
+        "z"
+       ]
+      }
+     ]
+    },
+    "workMaterial": {
+     "description": "Workpiece material class: sets speeds, feeds and depth per pass",
+     "type": "string",
+     "enum": [
+      "aluminium",
+      "free_cutting_steel",
+      "steel",
+      "stainless",
+      "brass",
+      "plastic"
+     ]
+    },
+    "material": {
+     "description": "The grade or notes as the user said it, e.g. \"6082\", \"C45\", \"POM\"",
+     "type": "string"
+    },
+    "notes": {
+     "description": "How the work is held and what to remember at the machine, as the user said it; printed on the setup sheet",
+     "type": "string"
+    }
+   }
+  }
+ },
+ {
+  "name": "add_operation",
+  "description": "Add an operation. Lathe: lathe_face, lathe_turn, lathe_profile (a whole outline with chamfers and radii, from points or from an imported side-view drawing, roughed and finished with nose radius compensation), lathe_chamfer, lathe_groove, lathe_bore (boring bar, in a drilled hole), lathe_thread (G33 passes, external or internal), lathe_partoff, lathe_drill (all sizes are diameters, Z0 = finished face, negative Z towards the chuck). Mill: mill_face, mill_pocket_rect, mill_pocket_circle, mill_contour_rect, mill_contour and mill_pocket (an imported drawing, by shape id), mill_drill, mill_slot (between two points, as wide as the tool or wider), mill_spot (a pointed cutter marks hole positions; a spot a little wider than the hole leaves it chamfered), mill_chamfer (along an edge: a shape, a rectangle or a circle; needs a chamfer tool with its angle), mill_engrave (a line of text in a single-line font), mill_thread (thread milling with a single-form thread mill, internal in a drilled hole or external on a boss) (X0 Y0 = stock front-left corner, Z0 = top after facing). Speeds and feeds come from the tool table unless you override rpm/feed. Answers with the check results.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "operation": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "lathe_face"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "z": {
+         "default": 0,
+         "description": "Final face Z",
+         "type": "number"
+        },
+        "fromZ": {
+         "description": "Z of the material face now (default: raw stock front)",
+         "type": "number"
+        },
+        "stepDown": {
+         "description": "Z per pass (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "fromDiameter": {
+         "description": "Diameter to start from (default: stock diameter)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        }
+       },
+       "required": [
+        "type",
+        "tool"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "lathe_turn"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Finished diameter"
+        },
+        "zEnd": {
+         "type": "number",
+         "description": "Z where the turned section ends (shoulder), negative"
+        },
+        "zStart": {
+         "default": 0,
+         "description": "Z where the turned section starts (usually the face, 0)",
+         "type": "number"
+        },
+        "fromDiameter": {
+         "description": "Diameter of the material now (default: stock diameter)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "doc": {
+         "description": "Radial depth per roughing pass (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "finish": {
+         "default": 0.2,
+         "description": "Radial allowance left for one finishing pass",
+         "type": "number",
+         "minimum": 0
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "diameter",
+        "zEnd"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "lathe_profile"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "points": {
+         "description": "The outline from the face towards the chuck; diameters never get smaller going towards the chuck. Start at d 0, z 0 to face as well. Or give shape instead.",
+         "minItems": 2,
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "d": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Diameter"
+           },
+           "z": {
+            "type": "number",
+            "description": "Z"
+           },
+           "c": {
+            "description": "Chamfer at this corner (leg length)",
+            "type": "number",
+            "exclusiveMinimum": 0
+           },
+           "r": {
+            "description": "Radius at this corner",
+            "type": "number",
+            "exclusiveMinimum": 0
+           }
+          },
+          "required": [
+           "d",
+           "z"
+          ]
+         }
+        },
+        "shape": {
+         "description": "Instead of points: an imported drawing of the part seen from the side, spindle axis horizontal (a full outline, or only the half above the axis)",
+         "type": "string"
+        },
+        "face": {
+         "default": "right",
+         "description": "With shape: which end of the drawing is the front face (Z0)",
+         "type": "string",
+         "enum": [
+          "right",
+          "left"
+         ]
+        },
+        "fromDiameter": {
+         "description": "Diameter of the material now (default: stock diameter)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "doc": {
+         "description": "Radial depth per roughing pass (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "finish": {
+         "default": 0.2,
+         "description": "Allowance left by roughing for the finishing pass",
+         "type": "number",
+         "minimum": 0
+        }
+       },
+       "required": [
+        "type",
+        "tool"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "lathe_chamfer"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Diameter of the edge to chamfer"
+        },
+        "z": {
+         "default": 0,
+         "description": "Z of the edge (the face it meets)",
+         "type": "number"
+        },
+        "size": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Chamfer leg length at 45°"
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "diameter",
+        "size"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "lathe_groove"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Groove bottom diameter"
+        },
+        "z": {
+         "type": "number",
+         "description": "Z of the groove flank nearest the face"
+        },
+        "width": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Groove width (≥ blade width)"
+        },
+        "fromDiameter": {
+         "description": "Diameter of the material there (default: stock diameter)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "peck": {
+         "description": "Radial peck depth (default: none)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "diameter",
+        "z",
+        "width"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "lathe_partoff"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "z": {
+         "type": "number",
+         "description": "Z of the cut flank nearest the face = part length as a negative number"
+        },
+        "fromDiameter": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "toDiameter": {
+         "default": 0,
+         "description": "Stop diameter (0 = all the way through)",
+         "type": "number",
+         "minimum": 0
+        },
+        "peck": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "z"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "lathe_bore"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Finished bore diameter"
+        },
+        "zEnd": {
+         "type": "number",
+         "description": "Depth: Z of the bore bottom (negative)"
+        },
+        "fromDiameter": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Diameter of the hole there now (the drill size)"
+        },
+        "zStart": {
+         "default": 0,
+         "description": "Z where the bore starts (usually the face)",
+         "type": "number"
+        },
+        "doc": {
+         "description": "Radial depth per pass (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "finish": {
+         "default": 0.15,
+         "description": "Radial allowance for one finishing pass",
+         "type": "number",
+         "minimum": 0
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "diameter",
+        "zEnd",
+        "fromDiameter"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "lathe_thread"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "side": {
+         "default": "external",
+         "description": "internal: in a bore already at the minor diameter",
+         "type": "string",
+         "enum": [
+          "external",
+          "internal"
+         ]
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Nominal (major) diameter of the thread, e.g. 10 for M10; external: turned to it first, internal: bored to the minor diameter first"
+        },
+        "pitch": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Pitch, mm (e.g. 1.5 for M10): crest to crest; with several starts the lead is pitch × starts"
+        },
+        "starts": {
+         "default": 1,
+         "description": "Number of starts (multi-start thread: lead = pitch × starts, each start one pitch further along)",
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 8
+        },
+        "zEnd": {
+         "type": "number",
+         "description": "Z where the thread ends (towards the chuck); leave room, there is no pull-out"
+        },
+        "zStart": {
+         "default": 0,
+         "description": "Z where the thread starts (usually the face)",
+         "type": "number"
+        },
+        "depth": {
+         "description": "Radial thread depth (default ISO metric: external 0.6134 × pitch, internal 0.5413 × pitch)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "firstCut": {
+         "default": 0.25,
+         "description": "Radial depth of the first pass; later passes get shallower (constant chip area)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "springPasses": {
+         "default": 1,
+         "description": "Extra passes at full depth",
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 5
+        },
+        "infeed": {
+         "default": "flank",
+         "description": "flank: along the 29.5° flank like a compound slide; radial: straight in",
+         "type": "string",
+         "enum": [
+          "flank",
+          "radial"
+         ]
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "diameter",
+        "pitch",
+        "zEnd"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "lathe_drill"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "depth": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Hole depth from the face (Z0), measured at full diameter"
+        },
+        "peck": {
+         "description": "Peck depth (default: no pecking)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "depth"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_face"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "z": {
+         "default": 0,
+         "description": "Final top Z",
+         "type": "number"
+        },
+        "fromZ": {
+         "description": "Top Z now (default: raw stock top)",
+         "type": "number"
+        },
+        "stepDown": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "stepover": {
+         "default": 0.6,
+         "description": "Fraction of the tool diameter",
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 1
+        }
+       },
+       "required": [
+        "type",
+        "tool"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_pocket_rect"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "x": {
+         "type": "number",
+         "description": "Rectangle min X"
+        },
+        "y": {
+         "type": "number",
+         "description": "Rectangle min Y"
+        },
+        "w": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Width along X"
+        },
+        "h": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Height along Y"
+        },
+        "zBottom": {
+         "type": "number",
+         "description": "Final depth (negative)"
+        },
+        "zTop": {
+         "description": "Material top here (default: the Z of the last mill_face before it in this setup, else the stock top)",
+         "type": "number"
+        },
+        "stepDown": {
+         "description": "Z per level (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "stepover": {
+         "default": 0.45,
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 1
+        },
+        "entry": {
+         "default": "ramp",
+         "description": "How the tool gets down to each level",
+         "type": "string",
+         "enum": [
+          "ramp",
+          "plunge"
+         ]
+        },
+        "rampAngle": {
+         "default": 3,
+         "description": "Entry ramp angle, degrees",
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 30
+        },
+        "finish": {
+         "default": 0,
+         "description": "Allowance (mm) the levels leave on the walls, taken off in one finishing pass at full depth. 0: no finishing pass. 0.2 is usual",
+         "type": "number",
+         "minimum": 0,
+         "maximum": 2
+        },
+        "direction": {
+         "default": "climb",
+         "description": "climb: the cutter rolls along the wall (best finish on a rigid machine); conventional: against it (kinder to a machine with backlash)",
+         "type": "string",
+         "enum": [
+          "climb",
+          "conventional"
+         ]
+        },
+        "strategy": {
+         "default": "rings",
+         "description": "rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets",
+         "type": "string",
+         "enum": [
+          "rings",
+          "adaptive"
+         ]
+        },
+        "load": {
+         "default": 0.15,
+         "description": "adaptive: the bite beside the cutter, as a fraction of its diameter",
+         "type": "number",
+         "minimum": 0.05,
+         "maximum": 0.4
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "x",
+        "y",
+        "w",
+        "h",
+        "zBottom"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_pocket_circle"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "cx": {
+         "type": "number"
+        },
+        "cy": {
+         "type": "number"
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "zBottom": {
+         "type": "number",
+         "description": "Final depth (negative)"
+        },
+        "zTop": {
+         "description": "Material top here (default: the Z of the last mill_face before it in this setup, else the stock top)",
+         "type": "number"
+        },
+        "stepDown": {
+         "description": "Z per level (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "stepover": {
+         "default": 0.45,
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 1
+        },
+        "entry": {
+         "default": "helix",
+         "description": "How the tool gets down to each level",
+         "type": "string",
+         "enum": [
+          "helix",
+          "plunge"
+         ]
+        },
+        "rampAngle": {
+         "default": 3,
+         "description": "Entry ramp angle, degrees",
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 30
+        },
+        "finish": {
+         "default": 0,
+         "description": "Allowance (mm) the levels leave on the walls, taken off in one finishing pass at full depth. 0: no finishing pass. 0.2 is usual",
+         "type": "number",
+         "minimum": 0,
+         "maximum": 2
+        },
+        "direction": {
+         "default": "climb",
+         "description": "climb: the cutter rolls along the wall (best finish on a rigid machine); conventional: against it (kinder to a machine with backlash)",
+         "type": "string",
+         "enum": [
+          "climb",
+          "conventional"
+         ]
+        },
+        "strategy": {
+         "default": "rings",
+         "description": "rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets",
+         "type": "string",
+         "enum": [
+          "rings",
+          "adaptive"
+         ]
+        },
+        "load": {
+         "default": 0.15,
+         "description": "adaptive: the bite beside the cutter, as a fraction of its diameter",
+         "type": "number",
+         "minimum": 0.05,
+         "maximum": 0.4
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "cx",
+        "cy",
+        "diameter",
+        "zBottom"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_contour_rect"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "x": {
+         "type": "number",
+         "description": "Rectangle min X"
+        },
+        "y": {
+         "type": "number",
+         "description": "Rectangle min Y"
+        },
+        "w": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Width along X"
+        },
+        "h": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Height along Y"
+        },
+        "zBottom": {
+         "type": "number",
+         "description": "Final depth (negative)"
+        },
+        "zTop": {
+         "description": "Material top here (default: the Z of the last mill_face before it in this setup, else the stock top)",
+         "type": "number"
+        },
+        "stepDown": {
+         "description": "Z per level (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "side": {
+         "default": "outside",
+         "description": "Which side of the line the tool runs",
+         "type": "string",
+         "enum": [
+          "outside",
+          "inside"
+         ]
+        },
+        "entry": {
+         "default": "ramp",
+         "description": "How the tool gets down to each level",
+         "type": "string",
+         "enum": [
+          "ramp",
+          "plunge"
+         ]
+        },
+        "rampAngle": {
+         "default": 3,
+         "description": "Entry ramp angle, degrees",
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 30
+        },
+        "finish": {
+         "default": 0,
+         "description": "Allowance (mm) the levels leave on the walls, taken off in one finishing pass at full depth. 0: no finishing pass. 0.2 is usual",
+         "type": "number",
+         "minimum": 0,
+         "maximum": 2
+        },
+        "direction": {
+         "default": "climb",
+         "description": "climb: the cutter rolls along the wall (best finish on a rigid machine); conventional: against it (kinder to a machine with backlash)",
+         "type": "string",
+         "enum": [
+          "climb",
+          "conventional"
+         ]
+        },
+        "tabs": {
+         "default": 0,
+         "description": "Holding tabs left standing so a cut-out part stays in place",
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 16
+        },
+        "tabWidth": {
+         "default": 4,
+         "description": "Tab width along the edge",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "tabHeight": {
+         "default": 1,
+         "description": "Tab height above the bottom",
+         "type": "number",
+         "exclusiveMinimum": 0
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "x",
+        "y",
+        "w",
+        "h",
+        "zBottom"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_contour"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "shape": {
+         "type": "string",
+         "description": "Shape id (an imported drawing)"
+        },
+        "side": {
+         "default": "outside",
+         "description": "outside: cut the part out (holes in it are cut too); inside: run inside the outline; on: tool centre on the lines (engraving, open paths)",
+         "type": "string",
+         "enum": [
+          "outside",
+          "inside",
+          "on"
+         ]
+        },
+        "zBottom": {
+         "type": "number",
+         "description": "Final depth (negative)"
+        },
+        "zTop": {
+         "description": "Material top here (default: the Z of the last mill_face before it in this setup, else the stock top)",
+         "type": "number"
+        },
+        "stepDown": {
+         "description": "Z per level (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "entry": {
+         "default": "ramp",
+         "description": "ramp: down along the path at the ramp angle; plunge: straight down",
+         "type": "string",
+         "enum": [
+          "ramp",
+          "plunge"
+         ]
+        },
+        "rampAngle": {
+         "default": 3,
+         "description": "Entry ramp angle, degrees",
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 30
+        },
+        "finish": {
+         "default": 0,
+         "description": "Allowance (mm) the levels leave on the walls, taken off in one finishing pass at full depth. 0: no finishing pass. 0.2 is usual",
+         "type": "number",
+         "minimum": 0,
+         "maximum": 2
+        },
+        "direction": {
+         "default": "climb",
+         "description": "climb: the cutter rolls along the wall (best finish on a rigid machine); conventional: against it (kinder to a machine with backlash)",
+         "type": "string",
+         "enum": [
+          "climb",
+          "conventional"
+         ]
+        },
+        "tabs": {
+         "default": 0,
+         "description": "Holding tabs per outer loop, so a cut-out part stays in place",
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 16
+        },
+        "tabWidth": {
+         "default": 4,
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "tabHeight": {
+         "default": 1,
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "follow": {
+         "default": false,
+         "description": "Follow the top as it was measured on the machine (the probed points kept with the job): the depth is kept against the real surface, for engraving on stock that is not flat",
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "shape",
+        "zBottom"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_pocket"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "shape": {
+         "type": "string",
+         "description": "Shape id: its closed loops are the pocket, loops inside them islands that stay"
+        },
+        "zBottom": {
+         "type": "number",
+         "description": "Final depth (negative)"
+        },
+        "zTop": {
+         "description": "Material top here (default: the Z of the last mill_face before it in this setup, else the stock top)",
+         "type": "number"
+        },
+        "stepDown": {
+         "description": "Z per level (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "stepover": {
+         "default": 0.45,
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 1
+        },
+        "entry": {
+         "default": "ramp",
+         "description": "ramp: down along the path at the ramp angle; plunge: straight down",
+         "type": "string",
+         "enum": [
+          "ramp",
+          "plunge"
+         ]
+        },
+        "rampAngle": {
+         "default": 3,
+         "description": "Entry ramp angle, degrees",
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 30
+        },
+        "finish": {
+         "default": 0,
+         "description": "Allowance (mm) the levels leave on the walls, taken off in one finishing pass at full depth. 0: no finishing pass. 0.2 is usual",
+         "type": "number",
+         "minimum": 0,
+         "maximum": 2
+        },
+        "direction": {
+         "default": "climb",
+         "description": "climb: the cutter rolls along the wall (best finish on a rigid machine); conventional: against it (kinder to a machine with backlash)",
+         "type": "string",
+         "enum": [
+          "climb",
+          "conventional"
+         ]
+        },
+        "strategy": {
+         "default": "rings",
+         "description": "rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets",
+         "type": "string",
+         "enum": [
+          "rings",
+          "adaptive"
+         ]
+        },
+        "load": {
+         "default": 0.15,
+         "description": "adaptive: the bite beside the cutter, as a fraction of its diameter",
+         "type": "number",
+         "minimum": 0.05,
+         "maximum": 0.4
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "shape",
+        "zBottom"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_drill"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "points": {
+         "minItems": 1,
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "x": {
+            "type": "number"
+           },
+           "y": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "x",
+           "y"
+          ]
+         }
+        },
+        "zBottom": {
+         "type": "number"
+        },
+        "zTop": {
+         "type": "number"
+        },
+        "peck": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "points",
+        "zBottom"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_slot"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "x0": {
+         "type": "number",
+         "description": "Centre of one end"
+        },
+        "y0": {
+         "type": "number"
+        },
+        "x1": {
+         "type": "number",
+         "description": "Centre of the other end"
+        },
+        "y1": {
+         "type": "number"
+        },
+        "width": {
+         "description": "Slot width (default: the tool diameter, one pass down the middle)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "zBottom": {
+         "type": "number",
+         "description": "Final depth (negative)"
+        },
+        "zTop": {
+         "description": "Material top here (default: the Z of the last mill_face before it in this setup, else the stock top)",
+         "type": "number"
+        },
+        "stepDown": {
+         "description": "Z per level (default: tool maxDoc)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "stepover": {
+         "default": 0.45,
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 1
+        },
+        "entry": {
+         "default": "ramp",
+         "description": "How the tool gets down to each level",
+         "type": "string",
+         "enum": [
+          "ramp",
+          "plunge"
+         ]
+        },
+        "rampAngle": {
+         "default": 3,
+         "description": "Entry ramp angle, degrees",
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 30
+        },
+        "finish": {
+         "default": 0,
+         "description": "Allowance (mm) the levels leave on the walls, taken off in one finishing pass at full depth. 0: no finishing pass. 0.2 is usual",
+         "type": "number",
+         "minimum": 0,
+         "maximum": 2
+        },
+        "direction": {
+         "default": "climb",
+         "description": "climb: the cutter rolls along the wall (best finish on a rigid machine); conventional: against it (kinder to a machine with backlash)",
+         "type": "string",
+         "enum": [
+          "climb",
+          "conventional"
+         ]
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "x0",
+        "y0",
+        "x1",
+        "y1",
+        "zBottom"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_spot"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "points": {
+         "minItems": 1,
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "x": {
+            "type": "number"
+           },
+           "y": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "x",
+           "y"
+          ]
+         }
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "How wide the spot is at the surface. A little more than the hole to be drilled leaves it with a chamfer"
+        },
+        "zTop": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "points",
+        "diameter"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_chamfer"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "size": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Chamfer width, mm (measured on the top face)"
+        },
+        "shape": {
+         "description": "The edge to chamfer: a shape id (an imported drawing), or a rectangle (x, y, w, h), or a circle (cx, cy, diameter)",
+         "type": "string"
+        },
+        "x": {
+         "type": "number"
+        },
+        "y": {
+         "type": "number"
+        },
+        "w": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "h": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "cx": {
+         "type": "number"
+        },
+        "cy": {
+         "type": "number"
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "side": {
+         "default": "outside",
+         "description": "outside: the edge of a part (the tool runs around it); inside: the edge of a pocket or hole",
+         "type": "string",
+         "enum": [
+          "outside",
+          "inside"
+         ]
+        },
+        "zTop": {
+         "description": "Height of the edge (default: the Z of the last mill_face before it in this setup, else the stock top)",
+         "type": "number"
+        },
+        "tipClear": {
+         "default": 1,
+         "description": "How far below the chamfer the point of the tool runs (its very tip does not cut well)",
+         "type": "number",
+         "minimum": 0,
+         "maximum": 10
+        },
+        "direction": {
+         "default": "climb",
+         "description": "climb: the cutter rolls along the wall (best finish on a rigid machine); conventional: against it (kinder to a machine with backlash)",
+         "type": "string",
+         "enum": [
+          "climb",
+          "conventional"
+         ]
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "size"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_engrave"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "text": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 200
+        },
+        "x": {
+         "type": "number",
+         "description": "Start of the baseline"
+        },
+        "y": {
+         "type": "number"
+        },
+        "height": {
+         "default": 6,
+         "description": "Height of the capitals, mm",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "depth": {
+         "default": 0.2,
+         "description": "How deep the strokes are cut",
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 3
+        },
+        "angle": {
+         "default": 0,
+         "description": "Turned by this many degrees (counter-clockwise)",
+         "type": "number"
+        },
+        "spacing": {
+         "default": 1,
+         "description": "Letter spacing (1: normal)",
+         "type": "number",
+         "minimum": 0.5,
+         "maximum": 4
+        },
+        "zTop": {
+         "type": "number"
+        },
+        "follow": {
+         "default": false,
+         "description": "Follow the top as it was measured on the machine (the probed points kept with the job): the depth is kept against the real surface, for engraving on stock that is not flat",
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "text",
+        "x",
+        "y"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "mill_thread"
+        },
+        "id": {
+         "description": "Stable id; assigned automatically when omitted",
+         "type": "string",
+         "minLength": 1
+        },
+        "label": {
+         "description": "Short human-readable name",
+         "type": "string"
+        },
+        "tool": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 9007199254740991,
+         "description": "Tool number from the tool table"
+        },
+        "rpm": {
+         "description": "Spindle speed override (otherwise from the tool cutting speed)",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "feed": {
+         "description": "Cutting feed override, mm/min",
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "cx": {
+         "type": "number"
+        },
+        "cy": {
+         "type": "number"
+        },
+        "diameter": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "description": "Nominal thread diameter (M8: 8)"
+        },
+        "pitch": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "zBottom": {
+         "type": "number",
+         "description": "Where the thread ends (negative)"
+        },
+        "zTop": {
+         "type": "number"
+        },
+        "side": {
+         "default": "internal",
+         "description": "internal: in a hole already drilled to the core diameter; external: on a boss already milled to the nominal diameter",
+         "type": "string",
+         "enum": [
+          "internal",
+          "external"
+         ]
+        },
+        "hand": {
+         "default": "right",
+         "type": "string",
+         "enum": [
+          "right",
+          "left"
+         ]
+        },
+        "passes": {
+         "default": 2,
+         "description": "Radial passes to full depth",
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 8
+        }
+       },
+       "required": [
+        "type",
+        "tool",
+        "cx",
+        "cy",
+        "diameter",
+        "pitch",
+        "zBottom"
+       ]
+      }
+     ]
+    },
+    "before": {
+     "description": "Insert before this operation id (default: at the end)",
+     "type": "string"
+    }
+   },
+   "required": [
+    "operation"
+   ]
+  }
+ },
+ {
+  "name": "update_operation",
+  "description": "Change fields of an operation (e.g. {\"diameter\": 19.8} or {\"stepDown\": 1.5}).",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "changes": {
+     "type": "object",
+     "propertyNames": {
+      "type": "string"
+     },
+     "additionalProperties": {},
+     "description": "Fields to change; null removes an optional field. The type cannot change."
+    }
+   },
+   "required": [
+    "id",
+    "changes"
+   ]
+  }
+ },
+ {
+  "name": "remove_operation",
+  "description": "Remove an operation.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "id"
+   ]
+  }
+ },
+ {
+  "name": "move_operation",
+  "description": "Reorder: move an operation before another one, or to the end.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "before": {
+     "description": "Move before this id (default: to the end)",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id"
+   ]
+  }
+ },
+ {
+  "name": "set_tool",
+  "description": "Add a tool to the tool table or replace one. Only when the user describes a tool they have; never invent tools silently.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "tool": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 9007199254740991
+      },
+      "name": {
+       "type": "string"
+      },
+      "type": {
+       "type": "string",
+       "enum": [
+        "turning",
+        "boring",
+        "grooving",
+        "threading",
+        "drill",
+        "endmill",
+        "chamfer",
+        "threadmill"
+       ]
+      },
+      "diameter": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "internal": {
+       "type": "boolean"
+      },
+      "width": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "noseRadius": {
+       "type": "number",
+       "minimum": 0
+      },
+      "edgeLength": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "fluteLength": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "flutes": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 9007199254740991
+      },
+      "angle": {
+       "type": "number",
+       "minimum": 20,
+       "maximum": 160
+      },
+      "tipDiameter": {
+       "type": "number",
+       "minimum": 0
+      },
+      "centerCutting": {
+       "type": "boolean"
+      },
+      "offset": {
+       "type": "object",
+       "properties": {
+        "x": {
+         "type": "number"
+        },
+        "z": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "x",
+        "z"
+       ]
+      },
+      "toolMaterial": {
+       "type": "string",
+       "enum": [
+        "hss",
+        "carbide"
+       ]
+      },
+      "vc": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "chipload": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "feedPerRev": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "maxDoc": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      }
+     },
+     "required": [
+      "id",
+      "name",
+      "type"
+     ],
+     "description": "Adds the tool, or replaces the one with the same number"
+    }
+   },
+   "required": [
+    "tool"
+   ]
+  }
+ },
+ {
+  "name": "place_shape",
+  "description": "Move an imported drawing on the stock: its extents' lower-left corner goes to (x, y).",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "x": {
+     "type": "number",
+     "description": "X of the drawing's left edge on the stock"
+    },
+    "y": {
+     "type": "number",
+     "description": "Y of the drawing's bottom edge on the stock"
+    }
+   },
+   "required": [
+    "id",
+    "x",
+    "y"
+   ]
+  }
+ },
+ {
+  "name": "get_gcode",
+  "description": "The generated G-code (one operation, or the start of the program).",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "opId": {
+     "description": "Only this operation",
+     "type": "string"
+    },
+    "maxLines": {
+     "default": 120,
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 400
+    }
+   }
+  }
+ },
+ {
+  "name": "add_setup",
+  "description": "Mill: add another clamping of the same part after the setup in hand, with the block turned, and take it in hand (stock, operations, clamps and notes are then that setup's; tools, material and drawings are shared). Use it when a feature is on a face the tool cannot reach from above. The new stock is what the setup in hand leaves, lying the new way, with X0 Y0 at its front-left corner and Z0 on its top; the result says where the corners and the old top went, so positions can be carried over without mirroring them.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "turn": {
+     "type": "string",
+     "enum": [
+      "none",
+      "over-y",
+      "over-x",
+      "front-up",
+      "back-up",
+      "left-up",
+      "right-up",
+      "quarter"
+     ],
+     "description": "How the block is turned from the setup in hand: over-y (flipped over left to right, the front stays the front), over-x (flipped over front to back), front-up / back-up / left-up / right-up (that face of the block as it lies now comes on top), quarter (a quarter turn counter-clockwise on the table), none"
+    },
+    "name": {
+     "description": "What the setup is for, e.g. \"Side holes\"",
+     "type": "string",
+     "maxLength": 60
+    }
+   },
+   "required": [
+    "turn"
+   ]
+  }
+ },
+ {
+  "name": "switch_setup",
+  "description": "Take another setup of the job in hand (see the setups line in the job state).",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "setup": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 9007199254740991,
+     "description": "Its number in the order, from 1"
+    }
+   },
+   "required": [
+    "setup"
+   ]
+  }
+ },
+ {
+  "name": "ask_user",
+  "description": "Ask the user one question with 2–5 concrete options when a decision has a real trade-off you cannot settle yourself (e.g. which tool, material unknown and it matters). Ends your turn.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "question": {
+     "type": "string",
+     "minLength": 1
+    },
+    "options": {
+     "minItems": 2,
+     "maxItems": 5,
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "question",
+    "options"
+   ]
+  }
+ }
+]
