@@ -13,7 +13,7 @@
  * to where the front goes on.
  */
 import { CamError } from '../program.ts';
-import { area, depthOf, inRegion, intersect, normalize, offsetRegion, orient, regionArea, type Loop, type Pt } from '../geom2d.ts';
+import { area, circle, depthOf, inRegion, intersect, normalize, offsetRegion, orient, regionArea, type Loop, type Pt } from '../geom2d.ts';
 
 export interface AdaptivePass {
   pts: Pt[];
@@ -31,7 +31,6 @@ export interface AdaptivePlan {
   }[];
 }
 
-const circle = (c: Pt, r: number, n = 48): Loop => Array.from({ length: n }, (_, k) => [c[0] + r * Math.cos((2 * Math.PI * k) / n), c[1] + r * Math.sin((2 * Math.PI * k) / n)] as Pt);
 
 /** The parts of a region that hang together: each outer boundary with the holes in it. */
 function parts(region: Loop[]): Loop[][] {

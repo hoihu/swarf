@@ -96,6 +96,16 @@ export const Tool = z.object({
 });
 export type Tool = z.infer<typeof Tool>;
 
+/**
+ * A pointed cutter's cone: tan of half the angle at the point, the radius of the flat at its
+ * tip, and how high the cone rises from the tip to the full diameter.
+ */
+export function cone(tool: Tool): { tan: number; tipR: number; height: number } {
+  const tan = Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
+  const tipR = (tool.tipDiameter ?? 0) / 2;
+  return { tan, tipR, height: ((tool.diameter ?? 6) / 2 - tipR) / tan };
+}
+
 export const Stock = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('bar'),

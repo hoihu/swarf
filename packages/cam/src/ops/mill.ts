@@ -7,8 +7,8 @@
  * centre-cutting endmill).
  */
 import { CamError, levels, v, type Move } from '../program.ts';
-import type { Operation, Shape } from '../schema.ts';
-import { dedupe, offsetRegion, orient, type Loop, type Pt } from '../geom2d.ts';
+import { cone, type Operation, type Shape } from '../schema.ts';
+import { circle, dedupe, offsetRegion, orient, type Loop, type Pt } from '../geom2d.ts';
 import { millSafeZ, type OpContext } from './context.ts';
 import { adaptivePlans, clearWay } from './adaptive.ts';
 import { textStrokes } from '../font.ts';
@@ -181,6 +181,21 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
   /** A loop the way round the user asked for (loops are built for climb milling), from the same start. */
   const way = (l: Loop): Loop => (climb ? l : [l[0]!, ...l.slice(1).reverse()]);
 
+  /**
+   * Once round each wall loop at full depth, nearest first, starting near `at` (default: where the
+   * operation started); up to `lift` after each. Holding tabs per loop, if given.
+   */
+  const finishWalls = (loops: Loop[], zTop: number, zBottom: number, o: { angle: number; lift: number; at?: Pt; tabs?: (l0: Loop, l: Loop) => [number, number][]; zTab?: number }) => {
+    let at: Pt = o.at ?? [ctx.from.x, ctx.from.y];
+    for (const l0 of loops) {
+      const l = way(startNear(l0, at));
+      approach(l[0]![0], l[0]![1], zTop);
+      cutLoop(l, zBottom, zBottom, { ramp: false, angle: o.angle, tabs: o.tabs?.(l0, l) ?? [], ...(o.zTab !== undefined && { zTab: o.zTab }) });
+      rapid(l[0]![0], l[0]![1], o.lift);
+      at = l[0]!;
+    }
+  };
+
   /** Pocket the region inside closed loops (loops inside loops are islands): rings from the wall inwards, level by level. */
   const pocketLoops = (closed: Loop[], op: { zTop?: number | undefined; zBottom: number; stepDown?: number | undefined; stepover: number; entry: 'ramp' | 'plunge'; rampAngle: number }) => {
     const zTop = zTopOf(op);
@@ -211,17 +226,8 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       }
       zPrev = zl;
     }
-    if (a > 0) {
-      // the finishing pass along every wall (the outline and the islands) at full depth
-      let at: Pt = [ctx.from.x, ctx.from.y];
-      for (const l0 of orient(offsetRegion(closed, -r), false)) {
-        const l = way(startNear(l0, at));
-        approach(l[0]![0], l[0]![1], zTop);
-        cutLoop(l, op.zBottom, op.zBottom, { ramp: false, angle: op.rampAngle });
-        rapid(l[0]![0], l[0]![1], zTop + 1);
-        at = l[0]!;
-      }
-    }
+    // the finishing pass along every wall (the outline and the islands) at full depth
+    if (a > 0) finishWalls(orient(offsetRegion(closed, -r), false), zTop, op.zBottom, { angle: op.rampAngle, lift: zTop + 1 });
     rapid(ctx.from.x, ctx.from.y, safeZ);
   };
 
@@ -300,23 +306,13 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
         zPrev = zl;
       }
     }
-    if (a > 0) {
-      // the finishing pass along every wall (the outline and the islands) at full depth
-      let at: Pt = [ctx.from.x, ctx.from.y];
-      for (const l0 of orient(offsetRegion(closed, -r), false)) {
-        const l = way(startNear(l0, at));
-        approach(l[0]![0], l[0]![1], zTop);
-        cutLoop(l, op.zBottom, op.zBottom, { ramp: false, angle: op.rampAngle });
-        rapid(l[0]![0], l[0]![1], zTop + 1);
-        at = l[0]!;
-      }
-    }
+    // the finishing pass along every wall (the outline and the islands) at full depth
+    if (a > 0) finishWalls(orient(offsetRegion(closed, -r), false), zTop, op.zBottom, { angle: op.rampAngle, lift: zTop + 1 });
     rapid(ctx.from.x, ctx.from.y, safeZ);
   };
 
   // pointed cutters: half the angle at the point, and the flat at the tip
-  const tanHalf = Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
-  const tipR = (tool.tipDiameter ?? 0) / 2;
+  const { tan: tanHalf, tipR, height: most } = cone(tool);
 
   switch (op.type) {
     case 'mill_face': {
@@ -393,8 +389,7 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       const RF = op.diameter / 2 - r;
       if (RF < -1e-9) throw new CamError(`hole Ø${op.diameter} is smaller than the Ø${d} tool`);
       if (op.strategy === 'adaptive') {
-        const n = 180;
-        adaptivePocket([Array.from({ length: n }, (_, k) => [op.cx + (op.diameter / 2) * Math.cos((2 * Math.PI * k) / n), op.cy + (op.diameter / 2) * Math.sin((2 * Math.PI * k) / n)] as Pt)], op);
+        adaptivePocket([circle([op.cx, op.cy], op.diameter / 2, 180)], op);
         return out;
       }
       const a = RF > 4 * allow ? allow : 0;
@@ -503,16 +498,14 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
         rapid(l[0]![0], l[0]![1], safeZ);
         at = l[0]!;
       }
-      for (const l0 of finishing) {
-        // the finishing pass: down beside the wall (through the allowance only), once round at full depth
-        const outer = op.side === 'outside' && orient([l0], true)[0] === l0;
-        const l = way(startNear(l0, at));
-        const tabs = op.tabs && outer ? tabIntervals(l, op.tabs, op.tabWidth) : [];
-        approach(l[0]![0], l[0]![1], zTop);
-        cutLoop(l, op.zBottom, op.zBottom, { ramp: false, angle: op.rampAngle, tabs, zTab });
-        rapid(l[0]![0], l[0]![1], safeZ);
-        at = l[0]!;
-      }
+      // the finishing pass: down beside the wall (through the allowance only), once round at full depth
+      finishWalls(finishing, zTop, op.zBottom, {
+        angle: op.rampAngle,
+        lift: safeZ,
+        at,
+        zTab,
+        tabs: (l0, l) => (op.tabs && op.side === 'outside' && orient([l0], true)[0] === l0 ? tabIntervals(l, op.tabs, op.tabWidth) : []),
+      });
       for (const line of lines) {
         // open path: back and forth along it, one level per direction, ramping in on the way
         let path = line;
@@ -588,7 +581,6 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       // top face, and that over tan down the wall. Its point is lower still by tipClear, which
       // puts the tool's axis that much (times tan) off the wall.
       const leg = op.size / tanHalf;
-      const most = (r - tipR) / tanHalf;
       if (leg > most + 1e-9) throw new CamError(`a ${op.size} mm chamfer needs more cone than the Ø${d} tool has (${(most * tanHalf).toFixed(2)} mm at most)`);
       const zt = Math.min(leg + op.tipClear, most);
       const off = tipR + (zt - leg) * tanHalf;
@@ -616,9 +608,7 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
           rapid(op.cx, op.cy, safeZ);
           return out;
         }
-        const n = Math.max(24, Math.ceil(rr * 4));
-        const circle: Loop = Array.from({ length: n }, (_, k) => [op.cx! + rr * Math.cos((2 * Math.PI * k) / n), op.cy! + rr * Math.sin((2 * Math.PI * k) / n)]);
-        loops = orient([circle], op.side === 'outside');
+        loops = orient([circle([op.cx, op.cy], rr, Math.max(24, Math.ceil(rr * 4)))], op.side === 'outside');
       } else {
         if (op.x === undefined || op.y === undefined || op.w === undefined || op.h === undefined) throw new CamError('a rectangle needs x, y, w and h');
         const [bx0, bx1, by0, by1] = [op.x - sign * off, op.x + op.w + sign * off, op.y - sign * off, op.y + op.h + sign * off];
