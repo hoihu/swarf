@@ -2,6 +2,7 @@
  * The connected controller: one streamer over Web Serial, its live status and the console.
  */
 import { Recorder, recorded } from './record.ts';
+import type { Runnable } from '@swarf/cam';
 import { RT, SimGrbl, Streamer, type JobState, type ProbeResult, type Reply, type Status, type Transport } from '@swarf/grbl';
 import { simWorld } from './simworld.ts';
 import { store } from './store.svelte.ts';
@@ -155,18 +156,18 @@ class Machine {
 
   #lineMap: number[] | null = null;
   /**
-   * `firstToolLoaded`: the user has just confirmed it, so the program's pause for loading it is
+   * `program`: only what `runnable` let through. `firstToolLoaded`: the user has just confirmed it, so the program's pause for loading it is
    * passed over. `lineMap`: for a program that is the rest of a longer one, each of its lines'
    * number in the whole one (so the G-code tab and the preview show the right place).
    */
-  async run(gcode: string, firstToolLoaded = false, lineMap: number[] | null = null): Promise<void> {
+  async run(program: Runnable, firstToolLoaded = false, lineMap: number[] | null = null): Promise<void> {
     if (!this.#s) return;
     try {
       this.acked = 0;
       this.line = -1;
       this.#lineMap = lineMap;
-      this.record.ev(`Run pressed: ${gcode.split('\n').length} lines${lineMap ? ', starting in the middle' : ''}${firstToolLoaded ? ', first tool already in' : ''}; job "${store.job.name}"`);
-      await this.#s.run(gcode, { skipLeadingPause: firstToolLoaded });
+      this.record.ev(`Run pressed: ${program.text.split('\n').length} lines${lineMap ? ', starting in the middle' : ''}${firstToolLoaded ? ', first tool already in' : ''}; job "${store.job.name}"`);
+      await this.#s.run(program.text, { skipLeadingPause: firstToolLoaded });
     } catch (e) {
       this.message = e instanceof Error ? e.message : String(e);
       this.record.ev(`run refused: ${this.message}`);

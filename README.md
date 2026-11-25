@@ -65,7 +65,7 @@ Inside this checkout the bundled `.mcp.json` does that already. Ask Claude Code 
 first tool call answers with a link (`http://localhost:7790/#connect=…`) that opens the app
 connected to it (`npm run build` first, or it points at `npm run dev`). The header then shows
 "Claude Code connected". Tools: `get_context`, the job edits, `get_gcode` and `save_gcode`, which
-writes the .nc file next to your project (refused while the job has errors).
+writes the .nc file next to your project (both refused while the job has errors).
 
 The server listens on 127.0.0.1 only, accepts the tab only from localhost pages, and only with
 the access key from `~/.swarf/server.json`.
@@ -321,7 +321,7 @@ whole flow without hardware and is how it is tested.
 | Speeds and feeds | from the workpiece material (aluminium, free-cutting steel, steel, stainless, brass, plastic) × the tool (HSS or carbide, turning / grooving / threading / drilling / milling): cutting speed, feed per rev or per tooth, depth per pass. A tool's own values override the table; everything is clamped to the machine |
 | Entry and finish | ramped entry for pockets and contours, helical entry for circular pockets; lathe chamfers compensated for the insert's nose radius |
 | Time | estimated like grbl's planner: acceleration and junction deviation, forward and backward pass |
-| Checks | machine travel, chuck collision, rapids into material, boring into solid material, boring bars that don't fit or reach, cuts deeper than the flutes or the depth of cut for the material, plunging with a non-centre-cutting endmill, impossible operations; a separate lint of the written G-code text alone (modes before the first move, feed and spindle before cutting, only the boring subset, M5 and M30 at the end, arcs that end on their circle, thread passes along Z only, no sideways mill rapid below Z0 lower than the last retract), not yet shown in the app |
+| Checks | machine travel, chuck collision, rapids into material, boring into solid material, boring bars that don't fit or reach, cuts deeper than the flutes or the depth of cut for the material, plunging with a non-centre-cutting endmill, impossible operations; a separate lint of the written G-code text alone (modes before the first move, feed and spindle before cutting, only the boring subset, M5 and M30 at the end, arcs that end on their circle, thread passes along Z only, no sideways mill rapid below Z0 lower than the last retract); its findings block like check errors and are listed under the G-code tab |
 | G-code | a "boring" subset that runs the same on grblHAL, LinuxCNC and most others. This is the full list the emitter writes: G0 G1 G2 G3 (XY arcs with I J on the mill, ZX arcs with I K on the lathe), G33 Z K (thread passes, needs spindle sync), G4 P (spindle dwell), G17 (mill) / G18 (lathe), G7 / G8 (lathe X as diameter / radius), G21, G90, G94, G54, G97, S with M3, M5, M0 (tool changes), M30; words X Y Z I J K F S P. No G96/G95, cutter compensation, canned cycles or tool length offsets |
 | Preview | three.js: toolpath (feeds blue, rapids orange), the part as it is cut, timeline scrubber, tool marker |
 | Job files | Save the job as a file (`<name>.swarf.json`: machine, stock, tools, operations, drawings, notes) and open it again, here or on another computer. A file is checked like any other input before it becomes the job |
@@ -481,7 +481,11 @@ This is a young tool. Simulate, check the G-code, run the first time in the air 
 override low and a hand on the E-stop. The browser is not a safety device: the machine needs its
 own emergency stop, and limit switches or soft limits.
 
-What is checked before a program may run (errors block **Run program**):
+What is checked before a program may run. An error blocks every way G-code leaves swarf:
+**Run program** (also from an operation on), **Download .nc** (Job panel and File menu),
+`save_gcode` and `get_gcode` (they answer with the errors and no G-code, for one operation too),
+and the agent finishing (it is sent back to fix them). All of these take their text from one
+function, `runnable` in `packages/cam/src/pipeline.ts`.
 
 - every move against the machine's travel, the chuck (lathe) and the job's obstacles (mill:
   clamps, straps, vise jaws from the laser scan or typed in), rapids too, and the way to and
@@ -491,7 +495,10 @@ What is checked before a program may run (errors block **Run program**):
   chuck's rated maximum, when it is set (speeds are kept under it);
 - as warnings: depth per pass well above what the tool and material take, speeds outside the
   spindle's range, cuts through the block into what it sits on, a lathe job whose chuck size
-  is not set (the chuck check then guesses it from the bar).
+  is not set (the chuck check then guesses it from the bar);
+- then the written G-code itself, read as text by a separate lint (modes before the first move,
+  feed and spindle before cutting, only the boring subset, the end, arcs, thread passes, mill
+  rapids): a finding is an error, with its line.
 
 What the automatic routines do for themselves: probing moves near the work are guarded (they
 stop on contact), probing refuses to start with the spindle on or before the probe circuit has

@@ -1,6 +1,6 @@
 <script lang="ts">
   /** The job as a whole: start a new one, open and save it, what goes to the machine with it. */
-  import { EXAMPLES, emptyJob, hasErrors } from '@swarf/cam';
+  import { EXAMPLES, emptyJob } from '@swarf/cam';
   import { download, fileName, files, programName } from './files.svelte.ts';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
@@ -8,7 +8,10 @@
   let open = $state(false);
   let root: HTMLDivElement | undefined = $state();
   let input: HTMLInputElement | undefined = $state();
-  const errors = $derived(hasErrors(store.analysis.diagnostics));
+  function downloadGcode(): void {
+    const r = store.ready;
+    if (r.ok) download(fileName(programName(store.job), '.nc'), r.text, 'text/plain');
+  }
   const under = $derived(machine.job === 'running' || machine.job === 'paused' || machine.job === 'waiting');
 
   function start(kind: 'lathe' | 'mill', example: boolean): void {
@@ -48,7 +51,7 @@
       <button role="menuitem" onclick={() => act(() => files.saveJob())}>Save the job<span>{fileName(store.job.name, '.swarf.json')}</span></button>
       <hr />
       <button role="menuitem" onclick={() => act(() => (files.sheet = true))}>Setup sheet<span>to print</span></button>
-      <button role="menuitem" disabled={errors} title={errors ? 'Fix the errors first' : ''} onclick={() => act(() => download(fileName(programName(store.job), '.nc'), store.gcode.text, 'text/plain'))}>Download the G-code<span>{store.job.setups ? `setup ${store.job.setups.at + 1}, .nc` : '.nc'}</span></button>
+      <button role="menuitem" disabled={!store.ready.ok} title={store.ready.ok ? '' : 'Fix the errors first'} onclick={() => act(downloadGcode)}>Download the G-code<span>{store.job.setups ? `setup ${store.job.setups.at + 1}, .nc` : '.nc'}</span></button>
     </div>
   {/if}
 </div>

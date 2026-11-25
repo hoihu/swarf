@@ -42,7 +42,13 @@ user text ──► agent ──tool calls──► Job (zod-validated)
 - **Checks** (`cam/src/check.ts`): travel, chuck (its size, a warning when it is a guess, and its rated rpm), rapids into material, depth of cut, plunging.
   Errors block the agent from finishing (fix budget 4), the G-code download (Job panel and
   File menu), the relay's `save_gcode` (the tab checks the job and writes the G-code; the relay
-  only writes the file) and **Run program**. `get_gcode` still answers.
+  only writes the file), `get_gcode` (whole or one operation: the errors, no G-code) and
+  **Run program**.
+- **The gate** (`cam/src/pipeline.ts`): `runnable(job, analysis, { fromSegment? })` emits the
+  program (or the rest of it from a segment, see `resumeFrom`) and answers `{ ok: true, text,
+  lineOfMove }` or `{ ok: false, errors }`: the check errors plus the lint's findings, each an
+  error with its line. Every output above takes its text from it, and `machine.run` takes only
+  its ok result (a branded type), not a string.
 - **G-code lint** (`cam/src/lint-gcode.ts`): `lintGcode(text, kind)` reads only the emitted text,
   so it does not share check.ts's assumptions: modes (G21 G90 G94, the plane, G7/G8 and G97 on
   the lathe) before the first move, F > 0 before G1–G3 and K on G33, M3/M4 with S > 0 before a
@@ -50,7 +56,7 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   M30/M2 at the end with no motion after; geometry: G2/G3 from a known start whose end lies on
   the circle within 8 µm (I is a radius in G7), G33 moving Z and not X (no pull-out yet), and on
   the mill no sideways G0 below Z0 lower than a Z rapided to since the last cut. No rapid rule
-  for the lathe: where the air is free there depends on the bar. Not wired into the app yet.
+  for the lathe: where the air is free there depends on the bar. Run inside `runnable`.
 - **The block as measured** (`cam/src/align.ts`): `Job.measured` (angle, touched top) is applied
   in `emit()`: the program turned about the zero, followed cuts in short pieces at the surface's
   height. Checks and preview stay on the block as drawn; `alignmentChecks` says what that leaves

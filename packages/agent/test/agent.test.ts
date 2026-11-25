@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { EXAMPLES, analyze, emptyJob, errorsOf, type Job } from '@swarf/cam';
+import { EXAMPLES, analyze, emit, emptyJob, errorsOf, type Job } from '@swarf/cam';
 import { toApi as anthropicApi } from '../src/providers/anthropic.ts';
 import { toApi as openaiApi } from '../src/providers/openai.ts';
 import { SYSTEM_PROMPT, Agent, CAM_TOOLS, formatJobContext, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, runCamTool, type AgentEvent, type Block, type JobPort, type Script } from '../src/index.ts';
@@ -51,6 +51,34 @@ describe('tools', () => {
 
     const g = runCamTool(p, 'get_gcode', { opId: 'op2' })!;
     expect(g.content).toMatch(/G18 G7/);
+  });
+});
+
+describe('get_gcode', () => {
+  /** The mill example with a hole far outside the machine's travel. */
+  function broken(): Job {
+    const job = EXAMPLES.mill();
+    job.operations.push({ id: 'far', type: 'mill_drill', tool: 3, points: [{ x: 500, y: 10 }], zBottom: -5 } as Job['operations'][number]);
+    return job;
+  }
+
+  it('refuses while the job has errors, whole or one operation, with the errors and no G-code', () => {
+    for (const input of [{}, { opId: 'op1' }, { opId: 'far' }]) {
+      const g = runCamTool(port(broken()), 'get_gcode', input)!;
+      expect(g.isError, JSON.stringify(input)).toBe(true);
+      expect(g.content).toMatch(/OUT_OF_RANGE/);
+      expect(g.content).not.toMatch(/^\s*[GM]\d/m);
+    }
+  });
+
+  it("gives one operation's lines of the whole program", () => {
+    const job = EXAMPLES.mill();
+    const whole = emit(job, analyze(job).program).text;
+    const op1 = runCamTool(port(job), 'get_gcode', { opId: 'op1', maxLines: 400 })!;
+    expect(op1.isError).toBe(false);
+    expect(op1.content).not.toMatch(/more lines/);
+    expect(whole).toContain(op1.content);
+    expect(op1.content).not.toMatch(/M30/);
   });
 });
 
