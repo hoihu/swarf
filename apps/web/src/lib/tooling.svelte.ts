@@ -3,6 +3,7 @@
  * way, and the two ways of carrying the zero over to the new tool (tooling.ts): stored offsets
  * and the tool setter. Under Setting up, in the machine mode (ToolPanel.svelte).
  */
+import { fixed, roundTo, toolOf } from '@swarf/cam';
 import { machine } from './machine.svelte.ts';
 import { simWorld } from './simworld.ts';
 import { store } from './store.svelte.ts';
@@ -10,7 +11,6 @@ import { learned, measureOnSetter, shifted, zAfterChange, type Setter, type Sett
 
 const KEY = 'swarf.setter';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const n3 = (v: number) => (Math.round(v * 1000) / 1000).toFixed(3);
 
 class Tooling {
   /** The tool the work zero is right for (null: not known). */
@@ -50,7 +50,7 @@ class Tooling {
     return s?.mpos && s.wpos ? (s.mpos.map((v, i) => v - s.wpos![i]!) as V3) : null;
   }
   offsetOf(id: number | null): ToolOffset | null {
-    return store.job.tools.find((t) => t.id === id)?.offset ?? null;
+    return toolOf(store.job, id)?.offset ?? null;
   }
   #free(): boolean {
     this.error = '';
@@ -119,7 +119,7 @@ class Tooling {
       return;
     }
     const s = shifted(w as V3, from, to, this.#xScale);
-    const r = await machine.request(this.lathe ? `G10 L20 P1 X${n3(s.x)} Z${n3(s.z)}` : `G10 L20 P1 Z${n3(s.z)}`);
+    const r = await machine.request(this.lathe ? `G10 L20 P1 X${fixed(s.x, 3)} Z${fixed(s.z, 3)}` : `G10 L20 P1 Z${fixed(s.z, 3)}`);
     if (!r.ok) {
       this.error = r.message ?? 'The controller refused it.';
       return;
@@ -127,7 +127,7 @@ class Tooling {
     const id = this.pending;
     this.#reading = null;
     this.hasReading = false;
-    this.#done(`Zero moved for T${id}: ${this.lathe ? `X ${(to.x - from.x >= 0 ? '+' : '') + n3((to.x - from.x) / this.#xScale)}, ` : ''}Z ${(to.z - from.z >= 0 ? '+' : '') + n3(to.z - from.z)}.`);
+    this.#done(`Zero moved for T${id}: ${this.lathe ? `X ${(to.x - from.x >= 0 ? '+' : '') + fixed((to.x - from.x) / this.#xScale, 3)}, ` : ''}Z ${(to.z - from.z >= 0 ? '+' : '') + fixed(to.z - from.z, 3)}.`);
   }
 
   /** The new tool has been touched off by hand: the zero is right for it. `keep`: store how it sits against the tool before. */
@@ -144,9 +144,8 @@ class Tooling {
         return;
       }
       const o = learned(from, this.#wcoThen, now, this.#xScale);
-      const round = (v: number) => Math.round(v * 1000) / 1000;
-      store.set({ ...store.job, tools: store.job.tools.map((t) => (t.id === id ? { ...t, offset: { x: this.lathe ? round(o.x) : 0, z: round(o.z) } } : t)) });
-      note = `T${id}'s offset stored: ${this.lathe ? `X ${n3(o.x)} (radius), ` : ''}Z ${n3(o.z)} against the reference.`;
+      store.set({ ...store.job, tools: store.job.tools.map((t) => (t.id === id ? { ...t, offset: { x: this.lathe ? roundTo(o.x, 3) : 0, z: roundTo(o.z, 3) } } : t)) });
+      note = `T${id}'s offset stored: ${this.lathe ? `X ${fixed(o.x, 3)} (radius), ` : ''}Z ${fixed(o.z, 3)} against the reference.`;
     }
     this.#reading = null;
     this.hasReading = false;
@@ -210,10 +209,10 @@ class Tooling {
       const then = this.#reading;
       if (this.pending !== null && then !== null) {
         const z = zAfterChange(machine.status!.wpos![2]!, then, now);
-        const r = await machine.request(`G10 L20 P1 Z${n3(z)}`);
+        const r = await machine.request(`G10 L20 P1 Z${fixed(z, 3)}`);
         if (!r.ok) throw new Error(r.message ?? 'The controller refused the new zero.');
         const id = this.pending;
-        this.#done(`T${id} is ${n3(Math.abs(now - then))} mm ${now > then ? 'longer' : 'shorter'} than the tool before: Z zero moved by that.`);
+        this.#done(`T${id} is ${fixed(Math.abs(now - then), 3)} mm ${now > then ? 'longer' : 'shorter'} than the tool before: Z zero moved by that.`);
       } else if (this.pending !== null) {
         this.error = 'There is no reading of the tool before, so nothing to compare with: touch this tool off on the work, say so below, then measure it here as the one to go on from.';
         return;

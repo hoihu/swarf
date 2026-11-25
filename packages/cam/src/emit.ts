@@ -8,13 +8,22 @@
  */
 import { alignPieces, alignmentLines } from './align.ts';
 import { walk, type Program } from './program.ts';
-import type { Job } from './schema.ts';
+import { toolOf, type Job } from './schema.ts';
 
 export interface Emitted {
   text: string;
   /** For each move (in program.walk order), the 0-based line it was written on. */
   lineOfMove: number[];
 }
+
+/** `n` rounded to `digits` decimals (never -0). */
+export function roundTo(n: number, digits: number): number {
+  const f = 10 ** digits;
+  return Math.round(n * f) / f + 0;
+}
+
+/** `n` rounded to `digits` decimals as text, no trailing zeros, never "-0". */
+export const fixed = (n: number, digits: number): string => String(roundTo(n, digits));
 
 /** 3 decimals, no trailing zeros, never "-0". */
 export function num(n: number): string {
@@ -94,7 +103,7 @@ export function emit(job: Job, drawn: Program, o: { fromSegment?: number } = {})
     if (seg !== segIndex) {
       segIndex = seg;
       const s = program.segments[seg]!;
-      const t = job.tools.find((x) => x.id === s.tool);
+      const t = toolOf(job, s.tool);
       lines.push('');
       lines.push(comment(`${s.opId}: ${s.label}, T${s.tool} ${t?.name ?? ''}`.trim()));
       if (s.tool !== tool) {

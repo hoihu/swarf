@@ -6,6 +6,7 @@
   import CameraView from './lib/camera/CameraView.svelte';
   import { camera } from './lib/camera/camera.svelte.ts';
   import { store } from './lib/store.svelte.ts';
+  import { errorsOf } from '@swarf/cam';
   import { minutes } from './lib/ops.ts';
   import { bridge } from './lib/bridge.svelte.ts';
   import { machine } from './lib/machine.svelte.ts';
@@ -29,7 +30,7 @@
     !machine.connected ? '' : machine.job === 'running' ? 'running' : machine.job === 'waiting' ? 'tool change' : machine.job === 'paused' ? 'held' : mst === 'Alarm' ? 'alarm' : mst.toLowerCase(),
   );
 
-  const errors = $derived(store.analysis.diagnostics.filter((d) => d.severity === 'error').length);
+  const errors = $derived(errorsOf(store.analysis.diagnostics).length);
   const warnings = $derived(store.analysis.diagnostics.filter((d) => d.severity === 'warning').length);
   /** The controller's work position for the preview. grblHAL in lathe diameter mode (G7) reports X as a diameter. */
   const live = $derived.by(() => {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { TURNS, emit, hasErrors, resumeFrom, setupList, switchSetup, walk, type Job } from '@swarf/cam';
+  import { TURNS, emit, hasErrors, resumeFrom, setupList, switchSetup, toolOf, walk, type Job } from '@swarf/cam';
   import JogPanel from './JogPanel.svelte';
   import Section from './Section.svelte';
   import { download } from './files.svelte.ts';
@@ -51,7 +51,7 @@
     for (const seg of store.analysis.program.segments) {
       n += seg.moves.length;
       if (move < n) {
-        const d = store.job.tools.find((t) => t.id === seg.tool)?.diameter;
+        const d = toolOf(store.job, seg.tool)?.diameter;
         if (d) simWorld.toolDiameter = d;
         break;
       }
@@ -140,7 +140,7 @@
 
   async function start(): Promise<void> {
     const program = resume ? resume.program : store.analysis.program;
-    const first = store.job.tools.find((t) => t.id === program.segments[startSeg]?.tool);
+    const first = toolOf(store.job, program.segments[startSeg]?.tool);
     const diags = resume ? resume.diagnostics : store.analysis.diagnostics;
     const warnings = diags.filter((d) => d.severity === 'warning').length;
     const from = starts.find((s) => s.seg === startSeg);

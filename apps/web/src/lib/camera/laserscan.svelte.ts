@@ -4,6 +4,7 @@
  * with the flood coolant output (M8 on, M9 off), so each picture can be compared with one without
  * the line.
  */
+import { roundTo } from '@swarf/cam';
 import type { V2, V3 } from './geometry.ts';
 import { analyseScan, calibratePlane, extractLine, triangulate, type Obstacle, type Rgba, type ScanResult } from './laser.ts';
 import { camera } from './camera.svelte.ts';
@@ -193,7 +194,7 @@ class LaserScan {
   addObstacles(): void {
     const found = this.result?.obstacles ?? [];
     const keep = store.job.obstacles.filter((o) => !o.name.startsWith('scanned '));
-    const add = found.map((o: Obstacle, i) => ({ name: `scanned ${i + 1}`, x0: round(o.x0), y0: round(o.y0), x1: round(o.x1), y1: round(o.y1), top: round(o.top) }));
+    const add = found.map((o: Obstacle, i) => ({ name: `scanned ${i + 1}`, x0: roundTo(o.x0, 1), y0: roundTo(o.y0, 1), x1: roundTo(o.x1, 1), y1: roundTo(o.y1, 1), top: roundTo(o.top, 1) }));
     store.set({ ...store.job, obstacles: [...keep, ...add] });
   }
 
@@ -203,7 +204,6 @@ class LaserScan {
   }
 }
 
-const round = (v: number) => Math.round(v * 10) / 10;
 
 export const laserScan = new LaserScan();
 if (typeof window !== 'undefined') (window as unknown as { __swarfLaser?: LaserScan }).__swarfLaser = laserScan;

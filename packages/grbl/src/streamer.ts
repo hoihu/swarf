@@ -21,6 +21,8 @@ export const RT = {
   feed100: '\x90',
   feedPlus10: '\x91',
   feedMinus10: '\x92',
+  feedPlus1: '\x93',
+  feedMinus1: '\x94',
   /** Rapid override: 100, 50 or 25 %. */
   rapid100: '\x95',
   rapid50: '\x96',

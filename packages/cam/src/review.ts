@@ -6,11 +6,12 @@
  * assistant's review starts from them, and so can the user's.
  */
 import type { Analysis } from './check.ts';
+import { fixed } from './emit.ts';
 import { cuttingData, rpmFor } from './feeds.ts';
 import { opLabel, withIds } from './generate.ts';
 import { MATERIALS } from './materials.ts';
 import { segmentStats } from './planner.ts';
-import type { Job } from './schema.ts';
+import { toolOf, type Job } from './schema.ts';
 import { LatheMaterial } from './sim.ts';
 
 export interface Finding {
@@ -19,8 +20,7 @@ export interface Finding {
   text: string;
 }
 
-const n1 = (v: number) => (Math.round(v * 10) / 10).toString();
-const zf = (v: number) => `Z${n1(v)}`;
+const zf = (v: number) => `Z${fixed(v, 1)}`;
 
 export function reviewJob(job: Job, analysis: Analysis): Finding[] {
   const out: Finding[] = [];
@@ -32,7 +32,6 @@ export function reviewJob(job: Job, analysis: Analysis): Finding[] {
     const o = ops.find((x) => x.id === id);
     return o ? `${id} (${opLabel(o)})` : id;
   };
-  const toolOf = (id: number) => job.tools.find((t) => t.id === id);
 
   // per operation: deepest cut and time
   const deep = new Map<string, number>();
@@ -52,7 +51,7 @@ export function reviewJob(job: Job, analysis: Analysis): Finding[] {
 
   // a small cutter the spindle cannot turn fast enough
   for (const o of ops) {
-    const t = toolOf(o.tool);
+    const t = toolOf(job, o.tool);
     if (!t?.diameter || (t.type !== 'endmill' && t.type !== 'drill' && t.type !== 'chamfer')) continue;
     if (o.rpm !== undefined) continue;
     const want = rpmFor(cuttingData(t, job.workMaterial).vc, t.diameter);
@@ -81,7 +80,7 @@ export function reviewJob(job: Job, analysis: Analysis): Finding[] {
     // tools that reach far for their thickness
     const seen = new Set<number>();
     for (const s of p.segments) {
-      const t = toolOf(s.tool);
+      const t = toolOf(job, s.tool);
       if (!t?.diameter || seen.has(t.id)) continue;
       let zMin = Infinity;
       for (const x of p.segments) if (x.tool === t.id) zMin = Math.min(zMin, deep.get(x.opId) ?? Infinity);
@@ -89,14 +88,14 @@ export function reviewJob(job: Job, analysis: Analysis): Finding[] {
       const limit = t.type === 'drill' ? 8 : 4;
       if (Number.isFinite(reach) && reach / t.diameter > limit) {
         seen.add(t.id);
-        add('SLENDER_TOOL', `T${t.id} (Ø${t.diameter}) goes ${n1(reach)} mm deep, ${n1(reach / t.diameter)} times its diameter: ${t.type === 'drill' ? 'peck often and clear the chips, the drill wanders and packs up at that depth' : 'it bends away from the cut and chatters. Lighter cuts at depth, a finishing pass, or a thicker cutter where the shape allows'}.`, s.opId);
+        add('SLENDER_TOOL', `T${t.id} (Ø${t.diameter}) goes ${fixed(reach, 1)} mm deep, ${fixed(reach / t.diameter, 1)} times its diameter: ${t.type === 'drill' ? 'peck often and clear the chips, the drill wanders and packs up at that depth' : 'it bends away from the cut and chatters. Lighter cuts at depth, a finishing pass, or a thicker cutter where the shape allows'}.`, s.opId);
       }
     }
     // a thin floor left under a pocket
     for (const o of ops) {
       if (o.type !== 'mill_pocket_rect' && o.type !== 'mill_pocket_circle' && o.type !== 'mill_pocket') continue;
       const floor = o.zBottom - bottom;
-      if (floor > 0.01 && floor < 1) add('THIN_FLOOR', `${label(o.id!)} leaves a floor ${n1(floor)} mm thick: it drums and lifts under the cutter. Support it from below, or take the last level lightly.`, o.id);
+      if (floor > 0.01 && floor < 1) add('THIN_FLOOR', `${label(o.id!)} leaves a floor ${fixed(floor, 1)} mm thick: it drums and lifts under the cutter. Support it from below, or take the last level lightly.`, o.id);
     }
     // nothing known about the holding
     if (!job.obstacles.length) {
@@ -124,7 +123,7 @@ export function reviewJob(job: Job, analysis: Analysis): Finding[] {
     for (const o of ops) {
       if (o.type !== 'lathe_partoff') continue;
       const out = o.z - jaws;
-      if (out > 3 * st.diameter) add('PARTOFF_FAR', `${label(o.id!)} parts off ${n1(out)} mm from the jaws on a Ø${st.diameter} bar (${n1(out / st.diameter)} diameters out): parting wants to be close to the chuck. Less stick-out, or expect chatter and a blade that digs in.`, o.id);
+      if (out > 3 * st.diameter) add('PARTOFF_FAR', `${label(o.id!)} parts off ${fixed(out, 1)} mm from the jaws on a Ø${st.diameter} bar (${fixed(out / st.diameter, 1)} diameters out): parting wants to be close to the chuck. Less stick-out, or expect chatter and a blade that digs in.`, o.id);
     }
     // an external thread that ends at no groove
     for (const o of ops) {
@@ -136,19 +135,19 @@ export function reviewJob(job: Job, analysis: Analysis): Finding[] {
     // a boring bar that reaches far
     const seen = new Set<number>();
     for (const s of p.segments) {
-      const t = toolOf(s.tool);
+      const t = toolOf(job, s.tool);
       if (!t?.diameter || !t.internal || seen.has(t.id)) continue;
       const reach = st.front - (deep.get(s.opId) ?? st.front);
       if (reach / t.diameter > 4) {
         seen.add(t.id);
-        add('SLENDER_TOOL', `T${t.id} (a Ø${t.diameter} bar) reaches ${n1(reach)} mm into the bore, ${n1(reach / t.diameter)} times its thickness: steel bars chatter beyond about four. Light cuts, a sharp positive insert, lower speed.`, s.opId);
+        add('SLENDER_TOOL', `T${t.id} (a Ø${t.diameter} bar) reaches ${fixed(reach, 1)} mm into the bore, ${fixed(reach / t.diameter, 1)} times its thickness: steel bars chatter beyond about four. Light cuts, a sharp positive insert, lower speed.`, s.opId);
       }
     }
     // the part where it gets thin, with length hanging beyond
     if (analysis.material instanceof LatheMaterial) {
       const m = analysis.material;
       // (where the parting blade goes in, thin is the point)
-      const parted = ops.filter((o) => o.type === 'lathe_partoff').map((o) => [o.z - (toolOf(o.tool)?.width ?? 3) - 0.1, o.z + 0.1] as const);
+      const parted = ops.filter((o) => o.type === 'lathe_partoff').map((o) => [o.z - (toolOf(job, o.tool)?.width ?? 3) - 0.1, o.z + 0.1] as const);
       let worst: { ratio: number; z: number; d: number; len: number } | null = null;
       // the free end: the first slice from the front that still has material
       let end = -1;
@@ -164,7 +163,7 @@ export function reviewJob(job: Job, analysis: Analysis): Finding[] {
         if (wall > 0.05 && (!worst || ratio > worst.ratio)) worst = { ratio, z, d, len };
       }
       const tailstock = ops.some((o) => o.type === 'lathe_drill');
-      if (worst && worst.ratio > 4) add('SLENDER_PART', `At ${zf(worst.z)} the part is down to Ø${n1(worst.d)} with ${n1(worst.len)} mm hanging beyond it (${n1(worst.ratio)} to 1): it springs away from the tool, turns a taper and chatters. Support the end with a centre${tailstock ? ' (the job drills on centre, so the tailstock is in use: plan when)' : ''}, or turn the thin part last, in short lengths from the end.`);
+      if (worst && worst.ratio > 4) add('SLENDER_PART', `At ${zf(worst.z)} the part is down to Ø${fixed(worst.d, 1)} with ${fixed(worst.len, 1)} mm hanging beyond it (${fixed(worst.ratio, 1)} to 1): it springs away from the tool, turns a taper and chatters. Support the end with a centre${tailstock ? ' (the job drills on centre, so the tailstock is in use: plan when)' : ''}, or turn the thin part last, in short lengths from the end.`);
     }
   }
   return out;

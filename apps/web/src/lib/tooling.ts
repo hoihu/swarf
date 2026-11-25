@@ -15,6 +15,8 @@
  * mode); stored offsets are physical (X a radius) and converted with `xScale`.
  */
 
+import { fixed } from '@swarf/cam';
+
 export type V3 = [number, number, number];
 
 /** A tool's tip against the reference tool's, in the machine's axes (mm; X a radius). */
@@ -66,8 +68,6 @@ export interface SetterPort {
   settle(): Promise<void>;
 }
 
-const n3 = (v: number) => (Math.round(v * 1000) / 1000).toFixed(3);
-
 /**
  * Touch the tool on the setter: up (guarded) to the setter's height, across, down fast until it
  * triggers, off, down again slowly; then back up. Returns the machine Z at the slow trigger.
@@ -90,13 +90,13 @@ export async function measureOnSetter(s: Setter, port: SetterPort): Promise<numb
   const wco = port.wco();
   if (port.mpos()[2] > s.z + 1e-3) {
     // already above the setter's height: across first is no worse, but come down to it guarded afterwards
-  } else await guarded(`Z${n3(s.z - wco[2])}`, 'Up to the setter\'s height');
-  await guarded(`X${n3(s.x - wco[0])} Y${n3(s.y - wco[1])}`, 'Across to the setter');
-  if (port.mpos()[2] > s.z + 1e-3) await guarded(`Z${n3(s.z - wco[2])}`, 'Down to the setter\'s height');
+  } else await guarded(`Z${fixed(s.z - wco[2], 3)}`, 'Up to the setter\'s height');
+  await guarded(`X${fixed(s.x - wco[0], 3)} Y${fixed(s.y - wco[1], 3)}`, 'Across to the setter');
+  if (port.mpos()[2] > s.z + 1e-3) await guarded(`Z${fixed(s.z - wco[2], 3)}`, 'Down to the setter\'s height');
   // fast, to find it
   port.clearProbe();
   try {
-    await run(`G91 G38.2 Z${n3(-s.depth)} F300`, 'Looking for the setter (is it wired to the probe input, and under the tool?)');
+    await run(`G91 G38.2 Z${fixed(-s.depth, 3)} F300`, 'Looking for the setter (is it wired to the probe input, and under the tool?)');
   } finally {
     await port.request('G90');
   }
@@ -110,7 +110,7 @@ export async function measureOnSetter(s: Setter, port: SetterPort): Promise<numb
   }
   const hit = port.probe();
   if (!hit?.ok) throw new Error('The slow touch did not trigger.');
-  await run(`G90 G0 Z${n3(s.z - port.wco()[2])}`, 'Back up');
+  await run(`G90 G0 Z${fixed(s.z - port.wco()[2], 3)}`, 'Back up');
   return hit.mpos[2];
 }
 

@@ -106,7 +106,7 @@ class Bridge {
         case 'welcome':
           this.status = 'connected';
           this.agent = msg.agent;
-          this.harnesses = msg.harnesses ?? (msg.chat ? [{ id: 'claude', name: 'Claude Code', ...msg.chat }] : []);
+          this.harnesses = msg.harnesses;
           this.#retry = 0;
           break;
         case 'chat_event': {

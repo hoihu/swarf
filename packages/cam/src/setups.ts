@@ -11,6 +11,7 @@
  * Z0 at its finished top. `mapPoint` says where a point of one setup is in the next, which is how
  * a hole's position is carried over a turn without mirroring it by mistake.
  */
+import { roundTo } from './emit.ts';
 import { CamError } from './program.ts';
 import type { Analysis } from './check.ts';
 import type { CarriedFrom, Job, SetupPart, Stock, Turn, Vec3 } from './schema.ts';
@@ -210,9 +211,8 @@ export function leftBy(job: Job, analysis: Analysis): CarriedFrom {
   const part = freed ?? all;
   const { x0, x1, y0, y1, top } = part ?? { x0: 0, x1: 0, y0: 0, y1: 0, top: -Infinity };
   if (!Number.isFinite(top)) return { x: st.x, y: st.y, z: st.z, ox: 0, oy: 0, oz: st.top };
-  const round = (v: number) => Math.round(v * 10) / 10;
   // (ox, oy: where the part's front-left corner is in this setup's coordinates)
-  return { x: round(Math.min(st.x, (x1 - x0) * m.cell)), y: round(Math.min(st.y, (y1 - y0) * m.cell)), z: round(top - floor), ox: freed ? round(x0 * m.cell) : 0, oy: freed ? round(y0 * m.cell) : 0, oz: round(top) };
+  return { x: roundTo(Math.min(st.x, (x1 - x0) * m.cell), 1), y: roundTo(Math.min(st.y, (y1 - y0) * m.cell), 1), z: roundTo(top - floor, 1), ox: freed ? roundTo(x0 * m.cell, 1) : 0, oy: freed ? roundTo(y0 * m.cell, 1) : 0, oz: roundTo(top, 1) };
 }
 
 /**

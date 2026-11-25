@@ -5,6 +5,7 @@
  * input closes, back off, again slowly; the second trigger counts. Moves near the work are guarded
  * (G38.3: stop if anything is touched on the way) rather than rapids.
  */
+import { fixed } from '@swarf/cam';
 import type { V3 } from './camera/geometry.ts';
 import { machine } from './machine.svelte.ts';
 import { simWorld } from './simworld.ts';
@@ -24,7 +25,6 @@ class Touched extends Error {
     this.z = z;
   }
 }
-const n3 = (v: number) => v.toFixed(3);
 
 
 export interface CornerResult {
@@ -87,7 +87,7 @@ class Probe {
 
   /** Guarded move to a work position: stops (and fails) if anything is touched on the way. */
   async #moveTo(p: Partial<{ x: number; y: number; z: number }>, f = 1200): Promise<void> {
-    const words = (['x', 'y', 'z'] as const).filter((k) => p[k] !== undefined).map((k) => `${k.toUpperCase()}${n3(p[k]!)}`);
+    const words = (['x', 'y', 'z'] as const).filter((k) => p[k] !== undefined).map((k) => `${k.toUpperCase()}${fixed(p[k]!, 3)}`);
     if (!words.length) return;
     machine.probe = null;
     await this.#do(`G90 G38.3 ${words.join(' ')} F${f}`);
@@ -101,18 +101,18 @@ class Probe {
     const wco = this.#wco();
     machine.probe = null;
     try {
-      await this.#do(`G91 G38.2 ${axis}${n3(dir * dist)} F150`);
+      await this.#do(`G91 G38.2 ${axis}${fixed(dir * dist, 3)} F150`);
     } finally {
       await machine.request('G90');
     }
     await this.#settle();
     // back off and touch again, slowly
-    await this.#do(`G91 G0 ${axis}${n3(-dir * 1)}`);
+    await this.#do(`G91 G0 ${axis}${fixed(-dir * 1, 3)}`);
     await machine.request('G90');
     await this.#settle();
     machine.probe = null;
     try {
-      await this.#do(`G91 G38.2 ${axis}${n3(dir * 2)} F25`);
+      await this.#do(`G91 G38.2 ${axis}${fixed(dir * 2, 3)} F25`);
     } finally {
       await machine.request('G90');
     }
@@ -120,7 +120,7 @@ class Probe {
     const hit = machine.probe as { mpos: V3; ok: boolean } | null;
     if (!hit?.ok) throw new Error('The second, slow touch did not trigger.');
     // back off again
-    await this.#do(`G91 G0 ${axis}${n3(-dir * 1)}`);
+    await this.#do(`G91 G0 ${axis}${fixed(-dir * 1, 3)}`);
     await machine.request('G90');
     await this.#settle();
     return hit.mpos[i]! - wco[i]!;
@@ -191,7 +191,7 @@ class Probe {
       const z = await this.#touch('Z', -1, down);
       // the surface touched is the stock top plus the plate: work Z there becomes stock.top + thickness
       const shift = z - (stock.top + thickness);
-      await this.#do(`G10 L2 P1 Z${n3(before[2] + shift)}`);
+      await this.#do(`G10 L2 P1 Z${fixed(before[2] + shift, 3)}`);
       await this.#settle();
       await this.#moveTo({ z: stock.top + thickness + 5 });
       if (machine.simulated) simWorld.plate = null;
@@ -239,7 +239,7 @@ class Probe {
             if (!(e instanceof Touched)) throw e;
             // something above the top here: leave the point, back up (unguarded: the input is closed)
             skipped.push({ x, y, why: 'blocked', z: e.z });
-            await this.#do(`G90 G0 Z${n3(safe)}`);
+            await this.#do(`G90 G0 Z${fixed(safe, 3)}`);
             await this.#settle();
             continue;
           }
@@ -265,7 +265,7 @@ class Probe {
     await this.#run('Setting Z zero', async () => {
       const stock = store.job.stock as Extract<typeof store.job.stock, { kind: 'block' }>;
       const shift = (which === 'highest' ? s.highest : s.mean) - stock.top;
-      await this.#do(`G10 L2 P1 Z${n3(this.#wco()[2] + shift)}`);
+      await this.#do(`G10 L2 P1 Z${fixed(this.#wco()[2] + shift, 3)}`);
       await this.#settle();
       this.surface = { ...s, points: s.points.map((p) => ({ ...p, z: p.z - shift })), highest: s.highest - shift, lowest: s.lowest - shift, mean: s.mean - shift };
       this.result = `Z zero moved ${shift >= 0 ? 'up' : 'down'} ${Math.abs(shift).toFixed(3)} mm: the ${which === 'highest' ? 'highest point' : 'average'} of the top is now Z${stock.top}.`;
@@ -325,7 +325,7 @@ class Probe {
       // the touch on the left side was at yl, not at the corner: correct for the angle
       this.corner = { corner: [cx, cy, top], angle: (a * 180) / Math.PI };
       const wco = this.#wco();
-      await this.#do(`G10 L2 P1 X${n3(wco[0] + cx)} Y${n3(wco[1] + cy)} Z${n3(wco[2] + top - stock.top)}`);
+      await this.#do(`G10 L2 P1 X${fixed(wco[0] + cx, 3)} Y${fixed(wco[1] + cy, 3)} Z${fixed(wco[2] + top - stock.top, 3)}`);
       await this.#settle();
       await this.#moveTo({ z: stock.top + 5 });
       await this.#moveTo({ x: 0, y: 0 });

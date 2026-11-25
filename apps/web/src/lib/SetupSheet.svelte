@@ -3,14 +3,13 @@
    * The setup sheet: one page to print and take to the machine. What to clamp, where the zero is,
    * which tools in which order and how far out, what each operation does and how long it takes.
    */
-  import { analyze, cutLines, setupJobs, setupSheet, type Job, type Program } from '@swarf/cam';
+  import { analyze, cutLines, errorsOf, fixed, setupJobs, setupSheet, type Job, type Program } from '@swarf/cam';
   import { store } from './store.svelte.ts';
   import { minutes } from './ops.ts';
 
   let { onClose }: { onClose: () => void } = $props();
 
   const today = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  const n1 = (v: number) => (Math.round(v * 10) / 10).toString();
 
   /** The drawing: the mill from above, the lathe from the side (chuck on the left), in mm. */
   function draw(job: Job, program: Program) {
@@ -48,7 +47,7 @@
     setupJobs($state.snapshot(store.job) as Job).map((job, i) => {
       const analysis = i === (store.job.setups?.at ?? 0) ? store.analysis : analyze(job);
       const sheet = setupSheet(job, analysis);
-      return { job, sheet, drawing: draw(job, analysis.program), errors: sheet.problems.filter((p) => p.severity === 'error'), notes: sheet.problems.filter((p) => p.severity !== 'error') };
+      return { job, sheet, drawing: draw(job, analysis.program), errors: errorsOf(sheet.problems), notes: sheet.problems.filter((p) => p.severity !== 'error') };
     }),
   );
 
@@ -134,9 +133,9 @@
           The cross is the zero; the thin lines are the cuts.
           {#if pg.sheet.travel}
             {#if pg.sheet.kind === 'mill'}
-              The tool moves within X {n1(pg.sheet.travel.min.x)} to {n1(pg.sheet.travel.max.x)}, Y {n1(pg.sheet.travel.min.y)} to {n1(pg.sheet.travel.max.y)}, Z {n1(pg.sheet.travel.min.z)} to {n1(pg.sheet.travel.max.z)}.
+              The tool moves within X {fixed(pg.sheet.travel.min.x, 1)} to {fixed(pg.sheet.travel.max.x, 1)}, Y {fixed(pg.sheet.travel.min.y, 1)} to {fixed(pg.sheet.travel.max.y, 1)}, Z {fixed(pg.sheet.travel.min.z, 1)} to {fixed(pg.sheet.travel.max.z, 1)}.
             {:else}
-              The tool moves within Z {n1(pg.sheet.travel.min.z)} to {n1(pg.sheet.travel.max.z)}, out to Ø{n1(pg.sheet.travel.max.x * 2)}.
+              The tool moves within Z {fixed(pg.sheet.travel.min.z, 1)} to {fixed(pg.sheet.travel.max.z, 1)}, out to Ø{fixed(pg.sheet.travel.max.x * 2, 1)}.
             {/if}
           {/if}
         </figcaption>

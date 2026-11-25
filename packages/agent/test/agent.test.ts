@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { EXAMPLES, analyze, emptyJob, type Job } from '@swarf/cam';
+import { EXAMPLES, analyze, emptyJob, errorsOf, type Job } from '@swarf/cam';
 import { toApi as anthropicApi } from '../src/providers/anthropic.ts';
 import { toApi as openaiApi } from '../src/providers/openai.ts';
 import { SYSTEM_PROMPT, Agent, CAM_TOOLS, formatJobContext, DEMO_FALLBACK, DEMO_SCRIPTS, ScriptedProvider, runCamTool, type AgentEvent, type Block, type JobPort, type Script } from '../src/index.ts';
@@ -164,7 +164,7 @@ describe('agent loop', () => {
     expect(events.at(-1)).toEqual({ type: 'done', reason: 'complete' });
     expect(events.filter((e) => e.type === 'tool')).toHaveLength(4);
     expect(p.job.operations.map((o) => o.type)).toEqual(['lathe_face', 'lathe_turn', 'lathe_chamfer', 'lathe_partoff']);
-    expect(analyze(p.job).diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(errorsOf(analyze(p.job).diagnostics)).toEqual([]);
   });
 
   it('runs the pocket demo on the mill', async () => {

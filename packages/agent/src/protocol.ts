@@ -46,8 +46,8 @@ export type ChatEvent =
   | { kind: 'done'; ok: boolean; error?: string; costUsd?: number; session?: string };
 
 export type ServerToTab =
-  /** `chat`: Claude Code's (older tabs read it); `harnesses`: every CLI the server knows. */
-  | { type: 'welcome'; protocol: number; agent: string | null; chat: ChatCapability; harnesses: HarnessInfo[] }
+  /** `harnesses`: every coding agent's CLI the server knows, and whether it can answer the chat. */
+  | { type: 'welcome'; protocol: number; agent: string | null; harnesses: HarnessInfo[] }
   | { type: 'chat_event'; id: string; event: ChatEvent }
   | { type: 'denied'; reason: string }
   | { type: 'call'; id: number; tool: string; input: unknown }
