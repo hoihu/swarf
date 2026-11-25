@@ -35,7 +35,7 @@ L4–L14, C12 or C13.
    things for deterministic code.
 9. Recommended after L4–L14: holes and patterns from the drawing, standards tables, the part
    contract, sneak-up finishing, then the two approved items (C13, C12).
-10. Five decisions are Martin's (section 7). None blocks the rest.
+10. The five open questions (section 7) are decided in section 8, "Decisions (2026-11-24)".
 
 ## How this was done, and what it does not cover
 
@@ -203,10 +203,11 @@ after. First PR: `pattern.circle` on `mill_drill` with a test against hand-compu
 operation label says "6 × on Ø40".
 
 **G3. Thread, tap-drill and clearance tables (C6, S).**
-Build: `standards.ts` with ISO metric coarse and fine, UNC/UNF, G (BSP): pitch, depths, tap drill,
-clearance hole, ISO 4762 counterbore. `lathe_thread` and `mill_thread` accept `standard: 'M8'` or
-`'M8x1'` and fill pitch, depth and the diameter to turn or bore first; the label says what was
-filled. Remove the pitch list from the prompt. Pipeline: Job → `generate` looks up → new check
+Build: `standards.ts` with ISO metric coarse and fine, and nothing else (decision Q5): pitch,
+depths, tap drill, clearance hole, ISO 4762 counterbore. `lathe_thread` and `mill_thread` accept
+`standard: 'M8'` or `'M8x1'` and fill pitch, depth and the diameter to turn or bore first; the
+label says what was filled. Remove the pitch list from the prompt. Pipeline: Job → `generate`
+looks up → new check
 `THREAD_NOT_STANDARD` (a note) when a typed pitch contradicts a named size. First PR: the metric
 table with tests against published values, used by `lathe_thread` only.
 
@@ -214,9 +215,9 @@ table with tests against published values, used by `lathe_thread` only.
 Build: `Stock` bar gets `bore`; `LatheMaterial` starts with it (it already has a bore radius per
 slice). Why: bushings from tube are everyday parts and fail with `BORE_SOLID` today. Pipeline:
 stock data only; every check then runs on the truth. Risk and its answer: a bore typed too large
-makes a rapid inside look free, so the camera's "Check the bar" should later read the bore from
-the end, and the setup sheet prints the bore in large type. First PR: the field, the material
-start, one test that boring a tube passes and that a rapid into its wall still fails.
+makes a rapid inside look free, so the setup sheet prints the bore in large type and tells the
+user to measure it before the run; no camera is assumed (decision Q4). First PR: the field, the
+material start, one test that boring a tube passes and that a rapid into its wall still fails.
 
 **G5. The lathe's other end (new, M–L).**
 Build: a second setup on the lathe: the part turned end for end and gripped on a finished
@@ -315,35 +316,47 @@ resolution, `INTENT_UNMEASURED` a note where the model cannot tell (a thread's f
 card lists the contract; the user can correct a line, which is the fastest way to say "you read
 that 3 as an 8".
 
-**First PR.** `intent` with `kind: 'diameter'` on the lathe only, the check, and a test where an
-edit to `lathe_turn.diameter` trips it. No agent tool yet: entries typed in the job file.
+**First PR.** `intent` with `kind: 'diameter'` on the lathe only, the check with `INTENT_OFF` as
+an error from the start (decision Q3), and tests where an edit to `lathe_turn.diameter` trips it
+and the job then gives no G-code. No agent tool yet: entries typed in the job file.
 
 ### N2. Sneak up on it: measure, then finish
 
 **Pitch.** No machinist trusts a hobby lathe to hit Ø20.00 from a touched-off zero. They cut to
 Ø20.4, measure with a micrometer, and take what is left. swarf can do that as a first-class thing:
 an operation with `finish: 'measured'` roughs and takes a semi-finish pass that leaves a known
-allowance, then the program waits (as at a tool change: spindle off, machine free). The app asks
-"it should measure Ø20.40: what does it measure?". The user types 20.46. Deterministic code works
-out that this tool cuts 0.03 large on the radius, regenerates the finish pass with that correction
-(bounded, say ±0.3 mm), runs the checks on it, and Resume cuts it. The correction is offered to
-stay with the tool for the later operations of this run.
+allowance, and there the first program ends like any other (retracted, spindle off, machine
+free). The app asks "it should measure Ø20.40: what does it measure?". The user types 20.46.
+Deterministic code works out that this tool cuts 0.03 large on the radius and generates the
+finish pass, and everything after it, as a second program with that correction (bounded, say
+±0.3 mm), checked like any program before Run is offered. The correction is offered to stay with
+the tool for the later operations of this job.
 
 **Why it is new.** Professional CAM does this with a spindle probe and macros (Fusion's part
 alignment and inspection are in the paid extension [S: A-ext]) or leaves it to wear offsets typed
 at the control. Hobby CAM does nothing: the G-code is fixed when it is written. swarf generates,
-checks and streams in one place, so it can regenerate between two halves of one run.
+checks and streams in one place, so it can generate the second program from what the first one
+left.
 
-**Sketch.** The Program IR gets a `measure` stop between segments (the machinery of the
-tool-change wait and `resumeFrom` exists). `Job.runtime.wear: { tool, dx }` is applied in
-`generate` as a shift of that tool's X, clamped; the re-run goes through `analyze` and (after L9)
-`runnable()`, so a correction can never emit unchecked moves. The mill version is a pocket or boss
-width measured with calipers, correcting the tool's effective diameter. The agent is not in this
-loop at all.
+**Sketch (two programs, decision Q2).** There is no `measure` stop in the Program IR and no
+G-code is produced while a program is running. A job with a measured finish is cut as two
+ordinary programs, split at the measure point: program 1 is everything up to and including the
+semi-finish pass, program 2 the finish pass and all later operations. Program 2 starts from
+program 1's simulated material, the way a setup starts from `carried()`. The reading is job data
+(the measured size on the operation, the resulting wear `dx` on the tool) and `generate` applies
+it as a shift of that tool's X. Until the reading is typed in, a check error (`MEASURE_PENDING`)
+blocks program 2; a reading outside the bound is a check error too (`MEASURE_OUT_OF_RANGE`), not
+a silently clamped value. Both programs reach the machine or a file only through `analyze` and
+(after L9) `runnable()`, the one gate every program goes through, so an unchecked second half
+has no path out. The mill version is a pocket or boss width measured with calipers, correcting
+the tool's effective diameter. The agent is not in this loop at all.
 
-**First PR.** In cam only: `lathe_turn` with `finish: 'measured'` produces two segments with a
-`measure` stop between, and `withWear(job, tool, dx)` regenerates the second; tests that the
-correction is clamped and that the second half starts from the first half's material.
+**First PR.** In cam only: `lathe_turn` with `finish: 'measured'` splits the job into two
+programs at the measure point. Tests: program 2 gives no G-code while the reading is missing
+(`MEASURE_PENDING`) or outside the bound (`MEASURE_OUT_OF_RANGE`); with a reading its finish pass
+is shifted by the correction and it passes every check; it starts from program 1's material (a
+rapid into what program 1 left standing is an error); program 1 alone is a complete program that
+ends retracted with the spindle off.
 
 ### N3. A test piece that measures the machine
 
@@ -352,8 +365,9 @@ how rigid the machine is (SolidCAM has an 8-level slider [F: SC-wizard], G-Wizar
 [S: GW-curve]). C4 is parked for this reason. Measure it instead. swarf generates a
 standard test job from tested operations: on the lathe a bar turned in steps of rising depth and
 feed, and one long light pass; on the mill a row of short slots and side cuts of rising load. While
-it runs, swarf records what the controller reports (actual spindle speed against programmed, with
-an encoder) and what the microphone hears. Afterwards the user types three caliper readings (the
+it runs, swarf records what every grblHAL machine reports (time per cut, overrides, holds); real
+spindle speed and sound are added where an encoder or a microphone exists, and nothing depends on
+them (decision Q4). Afterwards the user types three caliper readings (the
 diameter at both ends of the long pass gives taper and spring). The result is a profile for this
 machine: the depth and feed at which it sagged or rang, a taper per 100 mm, a factor for the
 material table.
@@ -463,6 +477,9 @@ preview of the next setup. No fixture job yet.
 
 ### N8. The camera inspects the part against the simulation
 
+**Not planned (decision Q4).** No camera on a lathe is assumed, and this idea is nothing without
+one. It stays here as a record of the survey only.
+
 **Pitch.** After the last pass on the lathe, before parting off, **Check the part**: the camera
 reads the silhouette (it already measures the bar's diameter, its end and shoulders) at stations
 along the axis and lays it against the profile the material model predicts. "Shoulder expected at
@@ -497,11 +514,13 @@ measured finishing (N2).
 name of a purchased part to the feature that receives it. With a language model in front, the name
 is exactly what the user will type, and the place a model is most likely to recall a wrong number.
 
-**Sketch.** `standards.ts` grows by table: ISO 286 fits for common sizes, bearings (the dozen
-hobby sizes), DIN 471/472 circlips, O-ring grooves, ISO 4762 screws, DIN 332 centre holes, DIN 76
-thread reliefs. Operations take `for: { standard, size }`; `generate` resolves; a check flags a
-typed value that contradicts the named standard. Every table is pinned by tests against a
-published source, and each resolved value shows its source in the label.
+**Sketch.** `standards.ts` grows by exactly two tables (decision Q5): DIN 471/472 circlip
+grooves, then seats for the dozen hobby ball bearings with the few ISO 286 limits those seats
+need. ISO 4762 screws are in G3 already. O-ring grooves, DIN 332 centre holes, DIN 76 thread
+reliefs and a general fits table are not written. Operations take `for: { standard, size }`;
+`generate` resolves; a check flags a typed value that contradicts the named standard. Every
+table is pinned by tests against a published source, and each resolved value shows its source
+in the label.
 
 **First PR.** After G3: circlip grooves (DIN 471) on `lathe_groove`, one table, one test file.
 
@@ -550,19 +569,26 @@ function that has tests.
 1. **Holes and patterns from the drawing (G1 + G2).** The commonest mill part, the first thing a
    DXF user asks, and it takes coordinates out of the model's hands. Two S-size PRs.
 2. **Standards tables (G3), growing into "name the mating part" (N9).** One S-size PR removes a
-   class of silently wrong threads and gives the agent a vocabulary instead of numbers.
+   class of silently wrong threads and gives the agent a vocabulary instead of numbers. Metric
+   coarse and fine only; N9 adds circlips and bearing seats and stops there (decision Q5).
 3. **The part contract (G6 readout, then N1).** The only proposal that attacks the error no check
-   can see today: a wrong value that makes a valid part.
+   can see today: a wrong value that makes a valid part. A failed contract blocks output like
+   any check error (decision Q3).
 4. **Sneak-up finishing (N2).** It is how accurate parts are really made on a hobby lathe, no
-   other CAM in reach does it, and it needs no hardware.
+   other CAM in reach does it, and it needs no hardware. Two checked programs with the
+   measurement between them, never a stop inside one program (decision Q2).
 5. **The approved pair: coolant by the output-mapping design (G7), then G96 (G8).** Already
    decided; G96 last, with lint, simulator and planner in the same PR.
 
-Next in line: tube stock (G4, S, could ride with any lathe PR), checks that propose their fix
-(N5, cheap on the lathe now, on the mill after L12), and the first-article run (N6) before swarf
-meets a real machine for the first time.
+Next in line: the lathe gaps in the order of decision Q1, tube stock (G4, S) first, then the
+other end (G5: pre-shaped stock, then the setup link), then the internal profile (G11); checks
+that propose their fix (N5, cheap on the lathe now, on the mill after L12); and the first-article
+run (N6) before swarf meets a real machine for the first time. Not planned: the camera inspection
+(N8, decision Q4).
 
 ## 7. Open questions for Martin
+
+All five are answered in section 8. They are kept here as they were asked.
 
 1. **Which lathe gap first: tube stock, the other end, or internal profile (G4, G5, G11)?** It
    depends on what you turn. G5 is the largest and changes "the lathe has one clamping per job".
@@ -576,6 +602,80 @@ meets a real machine for the first time.
    time and override records.
 5. **Which standards (G3, N9)?** Metric coarse and fine are certain. UNC/UNF, BSP, bearings,
    circlips, O-rings: say which you would use, so no table is written for nobody.
+
+## 8. Decisions (2026-11-24)
+
+Martin handed the five questions of section 7 over on 2026-11-24 with these principles: swarf is
+not released, so nothing is kept for compatibility; maintainability comes first; there is no
+machine at the moment, so nothing may depend on hardware; Claude Opus implements afterwards. The
+sections above are already changed to match. None of this starts before L4–L14.
+
+**Q1. Which lathe gap first: G4, then G5, then G11.**
+Decision: tube stock (G4) first, then the lathe's other end (G5: pre-shaped stock, then the
+setup link), and the internal profile (G11) last.
+Reason: G4 is one field and removes a false `BORE_SOLID` on an everyday part; G5's first PR
+(`Stock.bar.profile`) is its neighbour in the same code, the start of `LatheMaterial`, so the two
+are reviewed with the same picture in mind; G11 is the only one that adds a new operation, and
+its stepped bores are most useful once a part can be turned round and a tube can be the stock.
+Changes: the "Next in line" sentence of section 6. G4's and G5's first PRs stay as written, with
+one rule added: `bore` and `profile` are both read in one place where the lathe material starts,
+not in two. When the setup link of G5 lands, "one clamping per lathe job" and the refusal in
+`setups.ts` are deleted, not kept behind a switch.
+
+**Q2. A measuring stop inside a program: no. Two separate programs.**
+Decision: sneak-up finishing (N2) is two ordinary programs with the measurement between them;
+the Program IR gets no `measure` stop and no G-code is ever generated while a program runs.
+Reason: with two programs the second half can only come out the way every program does, through
+`analyze` and `runnable()`, so an unchecked second half is impossible by construction and not by
+a rule someone has to remember; the user can also read or download the second program before
+running it, which a mid-program stop takes away. It needs no new streamer state either.
+Changes: the pitch, sketch and first PR of N2 (rewritten above) and item 4 of section 6. Fixed
+by this decision: program 2 starts from program 1's simulated material; `MEASURE_PENDING` is a
+check error that blocks program 2 until the reading is typed in; a reading outside the bound is
+the check error `MEASURE_OUT_OF_RANGE`, never a silently clamped value; the correction is job
+data applied in `generate`, never an edit of G-code text. N6 and N11 are untouched: their stops
+are waits inside one already checked program, as tool changes are.
+
+**Q3. A failed contract blocks output like any check error.**
+Decision: `INTENT_OFF` is an error; with it the agent cannot finish and download, `save_gcode`
+and Run program give nothing. There is no warning-only mode and no switch to turn it down.
+Reason: a contract that only warns is one more list nobody reads, and the wrong value that makes
+a valid part is the very error it exists for. If the agent read the words wrongly, the fix is to
+correct that contract line, which is one edit and the cheapest way to find the misreading.
+Changes: N1's first PR (the check is an error from the start, with a test that no G-code comes
+out) and item 3 of section 6. Fixed by this decision: `INTENT_UNMEASURED` stays a note, because
+the model cannot tell and must not pretend to; a contract line that is added, changed or removed
+in a turn is shown in that turn's diff on the review card, so the agent cannot clear an error by
+quietly rewriting what the user said; N5's rule "no new error" covers `INTENT_OFF`, so a
+suggested fix can never break the contract.
+
+**Q4. Hardware: none is assumed. No encoder, no lathe camera, no microphone.**
+Decision: every planned item must be complete with what any grblHAL machine reports (positions,
+time, overrides, holds) plus what the user types in from a caliper; a sensor may add a field
+where it exists and is never required.
+Reason: there is no machine now and the next one is unknown, so a feature that needs a sensor
+cannot be tried and would be code nobody can vouch for. No stand-in values are invented where a
+sensor is missing: the field is absent.
+Changes: N8 is not planned (it is nothing without a camera on the lathe). N4 is the time and
+override diary of its first PR; `RANG` and spindle sag come only with a microphone or encoder
+and are not part of the plan. N3 is the test piece with caliper readings and the diary's times
+and overrides. G4's guard is the bore on the setup sheet, not the camera. The existing camera,
+listening and probing code is not touched by this decision.
+
+**Q5. Standards: ISO metric only, and two tables for N9.**
+Decision: G3 is ISO metric coarse and fine with tap drill, clearance hole and ISO 4762
+counterbore; N9 adds DIN 471/472 circlip grooves and then seats for the common ball bearings
+with the ISO 286 limits those seats need. UNC/UNF, G (BSP), O-ring grooves, DIN 332 centre
+holes, DIN 76 thread reliefs and a general fits table are not written.
+Reason: every table must be pinned by tests against a published source and kept right for good,
+so each one is a standing cost; the parts made here are metric. A thread outside the tables is
+still cut by typing its pitch, as today, so nothing is lost.
+Changes: G3's build line, N9's sketch and item 2 of section 6. G3's and N9's first PRs stay as
+written (the metric table on `lathe_thread`; DIN 471 on `lathe_groove`). The pitch list leaves
+the prompt in G3's first PR, with no copy kept beside the table.
+
+**The order after L4–L14** is unchanged by these decisions: G1 + G2, G3 then N9, G6 then N1, N2,
+then G7 and G8; after them G4, G5, G11, N5 and N6.
 
 ## Sources
 
