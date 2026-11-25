@@ -10,7 +10,7 @@ export interface JobDiff {
   changed: { id: string; label: string; fields: string[] }[];
   /** Operations kept but in another order. */
   reordered: boolean;
-  /** Stock, tools, machine, material, name. */
+  /** Stock, tools, machine, drawings, material, clamps, notes, measurements, setups, name. */
   other: string[];
 }
 
@@ -55,7 +55,12 @@ export function diffJobs(before: Job, after: Job): JobDiff {
   }
   if (!same(before.machine, after.machine)) d.other.push('machine settings');
   if (!same(before.shapes, after.shapes)) d.other.push('drawings');
+  if (before.workMaterial !== after.workMaterial) d.other.push(`workpiece material ${before.workMaterial} → ${after.workMaterial}`);
   if (before.material !== after.material) d.other.push('material');
+  if (!same(before.obstacles, after.obstacles)) d.other.push('clamps');
+  if (before.notes !== after.notes) d.other.push('notes');
+  if (!same(before.measured, after.measured)) d.other.push('measurements');
+  if (!same(before.setups, after.setups)) d.other.push('setups');
   if (before.name !== after.name) d.other.push('name');
   return d;
 }

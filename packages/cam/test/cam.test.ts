@@ -48,6 +48,23 @@ describe('job diff', () => {
     expect(d.other).toEqual(['material']);
     expect(isEmptyDiff(diffJobs(a, a))).toBe(true);
   });
+
+  const mill = EXAMPLES.mill();
+  it.each<[string, Partial<JobInput>, string]>([
+    ['workMaterial', { workMaterial: 'stainless' }, 'workpiece material aluminium → stainless'],
+    ['obstacles', { obstacles: [...mill.obstacles, { name: 'clamp', x0: -20, y0: 0, x1: -5, y1: 20, top: 10 }] }, 'clamps'],
+    ['notes', { notes: 'held in the vise on parallels' }, 'notes'],
+    ['measured', { measured: { angle: 0.5, top: [] } }, 'measurements'],
+    ['setups', { setups: { at: 0, name: 'Top', others: [{ name: 'Bottom', turn: 'over-y', stock: mill.stock }] } }, 'setups'],
+  ])('sees a change of %s alone', (_, patch, words) => {
+    const d = diffJobs(mill, Job.parse({ ...mill, ...patch }));
+    expect(isEmptyDiff(d)).toBe(false);
+    expect(d.other).toEqual([words]);
+  });
+
+  it('gives an empty diff for an unchanged job', () => {
+    expect(isEmptyDiff(diffJobs(mill, Job.parse({ ...mill })))).toBe(true);
+  });
 });
 
 describe('levels', () => {
