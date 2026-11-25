@@ -1132,9 +1132,9 @@ describe('more mill operations', () => {
     const helix = seg.moves.filter((m) => m.type === 'arc');
     expect(helix.every((m) => m.type === 'arc' && m.cw)).toBe(true);
     expect(helix[1]!.to.z).toBeLessThan(helix[0]!.to.z);
-    // 0.6134 P deep at the last pass
+    // 0.61343 P deep at the last pass
     const radii = helix.map((m) => Math.hypot(m.to.x - 30, m.to.y - 25));
-    expect(Math.min(...radii)).toBeCloseTo(6 + 2.5 - 0.6134 * 1.75, 4);
+    expect(Math.min(...radii)).toBeCloseTo(6 + 2.5 - 0.61343 * 1.75, 4);
   });
 });
 

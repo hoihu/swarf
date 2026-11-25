@@ -7,7 +7,7 @@
  * centre-cutting endmill).
  */
 import { CamError, levels, v, type Move } from '../program.ts';
-import { cone, type Operation, type Shape } from '../schema.ts';
+import { ISO_THREAD_DEPTH, cone, type Operation, type Shape } from '../schema.ts';
 import { circle, dedupe, offsetRegion, orient, type Loop, type Pt } from '../geom2d.ts';
 import { millSafeZ, type OpContext } from './context.ts';
 import { adaptivePlans, clearWay } from './adaptive.ts';
@@ -654,8 +654,8 @@ export function generateMill(op: MillOp, ctx: OpContext): Move[] {
       const zTop = zTopOf(op);
       checkDepth(zTop, op.zBottom);
       const internal = op.side === 'internal';
-      // ISO metric: the flanks are 0.5413 P deep in a nut, 0.6134 P on a bolt
-      const H = (internal ? 0.5413 : 0.6134) * op.pitch;
+      // ISO metric flank depth, in a nut or on a bolt
+      const H = ISO_THREAD_DEPTH[op.side] * op.pitch;
       const R = op.diameter / 2;
       if (internal && r > R - H - 0.1) throw new CamError(`the Ø${d} thread mill does not fit the Ø${(2 * (R - H)).toFixed(2)} core hole of M${op.diameter}×${op.pitch}`);
       // With the spindle turning clockwise (M3), climb milling goes counter-clockwise inside a

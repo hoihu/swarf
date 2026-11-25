@@ -214,6 +214,12 @@ export const LatheBore = z.object({
   finish: z.number().min(0).default(0.15).describe('Radial allowance for one finishing pass'),
 });
 
+/**
+ * ISO metric thread depth per mm of pitch (ISO 68: H = √3/2 P): a bolt's flanks are 17/24 H
+ * deep, a nut's 5/8 H. Used by lathe_thread and mill_thread.
+ */
+export const ISO_THREAD_DEPTH = { external: 0.61343, internal: 0.54127 } as const;
+
 export const LatheThread = z.object({
   type: z.literal('lathe_thread'),
   ...common,
@@ -223,7 +229,7 @@ export const LatheThread = z.object({
   starts: z.number().int().min(1).max(8).default(1).describe('Number of starts (multi-start thread: lead = pitch × starts, each start one pitch further along)'),
   zEnd: mm.describe('Z where the thread ends (towards the chuck); leave room, there is no pull-out'),
   zStart: mm.default(0).describe('Z where the thread starts (usually the face)'),
-  depth: pos.optional().describe('Radial thread depth (default ISO metric: external 0.6134 × pitch, internal 0.5413 × pitch)'),
+  depth: pos.optional().describe(`Radial thread depth (default ISO metric: external ${ISO_THREAD_DEPTH.external.toFixed(4)} × pitch, internal ${ISO_THREAD_DEPTH.internal.toFixed(4)} × pitch)`),
   firstCut: pos.default(0.25).describe('Radial depth of the first pass; later passes get shallower (constant chip area)'),
   springPasses: z.number().int().min(0).max(5).default(1).describe('Extra passes at full depth'),
   infeed: z.enum(['flank', 'radial']).default('flank').describe('flank: along the 29.5° flank like a compound slide; radial: straight in'),

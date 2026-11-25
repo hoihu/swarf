@@ -6,7 +6,7 @@
  * (tipPath, profile.ts) and lathe_chamfer (legs lengthened by rn·(2 − √2)), not elsewhere.
  */
 import { CamError, levels, v, type Move } from '../program.ts';
-import type { Job, Operation } from '../schema.ts';
+import { ISO_THREAD_DEPTH, type Job, type Operation } from '../schema.ts';
 import { latheSafe, type OpContext } from './context.ts';
 import { buildProfile, tipPath, zAtRadius, type P2 } from './profile.ts';
 import { profileFromDrawing } from '../importers/lathe.ts';
@@ -215,7 +215,7 @@ export function generateLathe(op: LatheOp, ctx: OpContext): Move[] {
       // cut inwards from the major diameter, internal ones outwards from the minor diameter.
       const internal = op.side === 'internal';
       const R = op.diameter / 2;
-      const depth = op.depth ?? (internal ? 0.54127 : 0.61343) * op.pitch;
+      const depth = op.depth ?? ISO_THREAD_DEPTH[op.side] * op.pitch;
       if (op.zEnd >= op.zStart) throw new CamError('zEnd must be towards the chuck from zStart (more negative)');
       if (depth >= R) throw new CamError(`thread depth ${depth.toFixed(2)} mm is more than the radius`);
       if (internal !== !!ctx.tool.internal) throw new CamError(`T${ctx.tool.id} is an ${ctx.tool.internal ? 'internal' : 'external'} threading tool; this thread is ${op.side}`);
