@@ -3,7 +3,7 @@
    * The clampings of the part (mill): which one is in hand, and adding one with the block turned.
    * Everything else in the job pane, the preview and the machine works on the one in hand.
    */
-  import { TURNS, addSetup, faceAfter, leftBy, mapPoint, plainSetup, removeSetup, renameSetup, setupList, switchSetup, turnedSize, type Turn } from '@swarf/cam';
+  import { TURNS, addSetup, faceAfter, fixed, leftBy, mapPoint, plainSetup, removeSetup, renameSetup, setupList, switchSetup, turnedSize, type Turn } from '@swarf/cam';
   import { files } from './files.svelte.ts';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
@@ -64,7 +64,6 @@
     const back = turnedSize(t === 'front-up' ? 'back-up' : t === 'back-up' ? 'front-up' : t === 'left-up' ? 'right-up' : t === 'right-up' ? 'left-up' : t, job.stock);
     return mapPoint(t, { kind: 'block', x: back.x, y: back.y, z: back.z, top: 0 }, job.stock, p);
   });
-  const n2 = (v: number) => (Math.round(v * 100) / 100).toString();
 </script>
 
 {#if job.machine.kind === 'mill'}
@@ -110,7 +109,7 @@
             <label>X <input type="number" step="0.1" bind:value={px} /></label>
             <label>Y <input type="number" step="0.1" bind:value={py} /></label>
             <label>Z <input type="number" step="0.1" bind:value={pz} /></label>
-            <span class="is">is X {n2(carried.x)}  Y {n2(carried.y)}  Z {n2(carried.z)}</span>
+            <span class="is">is X {fixed(carried.x, 2)}  Y {fixed(carried.y, 2)}  Z {fixed(carried.z, 2)}</span>
           </div>
           {#if linked}
             <p class="small muted">The part comes over as setup {list.at} leaves it: its pockets and holes are in this setup's stock, and the preview shows them. <button class="link" onclick={() => store.set(plainSetup($state.snapshot(job) as typeof job))}>Start from a plain block instead</button></p>

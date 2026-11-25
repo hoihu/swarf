@@ -4,12 +4,13 @@
  * far each must reach, the operations with speeds and times. All from the job and its analysis.
  */
 import { alignmentLines } from './align.ts';
+import { fixed } from './emit.ts';
 import { TURNS } from './setups.ts';
 import type { Analysis } from './check.ts';
 import { MATERIALS } from './materials.ts';
 import { segmentStats } from './planner.ts';
 import { arcPoints, walk, type Program } from './program.ts';
-import type { Job, Tool, Vec3 } from './schema.ts';
+import { toolOf, type Job, type Tool, type Vec3 } from './schema.ts';
 
 export interface SheetTool {
   id: number;
@@ -60,18 +61,16 @@ export interface Sheet {
   setup: { n: number; of: number; name: string; how: string } | null;
 }
 
-const n1 = (v: number) => (Math.round(v * 10) / 10).toString();
-const n2 = (v: number) => (Math.round(v * 100) / 100).toString();
-const z = (v: number) => `Z${v > 0 ? '+' : ''}${n2(v)}`;
+const z = (v: number) => `Z${v > 0 ? '+' : ''}${fixed(v, 2)}`;
 
 /** A tool in a few words: "endmill Ø6, 2 flutes". */
 export function toolSummary(t: Tool): string {
   const parts: string[] = [t.internal && t.type === 'threading' ? 'internal threading' : t.type === 'chamfer' ? `pointed cutter ${t.angle ?? 90}°` : t.type === 'threadmill' ? 'thread mill' : t.type];
-  if (t.diameter) parts[0] += ` Ø${n2(t.diameter)}`;
-  if (t.width) parts.push(`${n2(t.width)} mm wide`);
+  if (t.diameter) parts[0] += ` Ø${fixed(t.diameter, 2)}`;
+  if (t.width) parts.push(`${fixed(t.width, 2)} mm wide`);
   if (t.flutes && (t.type === 'endmill' || t.type === 'threadmill')) parts.push(`${t.flutes} flute${t.flutes === 1 ? '' : 's'}`);
-  if (t.noseRadius) parts.push(`nose R${n2(t.noseRadius)}`);
-  if (t.fluteLength) parts.push(t.type === 'boring' || (t.type === 'threading' && t.internal) ? `reach ${n1(t.fluteLength)}` : `flutes ${n1(t.fluteLength)} long`);
+  if (t.noseRadius) parts.push(`nose R${fixed(t.noseRadius, 2)}`);
+  if (t.fluteLength) parts.push(t.type === 'boring' || (t.type === 'threading' && t.internal) ? `reach ${fixed(t.fluteLength, 1)}` : `flutes ${fixed(t.fluteLength, 1)} long`);
   if (t.toolMaterial) parts.push(t.toolMaterial === 'hss' ? 'HSS' : 'carbide');
   return parts.join(', ');
 }
@@ -129,7 +128,7 @@ export function setupSheet(job: Job, analysis: Analysis): Sheet {
       zMin = Math.min(zMin, segs[i]!.zMin);
       xMin = Math.min(xMin, segs[i]!.xMin);
     });
-    op.deepest = !Number.isFinite(zMin) ? '' : lathe ? `to ${z(zMin)}, Ø${n2(Math.max(0, xMin) * 2)}` : `to ${z(zMin)}`;
+    op.deepest = !Number.isFinite(zMin) ? '' : lathe ? `to ${z(zMin)}, Ø${fixed(Math.max(0, xMin) * 2, 2)}` : `to ${z(zMin)}`;
   }
 
   // tools in the order they are called for
@@ -140,7 +139,7 @@ export function setupSheet(job: Job, analysis: Analysis): Sheet {
   p.segments.forEach((s, i) => {
     if (s.tool !== last) stops++;
     last = s.tool;
-    const t = job.tools.find((x) => x.id === s.tool);
+    const t = toolOf(job, s.tool);
     let e = tools.find((x) => x.id === s.tool);
     if (!e) tools.push((e = { id: s.tool, name: t?.name ?? 'missing', what: t ? toolSummary(t) : '', reach: '', offset: '', ops: [], seconds: 0 }));
     const n = opN.get(s.opId);
@@ -148,7 +147,7 @@ export function setupSheet(job: Job, analysis: Analysis): Sheet {
     e.seconds += segs[i]!.seconds;
   });
   for (const e of tools) {
-    const t = job.tools.find((x) => x.id === e.id);
+    const t = toolOf(job, e.id);
     let zMin = Infinity;
     p.segments.forEach((s, i) => {
       if (s.tool === e.id) zMin = Math.min(zMin, segs[i]!.zMin);
@@ -156,12 +155,12 @@ export function setupSheet(job: Job, analysis: Analysis): Sheet {
     if (Number.isFinite(zMin)) {
       if (!lathe) {
         const out = highest - zMin;
-        e.reach = `goes to ${z(zMin)}: at least ${n1(Math.ceil(out * 2) / 2 + 2)} mm out of the holder` + (t?.fluteLength && st.kind === 'block' && st.top - zMin > t.fluteLength + 1e-6 ? ` (deeper than its ${n1(t.fluteLength)} mm of flutes)` : '');
+        e.reach = `goes to ${z(zMin)}: at least ${fixed(Math.ceil(out * 2) / 2 + 2, 1)} mm out of the holder` + (t?.fluteLength && st.kind === 'block' && st.top - zMin > t.fluteLength + 1e-6 ? ` (deeper than its ${fixed(t.fluteLength, 1)} mm of flutes)` : '');
       } else if (t && (t.type === 'drill' || t.type === 'boring' || (t.type === 'threading' && t.internal)) && st.kind === 'bar') {
-        e.reach = `goes ${n1(st.front - zMin)} mm into the bar (to ${z(zMin)})`;
+        e.reach = `goes ${fixed(st.front - zMin, 1)} mm into the bar (to ${z(zMin)})`;
       }
     }
-    if (t?.offset) e.offset = lathe ? `X${n2(t.offset.x * 2)} (on the diameter) Z${n2(t.offset.z)}` : `Z${n2(t.offset.z)}`;
+    if (t?.offset) e.offset = lathe ? `X${fixed(t.offset.x * 2, 2)} (on the diameter) Z${fixed(t.offset.z, 2)}` : `Z${fixed(t.offset.z, 2)}`;
   }
 
   const stock: string[] = [];
@@ -169,20 +168,20 @@ export function setupSheet(job: Job, analysis: Analysis): Sheet {
   const holding: string[] = [];
   const mat = MATERIALS[job.workMaterial].name + (job.material ? ` (${job.material})` : '');
   if (st.kind === 'bar') {
-    stock.push(`Bar Ø${n2(st.diameter)} mm, ${n1(st.stickout)} mm out of the chuck`);
-    zero.push(`Z0: the finished front face${st.front > 0 ? `; the raw face is at ${z(st.front)} (${n2(st.front)} mm to face off)` : ''}`);
+    stock.push(`Bar Ø${fixed(st.diameter, 2)} mm, ${fixed(st.stickout, 1)} mm out of the chuck`);
+    zero.push(`Z0: the finished front face${st.front > 0 ? `; the raw face is at ${z(st.front)} (${fixed(st.front, 2)} mm to face off)` : ''}`);
     zero.push('X0: the spindle axis (touch off on a known diameter)');
     const jaws = st.front - st.stickout;
     holding.push(`Chuck jaws at ${z(jaws)}`);
     const tr = min as Vec3 | null;
-    if (tr) holding.push(`The tools come to ${z(tr.z)}: ${n1(tr.z - jaws)} mm from the jaws`);
+    if (tr) holding.push(`The tools come to ${z(tr.z)}: ${fixed(tr.z - jaws, 1)} mm from the jaws`);
   } else {
-    stock.push(`Block ${n1(st.x)} × ${n1(st.y)} × ${n1(st.z)} mm (X × Y × Z)`);
+    stock.push(`Block ${fixed(st.x, 1)} × ${fixed(st.y, 1)} × ${fixed(st.z, 1)} mm (X × Y × Z)`);
     zero.push('X0 Y0: the front-left corner of the block');
-    zero.push(`Z0: the finished top${st.top > 0 ? `; the raw top is at ${z(st.top)} (${n2(st.top)} mm to face off)` : ''}`);
+    zero.push(`Z0: the finished top${st.top > 0 ? `; the raw top is at ${z(st.top)} (${fixed(st.top, 2)} mm to face off)` : ''}`);
     zero.push(`The underside is at ${z(st.top - st.z)}`);
     for (const l of alignmentLines(job)) zero.push(`Measured: ${l}`);
-    for (const o of job.obstacles) holding.push(`${o.name}: X${n1(Math.min(o.x0, o.x1))} to ${n1(Math.max(o.x0, o.x1))}, Y${n1(Math.min(o.y0, o.y1))} to ${n1(Math.max(o.y0, o.y1))}, top at ${z(o.top)}`);
+    for (const o of job.obstacles) holding.push(`${o.name}: X${fixed(Math.min(o.x0, o.x1), 1)} to ${fixed(Math.max(o.x0, o.x1), 1)}, Y${fixed(Math.min(o.y0, o.y1), 1)} to ${fixed(Math.max(o.y0, o.y1), 1)}, top at ${z(o.top)}`);
     if (!job.obstacles.length) holding.push('No clamps or jaws entered: the checks do not know what holds the block');
     holding.push(`The tool waits at ${z(p.home.z)} before the program, at tool changes and after it`);
   }

@@ -2,7 +2,7 @@
  * What changed between two versions of a job, in words: the review card after an assistant turn.
  */
 import { opLabel } from './generate.ts';
-import type { Job, Operation } from './schema.ts';
+import { toolOf, type Job, type Operation } from './schema.ts';
 
 export interface JobDiff {
   added: { id: string; label: string }[];
@@ -46,8 +46,8 @@ export function diffJobs(before: Job, after: Job): JobDiff {
   if (!same(before.tools, after.tools)) {
     const ids = new Set([...before.tools, ...after.tools].map((t) => t.id));
     for (const id of ids) {
-      const a = before.tools.find((t) => t.id === id);
-      const b = after.tools.find((t) => t.id === id);
+      const a = toolOf(before, id);
+      const b = toolOf(after, id);
       if (!a) d.other.push(`tool T${id} added`);
       else if (!b) d.other.push(`tool T${id} removed`);
       else if (!same(a, b)) d.other.push(`tool T${id} changed`);

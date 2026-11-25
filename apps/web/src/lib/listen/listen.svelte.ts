@@ -2,6 +2,7 @@
  * The microphone on the cut: a spectrum ten times a second, judged by chatter.ts against the
  * spindle speed the controller reports and the teeth of the tool that is in.
  */
+import { toolOf } from '@swarf/cam';
 import { Ear, background, listen, stableSpeeds, type Heard, type Spectrum } from './chatter.ts';
 import { machine } from '../machine.svelte.ts';
 import { store } from '../store.svelte.ts';
@@ -48,7 +49,7 @@ class Listening {
   get teeth(): number {
     if (this.teethSet) return this.teethSet;
     if (store.job.machine.kind === 'lathe') return 1;
-    const t = store.job.tools.find((x) => x.id === tooling.active);
+    const t = toolOf(store.job, tooling.active);
     return t?.flutes ?? (t?.type === 'drill' ? 2 : 2);
   }
   /** The spindle speed as the controller reports it (with its override), rpm. */

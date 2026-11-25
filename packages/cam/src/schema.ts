@@ -96,6 +96,9 @@ export const Tool = z.object({
 });
 export type Tool = z.infer<typeof Tool>;
 
+/** The job's tool with this number (undefined: there is none). */
+export const toolOf = (job: { tools: Tool[] }, id: number | null | undefined): Tool | undefined => job.tools.find((t) => t.id === id);
+
 /**
  * A pointed cutter's cone: tan of half the angle at the point, the radius of the flat at its
  * tip, and how high the cone rises from the tip to the full diameter.

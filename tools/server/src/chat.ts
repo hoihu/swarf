@@ -11,8 +11,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { ChatEvent, HarnessId, HarnessInfo } from '@swarf/agent';
 import { spawnCli, type ChatJob, type DoneEvent, type Harness, type Invocation, type RunSink } from './harness/types.ts';
-import { tokensMatch } from './mcp.ts';
-import type { ChatMessage, LocalServer } from './server.ts';
+import { sameSecret, type ChatMessage, type LocalServer } from './server.ts';
 
 export interface ChatRunnerOptions {
   server: LocalServer;
@@ -49,7 +48,7 @@ export class ChatRunner {
 
   /** A bearer token of a run that is still going. */
   validToken = (token: string): boolean => {
-    for (const r of this.#runs.values()) if (!r.done && tokensMatch(r.token, token)) return true;
+    for (const r of this.#runs.values()) if (!r.done && sameSecret(r.token, token)) return true;
     return false;
   };
 

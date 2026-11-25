@@ -1,12 +1,13 @@
 <script lang="ts">
   /** Tool changes: carrying the work zero over to the new tool (tooling.svelte.ts). */
+  import { toolOf } from '@swarf/cam';
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
   import { tooling } from './tooling.svelte.ts';
   import { camera } from './camera/camera.svelte.ts';
 
   const tools = $derived(store.job.tools);
-  const name = (id: number | null) => (id === null ? '' : `T${id} ${tools.find((t) => t.id === id)?.name ?? ''}`.trim());
+  const name = (id: number | null) => (id === null ? '' : `T${id} ${toolOf(store.job, id)?.name ?? ''}`.trim());
   const idle = $derived(machine.connected && machine.status?.state === 'Idle' && machine.job !== 'running' && machine.job !== 'paused' && !tooling.busy);
   const withOffset = $derived(tools.filter((t) => t.offset));
   const mill = $derived(store.job.machine.kind === 'mill');
@@ -14,7 +15,7 @@
   const fmt = (v: number) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3);
 
   // the camera, when it is running and calibrated, can tell whether the right cutter went in
-  const pendingTool = $derived(tools.find((t) => t.id === tooling.pending));
+  const pendingTool = $derived(toolOf(store.job, tooling.pending));
   const canLook = $derived(mill && camera.running && camera.ready && !!pendingTool?.diameter);
   let looked = $state<{ id: number; ok: boolean; text: string } | null>(null);
   async function look(): Promise<void> {

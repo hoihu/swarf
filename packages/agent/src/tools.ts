@@ -14,6 +14,7 @@ import {
   analyze,
   bbox,
   emit,
+  errorsOf,
   opLabel,
   withIds,
   type Diagnostic,
@@ -157,7 +158,7 @@ export function formatDiagnostics(d: Diagnostic[], limit = 12): string {
   if (!d.length) return 'checks: clean';
   const lines = d.slice(0, limit).map((x) => `  ${x.severity.toUpperCase()} ${x.code}${x.opId ? ` [${x.opId}]` : ''}: ${x.message}`);
   if (d.length > limit) lines.push(`  … ${d.length - limit} more`);
-  return `checks: ${d.filter((x) => x.severity === 'error').length} error(s), ${d.filter((x) => x.severity === 'warning').length} warning(s)\n${lines.join('\n')}`;
+  return `checks: ${errorsOf(d).length} error(s), ${d.filter((x) => x.severity === 'warning').length} warning(s)\n${lines.join('\n')}`;
 }
 
 function after(job: Job, what: string): string {

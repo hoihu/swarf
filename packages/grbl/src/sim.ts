@@ -11,7 +11,13 @@
  * Not modelled: acceleration, arcs as arcs (G2/G3 go straight to their end point), limits.
  * Lathe mode: X in reports and words is a diameter (G7), as swarf assumes grblHAL reports it.
  */
-import type { Transport } from './streamer.ts';
+import { RT, type Transport } from './streamer.ts';
+
+/** What each override byte adds to its override (in %); null: back to 100 %. */
+const SPINDLE_STEP = new Map<string, number | null>([[RT.spindle100, null], [RT.spindlePlus10, 10], [RT.spindleMinus10, -10], [RT.spindlePlus1, 1], [RT.spindleMinus1, -1]]);
+const FEED_STEP = new Map<string, number | null>([[RT.feed100, null], [RT.feedPlus10, 10], [RT.feedMinus10, -10], [RT.feedPlus1, 1], [RT.feedMinus1, -1]]);
+const RAPID = new Map<string, number>([[RT.rapid100, 100], [RT.rapid50, 50], [RT.rapid25, 25]]);
+const overridden = (now: number, step: number | null) => (step === null ? 100 : Math.max(10, Math.min(200, now + step)));
 
 export interface SimOptions {
   lathe?: boolean;
@@ -110,35 +116,33 @@ export class SimGrbl implements Transport {
   }
 
   async write(data: string): Promise<void> {
-    if (data === '\x85') {
+    if (data === RT.jogCancel) {
       // jog cancel: drop the jogs, stop where it is
       this.#queue = this.#queue.filter((m) => m === 'M0' || !m.jog);
       return;
     }
-    if (data.length === 1 && data.charCodeAt(0) >= 0x99 && data.charCodeAt(0) <= 0x9d) {
+    if (SPINDLE_STEP.has(data)) {
       // spindle speed override
-      const c = data.charCodeAt(0);
-      this.spindleOverride = c === 0x99 ? 100 : Math.max(10, Math.min(200, this.spindleOverride + (c === 0x9a ? 10 : c === 0x9b ? -10 : c === 0x9c ? 1 : -1)));
+      this.spindleOverride = overridden(this.spindleOverride, SPINDLE_STEP.get(data) ?? null);
       return;
     }
-    if (data.length === 1 && data.charCodeAt(0) >= 0x90 && data.charCodeAt(0) <= 0x94) {
+    if (FEED_STEP.has(data)) {
       // feed override: 100 %, ±10 %, ±1 % (10 to 200 %); it acts on the move under way too
-      const c = data.charCodeAt(0);
-      this.feedOverride = c === 0x90 ? 100 : Math.max(10, Math.min(200, this.feedOverride + (c === 0x91 ? 10 : c === 0x92 ? -10 : c === 0x93 ? 1 : -1)));
+      this.feedOverride = overridden(this.feedOverride, FEED_STEP.get(data) ?? null);
       return;
     }
-    if (data.length === 1 && data.charCodeAt(0) >= 0x95 && data.charCodeAt(0) <= 0x97) {
+    if (RAPID.has(data)) {
       // rapid override: 100, 50 or 25 %
-      this.rapidOverride = [100, 50, 25][data.charCodeAt(0) - 0x95]!;
+      this.rapidOverride = RAPID.get(data)!;
       return;
     }
     if (data.length === 1 && data.charCodeAt(0) >= 0x80) return; // other real-time commands: ignored
-    if (data === '?') return this.#emit(`${this.#report()}\r\n`);
-    if (data === '!') {
+    if (data === RT.status) return this.#emit(`${this.#report()}\r\n`);
+    if (data === RT.hold) {
       this.#hold = true;
       return;
     }
-    if (data === '~') {
+    if (data === RT.resume) {
       this.#hold = false;
       if (this.#m0) {
         this.#m0 = false;
@@ -146,7 +150,7 @@ export class SimGrbl implements Transport {
       }
       return;
     }
-    if (data === '\x18') {
+    if (data === RT.reset) {
       this.spindleOverride = this.feedOverride = this.rapidOverride = 100;
       this.#queue = [];
       this.#held = [];

@@ -8,7 +8,7 @@
   import SetupBar from './SetupBar.svelte';
   import { ui } from './ui.svelte.ts';
   import { download as saveAs, fileName, files, programName } from './files.svelte.ts';
-  import { inLibrary, reviewJob, toolSummary } from '@swarf/cam';
+  import { hasErrors, inLibrary, reviewJob, toolOf, toolSummary } from '@swarf/cam';
 
   type Tab = 'ops' | 'stock' | 'tools' | 'gcode';
   let tab = $state<Tab>('ops');
@@ -191,7 +191,7 @@
     saveAs(fileName(programName(job), '.nc'), store.gcode.text, 'text/plain');
   }
   const gcodeLines = $derived(store.gcode.text.split('\n'));
-  const toolName = (id: number) => job.tools.find((t) => t.id === id)?.name ?? `T${id} (missing)`;
+  const toolName = (id: number) => toolOf(job, id)?.name ?? `T${id} (missing)`;
 </script>
 
 <section class="panel">
@@ -200,7 +200,7 @@
     {#each [['ops', 'Operations'], ['stock', 'Setup'], ['tools', 'Tools'], ['gcode', 'G-code']] as [id, name] (id)}
       <button role="tab" aria-selected={tab === id} class:on={tab === id} onclick={() => (tab = id as Tab)}>
         {name}
-        {#if id === 'ops' && diags.some((d) => d.severity === 'error')}<span class="dot err" title="Has errors"></span>{/if}
+        {#if id === 'ops' && hasErrors(diags)}<span class="dot err" title="Has errors"></span>{/if}
       </button>
     {/each}
   </div>
@@ -243,7 +243,7 @@
                 <span class="label">{opLabel(op)}</span>
                 <span class="sub">T{op.tool} · {toolName(op.tool)}</span>
               </span>
-              {#if ds.some((d) => d.severity === 'error')}<span class="badge err">error</span>
+              {#if hasErrors(ds)}<span class="badge err">error</span>
               {:else if ds.length}<span class="badge warn">note</span>{/if}
             </button>
             {#if store.selected === op.id}
@@ -389,12 +389,12 @@
       </div>
     {:else if tab === 'gcode'}
       <div class="row">
-        <button class="btn pri" onclick={download} disabled={store.analysis.diagnostics.some((d) => d.severity === 'error')} title="Fix errors before downloading">Download .nc</button>
+        <button class="btn pri" onclick={download} disabled={hasErrors(store.analysis.diagnostics)} title="Fix errors before downloading">Download .nc</button>
         <button class="btn" onclick={() => (files.sheet = true)} title="One page for the machine: stock, zero, tools, operations">Setup sheet</button>
         <button class="btn" onclick={() => ui.go('machine')} title="Connect the controller and run the program from here">Run it: to the machine</button>
         <span class="muted">{gcodeLines.length} lines</span>
       </div>
-      {#if store.analysis.diagnostics.some((d) => d.severity === 'error')}
+      {#if hasErrors(store.analysis.diagnostics)}
         <p class="diag error">The job has errors; fix them before running this on the machine.</p>
       {/if}
       <MeasuredNote />

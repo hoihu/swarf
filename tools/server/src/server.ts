@@ -33,7 +33,8 @@ export type ChatMessage = Extract<TabToServer, { type: 'chat' | 'chat_cancel' }>
 
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::(\d+))?$/;
 
-export function secretsMatch(a: string, b: string): boolean {
+/** Compares a secret (the access key, a chat run's token) in constant time. */
+export function sameSecret(a: string, b: string): boolean {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
@@ -207,7 +208,7 @@ export class LocalServer {
           this.#log(`rejected tab: ${reason}`);
         };
         if (msg.protocol !== SERVER_PROTOCOL) return deny(`protocol ${msg.protocol} not supported (server speaks ${SERVER_PROTOCOL})`);
-        if (typeof msg.accessKey !== 'string' || !secretsMatch(msg.accessKey, this.accessKey)) return deny('wrong access key');
+        if (typeof msg.accessKey !== 'string' || !sameSecret(msg.accessKey, this.accessKey)) return deny('wrong access key');
         accepted = true;
         if (this.#tab && this.#tab !== ws) this.#tab.close(4000, 'replaced by another tab');
         this.#tab = ws;

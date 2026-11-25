@@ -5,7 +5,7 @@
  * a machine would not).
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { EXAMPLES, Job, analyze, emit, hasErrors, resumeFrom } from '@swarf/cam';
+import { EXAMPLES, Job, analyze, emit, errorsOf, hasErrors, resumeFrom } from '@swarf/cam';
 import { SimGrbl, Streamer, type JobState } from '@swarf/grbl';
 import { simWorld } from '../src/lib/simworld.ts';
 import type { SetupName } from '../src/lib/sim/setups.ts';
@@ -90,7 +90,7 @@ describe('programs on the simulated mill', () => {
       }),
     });
     const a = analyze(known);
-    expect(a.diagnostics.some((d) => d.code === 'OBSTACLE' && d.severity === 'error')).toBe(true);
+    expect(errorsOf(a.diagnostics).some((d) => d.code === 'OBSTACLE')).toBe(true);
     // and the travel height clears the bolts
     expect(a.program.home.z).toBeGreaterThan(36);
   }, 30000);

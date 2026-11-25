@@ -14,6 +14,8 @@ import {
   textStrokes,
   hasErrors,
   emit,
+  fixed,
+  roundTo,
   levels,
   walk,
   fitArcs,
@@ -1819,5 +1821,16 @@ describe('the part carried over a turn', () => {
     const t0 = performance.now();
     for (let i = 0; i < 20; i++) carried(job);
     expect((performance.now() - t0) / 20).toBeLessThan(15);
+  });
+});
+
+describe('number helpers', () => {
+  it('rounds to the given decimals, without trailing zeros or a minus zero', () => {
+    expect(fixed(12.3456, 1)).toBe('12.3');
+    expect(fixed(2.5, 2)).toBe('2.5');
+    expect(fixed(-0.04, 1)).toBe('0');
+    expect(fixed(-1.0004, 3)).toBe('-1');
+    expect(roundTo(0.12345, 3)).toBe(0.123);
+    expect(Object.is(roundTo(-0.0001, 2), 0)).toBe(true);
   });
 });

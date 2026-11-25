@@ -9,7 +9,7 @@ import { generateLathe, latheSpeedDiameter } from './ops/lathe.ts';
 import { generateMill } from './ops/mill.ts';
 import { latheSafe, millSafeZ } from './ops/context.ts';
 import { CamError, v, type Move, type Program, type Segment } from './program.ts';
-import { OP_MACHINE, OP_TOOLS, cone, type Job, type Operation, type Tool, type Vec3 } from './schema.ts';
+import { OP_MACHINE, OP_TOOLS, cone, toolOf, type Job, type Operation, type Tool, type Vec3 } from './schema.ts';
 
 export interface Diagnostic {
   severity: 'error' | 'warning';
@@ -145,7 +145,7 @@ export function generate(job: Job): Generated {
       err('OP_MACHINE', `${op.type} is a ${OP_MACHINE[op.type]} operation; this job is for a ${kind}.`);
       continue;
     }
-    const tool = job.tools.find((t) => t.id === op.tool);
+    const tool = toolOf(job, op.tool);
     if (!tool) {
       err('TOOL_MISSING', `T${op.tool} is not in the tool table.`);
       continue;

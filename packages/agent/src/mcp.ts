@@ -4,7 +4,7 @@
  * get_context (the job state the in-app agent gets with every message) and save_gcode (run by
  * the local server, which can write files).
  */
-import { analyze, emit } from '@swarf/cam';
+import { analyze, emit, errorsOf } from '@swarf/cam';
 import { formatJobContext, CAM_GUIDE } from './prompt.ts';
 import { CAM_TOOLS, TOOL_NAMES, runCamTool, type JobPort, type ToolOutcome } from './tools.ts';
 import type { ToolDefinition } from './types.ts';
@@ -84,7 +84,7 @@ export function runTabTool(port: JobPort, name: string, input: unknown): ToolOut
   if (name === TAB_GCODE_FILE) {
     const job = port.get();
     const a = analyze(job);
-    const errors = a.diagnostics.filter((d) => d.severity === 'error').map((d) => `${d.code}${d.opId ? ` [${d.opId}]` : ''}: ${d.message}`);
+    const errors = errorsOf(a.diagnostics).map((d) => `${d.code}${d.opId ? ` [${d.opId}]` : ''}: ${d.message}`);
     const out: GcodeForFile = { text: errors.length ? '' : emit(job, a.program).text, errors, name: job.name, operations: a.program.segments.length, seconds: a.seconds };
     return { content: JSON.stringify(out), isError: false, label: 'G-code for a file', detail: errors.length ? 'job has errors' : job.name };
   }

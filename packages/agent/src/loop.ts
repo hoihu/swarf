@@ -3,7 +3,7 @@
  * turn while the job has errors (within a fix budget). Ported from 4k7's loop
  * (packages/agent/src/loop.ts) with the kernel replaced by the CAM job.
  */
-import { analyze } from '@swarf/cam';
+import { analyze, errorsOf } from '@swarf/cam';
 import { SYSTEM_PROMPT, formatJobContext, formatVerification } from './prompt.ts';
 import { AskUser, CAM_TOOLS, TOOL_NAMES, formatDiagnostics, runCamTool, type JobPort, type ToolOutcome } from './tools.ts';
 import type { AgentEvent, Block, Message, Picture, Provider } from './types.ts';
@@ -139,7 +139,7 @@ export class Agent {
       }
 
       // the model considers itself done: verify
-      const errors = analyze(this.opts.job.get()).diagnostics.filter((d) => d.severity === 'error');
+      const errors = errorsOf(analyze(this.opts.job.get()).diagnostics);
       if (errors.length && fixRounds < fixBudget) {
         fixRounds++;
         const message = formatVerification(formatDiagnostics(errors));

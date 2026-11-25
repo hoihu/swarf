@@ -3,7 +3,7 @@
  * save_gcode runs here instead (it writes a file): the tab checks the job and writes the G-code
  * (the same the app shows); this side only refuses on check errors or writes the file.
  */
-import { timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, resolve } from 'node:path';
@@ -13,7 +13,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { MCP_INSTRUCTIONS, MCP_TOOL_NAMES, TAB_GCODE_FILE, chatTools, mcpTools, type GcodeForFile } from '@swarf/agent';
 import type { CallResult, LocalServer } from './server.ts';
 
-export const VERSION = '0.1.0';
+/** The relay's version, from its package.json. */
+export const VERSION: string = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 
 /** 'cli': Claude Code (or another client) drives the app; 'chat': a headless run answering the app's chat. */
 export type McpMode = 'cli' | 'chat';
@@ -78,12 +79,6 @@ export function mcpHttpHandler(relay: LocalServer, validToken: (token: string) =
     await mcp.connect(transport);
     await transport.handleRequest(req, res, body);
   };
-}
-
-export function tokensMatch(a: string, b: string): boolean {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {

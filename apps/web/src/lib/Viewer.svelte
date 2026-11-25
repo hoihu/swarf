@@ -2,7 +2,7 @@
   import { onDestroy, onMount, untrack } from 'svelte';
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-  import { LatheMaterial, MillMaterial, moveLength, samplePath, simulate, walk, type Job, type Move, type Program, type Tool, type Vec3 } from '@swarf/cam';
+  import { LatheMaterial, MillMaterial, moveLength, samplePath, simulate, toolOf, walk, type Job, type Move, type Program, type Tool, type Vec3 } from '@swarf/cam';
   import { drawingLines, latheMesh, millMesh, obstacleMeshes, pathGeometry, sceneToWork, stockOutline, toScene, type PathGeometry } from './scene.ts';
   import { CHIPS, Chips, Coolant } from './workshop/particles.ts';
   import { METAL, bedMesh, chuckGroup, latheToolMesh, millToolMesh, nozzleMesh, tableMesh } from './workshop/stage.ts';
@@ -99,7 +99,7 @@
   /** Is the cutter in the work at this tip position (work coordinates)? Roughly: within the stock. */
   function engaged(p: Vec3, toolId: number): boolean {
     const s = job.stock;
-    const r = (job.tools.find((t) => t.id === toolId)?.diameter ?? 6) / 2;
+    const r = (toolOf(job, toolId)?.diameter ?? 6) / 2;
     if (s.kind === 'block') return p.z <= s.top + 0.02 && p.x > -r && p.x < s.x + r && p.y > -r && p.y < s.y + r;
     return p.x <= s.diameter / 2 + 0.02 && p.z <= s.front + 0.02;
   }
@@ -342,7 +342,7 @@
     for (let i = moveAt(cutClock); i < moves.length; i++) {
       const move = moves[i]!.move;
       // a thread is a groove too shallow to change the outline the material keeps (as in simulate)
-      const tool = move.type === 'thread' ? undefined : job.tools.find((t) => t.id === tips[i]!.tool);
+      const tool = move.type === 'thread' ? undefined : toolOf(job, tips[i]!.tool);
       if (move.type === 'thread' && tips[i]!.cut) chipping = true;
       const u0 = fraction(i, cutClock);
       const u1 = fraction(i, s);
@@ -451,7 +451,7 @@
     const t = current();
     const p = between ?? (at > 0 ? tips[at - 1]!.p : program.home);
     const id = t?.tool ?? program.segments[0]?.tool ?? 0;
-    const spec = job.tools.find((x) => x.id === id);
+    const spec = toolOf(job, id);
     const d = spec?.diameter ?? 6;
     const key = `${lathe}:${spec?.type}:${d}:${spec?.angle}:${look.coolant}`;
     if (key !== toolKey) {
@@ -608,7 +608,7 @@
       dirty = true;
     }
     if (cutting && look.chips) {
-      const d = job.tools.find((x) => x.id === (t?.tool ?? 0))?.diameter ?? 6;
+      const d = toolOf(job, t?.tool ?? 0)?.diameter ?? 6;
       const away = new THREE.Vector3();
       if (lathe) away.set(0.35, 0.5, 0.8).normalize();
       else {
@@ -622,7 +622,7 @@
     }
     if (look.coolant && rpm > 0 && !overlay && nozzle && tool) {
       const mouth = (nozzle.userData.mouth as THREE.Vector3).clone().add(tool.position);
-      const d = job.tools.find((x) => x.id === (t?.tool ?? 0))?.diameter ?? 6;
+      const d = toolOf(job, t?.tool ?? 0)?.diameter ?? 6;
       const target = lathe ? tip.clone().add(new THREE.Vector3(0.5, 0.5, 0)) : tip.clone().add(new THREE.Vector3(-d * 0.3, d * 0.5, d * 0.2));
       const width = Math.max(0.9, Math.min(1.6, d * 0.2));
       coolant.emit(mouth, target, width, dt);

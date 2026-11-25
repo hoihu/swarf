@@ -8,7 +8,7 @@ import { walk, type Program } from './program.ts';
 import { alignmentChecks } from './align.ts';
 import { carried } from './carry.ts';
 import { plannedSeconds } from './planner.ts';
-import { cone, type Job, type Tool, type Vec3 } from './schema.ts';
+import { cone, toolOf, type Job, type Tool, type Vec3 } from './schema.ts';
 import { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
 import { cuttingData } from './feeds.ts';
 import { MATERIALS } from './materials.ts';
@@ -60,7 +60,7 @@ export function simulate(job: Job, program: Program, upTo = Infinity, o: { walls
     if (index >= upTo) break;
     const segment = program.segments[seg]!;
     const opId = segment.opId;
-    const tool = job.tools.find((t) => t.id === segment.tool) as Tool;
+    const tool = toolOf(job, segment.tool) as Tool;
     const pts = samplePath(from, move, step);
     // obstacles (mill): the tool is a cylinder from its tip up; any move, rapids too, must keep it clear
     if (!lathe && job.obstacles.length && tool) {
@@ -185,7 +185,9 @@ export function analyze(job: Job): Analysis {
   };
 }
 
-export const hasErrors = (d: Diagnostic[]) => d.some((x) => x.severity === 'error');
+/** The diagnostics (or sheet problems) that block: the program must not run with any of them. */
+export const errorsOf = <T extends { severity: string }>(d: T[]): T[] => d.filter((x) => x.severity === 'error');
+export const hasErrors = (d: { severity: string }[]) => errorsOf(d).length > 0;
 
 /**
  * Starting again at segment `seg` (after a stop, a broken tool): the program as it will then run,
