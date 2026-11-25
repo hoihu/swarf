@@ -6,7 +6,6 @@ export { analyze, simulate, hasErrors, resumeFrom, type Analysis } from './check
 export { lintGcode, type LintDiagnostic } from './lint-gcode.ts';
 export { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
 export { emit, num, type Emitted } from './emit.ts';
-export { parseGcode, type Parsed, type ParsedMove } from './parse.ts';
 export { LATHE, MILL, LATHE_TOOLS, MILL_TOOLS, EXAMPLES, emptyJob } from './presets.ts';
 export { plannedSeconds, type PlannerSettings } from './planner.ts';
 export { buildProfile, offsetProfile, tipPath, zAtRadius, type P2 } from './ops/profile.ts';

@@ -7,7 +7,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { analyze, emit, openJobFile, parseGcode, walk, type MillMaterial, type Move } from '../src/index.ts';
+import { analyze, emit, openJobFile, walk, type MillMaterial, type Move } from '../src/index.ts';
+import { parseGcode } from './support/parse.ts';
 
 const TOL = 0.005; // 5 µm
 
