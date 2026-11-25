@@ -3,15 +3,10 @@
   import { probe } from './probe.svelte.ts';
   import { store } from './store.svelte.ts';
   import MeasuredNote from './MeasuredNote.svelte';
+  import { load, save } from './persist.ts';
 
   const KEY = 'swarf.probe';
-  const saved = (() => {
-    try {
-      return JSON.parse(localStorage.getItem(KEY) ?? '{}') as { plate?: number };
-    } catch {
-      return {};
-    }
-  })();
+  const saved = load<{ plate?: number }>(KEY, {});
   let plate = $state(saved.plate ?? 10);
   const endmills = $derived(store.job.tools.filter((t) => t.type === 'endmill'));
   let toolId = $state<number | null>(null);
@@ -39,11 +34,7 @@
   }
 
   function remember(): void {
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ plate }));
-    } catch {
-      // not kept
-    }
+    save(KEY, { plate });
   }
 </script>
 

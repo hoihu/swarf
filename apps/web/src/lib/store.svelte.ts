@@ -3,6 +3,7 @@
  */
 import { EXAMPLES, Job, analyze, emit, type Analysis, type Emitted } from '@swarf/cam';
 import { API_SERVICES, isHarnessId, type ApiChoice, type HarnessId } from '@swarf/agent';
+import { load, save } from './persist.ts';
 
 const JOB_KEY = 'swarf.job';
 const API_KEY = 'swarf.api';
@@ -11,40 +12,35 @@ const ENGINE_KEY = 'swarf.engine';
 /** Who answers the chat: a coding agent's CLI through the local server, a model API with the user's key, or whichever is there (the CLI first). */
 export type Engine = 'auto' | 'local' | 'api';
 
-function load<T>(key: string, parse: (v: unknown) => T | null, fallback: () => T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const v = parse(JSON.parse(raw));
-      if (v) return v;
-    }
-  } catch {
-    // storage unavailable or corrupt: start fresh
-  }
-  return fallback();
+function keptApi(): ApiChoice | null {
+  const v = load<unknown>(API_KEY, null);
+  return v && typeof v === 'object' && 'service' in v ? (v as ApiChoice) : null;
 }
 
-function save(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // private window or full storage: the session still works
-  }
+function keptEngine(): Engine | null {
+  const v = load<unknown>(ENGINE_KEY, null);
+  return v === 'local' || v === 'api' || v === 'auto' ? v : null;
+}
+
+function keptHarness(): HarnessId | null {
+  const v = load<unknown>('swarf.harness', null);
+  return isHarnessId(v) ? v : null;
+}
+
+function keptModels(): Partial<Record<HarnessId, string>> | null {
+  const v = load<unknown>('swarf.models', null);
+  return v && typeof v === 'object' ? (v as Partial<Record<HarnessId, string>>) : null;
 }
 
 class Store {
-  job = $state<Job>(load(JOB_KEY, (v) => Job.safeParse(v).data ?? null, () => EXAMPLES.lathe()));
+  job = $state<Job>(Job.safeParse(load(JOB_KEY, null)).data ?? EXAMPLES.lathe());
   history = $state<Job[]>([]);
-  api = $state<ApiChoice>(
-    load<ApiChoice>(API_KEY, (v) => (v && typeof v === 'object' && 'service' in v ? (v as ApiChoice) : null), () => ({ service: 'anthropic', baseURL: '', apiKey: '', model: API_SERVICES[0]!.models[0]! })),
-  );
-  engine = $state<Engine>(load<Engine>(ENGINE_KEY, (v) => (v === 'local' || v === 'api' || v === 'auto' ? v : null), () => 'auto'));
+  api = $state<ApiChoice>(keptApi() ?? { service: 'anthropic', baseURL: '', apiKey: '', model: API_SERVICES[0]!.models[0]! });
+  engine = $state<Engine>(keptEngine() ?? 'auto');
   /** Which coding agent on this computer answers. */
-  harness = $state<HarnessId>(load<HarnessId>('swarf.harness', (v) => (isHarnessId(v) ? v : null), () => 'claude'));
+  harness = $state<HarnessId>(keptHarness() ?? 'claude');
   /** Model per coding agent ('' or missing = the CLI's default). */
-  models = $state<Partial<Record<HarnessId, string>>>(
-    load<Partial<Record<HarnessId, string>>>('swarf.models', (v) => (v && typeof v === 'object' ? (v as Partial<Record<HarnessId, string>>) : null), () => ({})),
-  );
+  models = $state<Partial<Record<HarnessId, string>>>(keptModels() ?? {});
 
   /** The model for the chosen coding agent ('' = its default). */
   get model(): string {
@@ -84,9 +80,7 @@ class Store {
 
   /** Take another setup of the same job in hand (or add one): undoable, and a running agent turn stops editing. */
   setup(job: Job): void {
-    this.epoch++;
-    this.selected = null;
-    this.set(job);
+    this.replace(job);
   }
 
   /** Mark the current job as an undo point without changing it (before an agent turn). */

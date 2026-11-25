@@ -6,6 +6,7 @@
 import { fixed, roundTo, toolOf } from '@swarf/cam';
 import { machine } from './machine.svelte.ts';
 import { simWorld } from './simworld.ts';
+import { load, remove, save } from './persist.ts';
 import { store } from './store.svelte.ts';
 import { learned, measureOnSetter, shifted, zAfterChange, type Setter, type SetterPort, type ToolOffset, type V3 } from './tooling.ts';
 
@@ -30,12 +31,8 @@ class Tooling {
   #reading: number | null = null;
 
   constructor() {
-    try {
-      const s = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Setter | null;
-      if (s && [s.x, s.y, s.z, s.depth].every(Number.isFinite)) this.setter = s;
-    } catch {
-      // none
-    }
+    const s = load<Setter | null>(KEY, null);
+    if (s && [s.x, s.y, s.z, s.depth].every(Number.isFinite)) this.setter = s;
   }
 
   get lathe(): boolean {
@@ -159,11 +156,7 @@ class Tooling {
     this.setter = { x: m[0]!, y: m[1]!, z: m[2]!, depth: 60 };
     this.#reading = null;
     this.hasReading = false;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(this.setter));
-    } catch {
-      // not kept
-    }
+    save(KEY, this.setter);
   }
   /** The simulated mill's setter (the simulator knows where it stands). */
   useSimulatedSetter(): void {
@@ -173,11 +166,7 @@ class Tooling {
   }
   removeSetter(): void {
     this.setter = null;
-    try {
-      localStorage.removeItem(KEY);
-    } catch {
-      // nothing
-    }
+    remove(KEY);
   }
 
   /**

@@ -5,6 +5,7 @@ import { Recorder, recorded } from './record.ts';
 import { RT, SimGrbl, Streamer, type JobState, type ProbeResult, type Reply, type Status, type Transport } from '@swarf/grbl';
 import { simWorld } from './simworld.ts';
 import { store } from './store.svelte.ts';
+import { loadText, saveText } from './persist.ts';
 import { openSerial, serialSupported } from './serial.ts';
 import { openWebSocket } from './websocket.ts';
 
@@ -28,13 +29,7 @@ class Machine {
   console = $state<ConsoleLine[]>([]);
   readonly supported = serialSupported();
   /** Network address of a grblHAL board (ws://host:81), remembered. */
-  url = $state<string>((() => {
-    try {
-      return localStorage.getItem(URL_KEY) ?? '';
-    } catch {
-      return '';
-    }
-  })());
+  url = $state<string>(loadText(URL_KEY) ?? '');
   #s: Streamer | null = null;
   /** The last probing result (machine coordinates as the controller reports them). */
   probe = $state<ProbeResult | null>(null);
@@ -89,11 +84,7 @@ class Machine {
       } else if (network) {
         const [address, protocol] = this.url.trim().split(/\s+/);
         if (!address) throw new Error('Give the controller\'s address, e.g. ws://192.168.1.50:81');
-        try {
-          localStorage.setItem(URL_KEY, this.url.trim());
-        } catch {
-          // not remembered
-        }
+        saveText(URL_KEY, this.url.trim());
         t = await openWebSocket(/^wss?:\/\//.test(address) ? address : `ws://${address}`, protocol);
       } else t = await openSerial();
       this.label = t.label;

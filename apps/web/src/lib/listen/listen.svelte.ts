@@ -5,6 +5,7 @@
 import { toolOf } from '@swarf/cam';
 import { Ear, background, listen, stableSpeeds, type Heard, type Spectrum } from './chatter.ts';
 import { machine } from '../machine.svelte.ts';
+import { load, remove, save } from '../persist.ts';
 import { store } from '../store.svelte.ts';
 import { tooling } from '../tooling.svelte.ts';
 
@@ -37,12 +38,8 @@ class Listening {
   #buf: Float32Array<ArrayBuffer> | null = null;
 
   constructor() {
-    try {
-      const v = JSON.parse(localStorage.getItem(KEY) ?? '{}') as { air?: number[] };
-      if (Array.isArray(v.air)) this.air = v.air.filter(Number.isFinite);
-    } catch {
-      // none
-    }
+    const v = load<{ air?: number[] }>(KEY, {});
+    if (Array.isArray(v.air)) this.air = v.air.filter(Number.isFinite);
   }
 
   /** Cutting edges of the tool that is in (the lathe: one). */
@@ -119,19 +116,11 @@ class Listening {
     this.air = background(this.spectrum);
     this.last = null;
     this.#ear.reset();
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ air: this.air }));
-    } catch {
-      // not kept
-    }
+    save(KEY, { air: this.air });
   }
   forgetAir(): void {
     this.air = [];
-    try {
-      localStorage.removeItem(KEY);
-    } catch {
-      // nothing to forget
-    }
+    remove(KEY);
   }
 
   /** Speeds to try for the last ring heard: in step with it, within what the machine and the override can do. */

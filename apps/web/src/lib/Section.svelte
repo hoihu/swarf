@@ -1,16 +1,9 @@
 <script lang="ts" module>
   /** Which sections the user has open, kept between visits ('all': every one, for the checks in scripts/). */
+  import { load, loadText, save } from './persist.ts';
+
   const KEY = 'swarf.sections';
-  function load(): Record<string, boolean> | 'all' {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw === 'all') return 'all';
-      return (JSON.parse(raw ?? '{}') as Record<string, boolean>) ?? {};
-    } catch {
-      return {};
-    }
-  }
-  const kept = load();
+  const kept: Record<string, boolean> | 'all' = loadText(KEY) === 'all' ? 'all' : load<Record<string, boolean>>(KEY, {});
 </script>
 
 <script lang="ts">
@@ -33,11 +26,7 @@
     open = (e.currentTarget as HTMLDetailsElement).open;
     if (kept === 'all') return;
     kept[id] = open;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(kept));
-    } catch {
-      // not kept
-    }
+    save(KEY, kept);
   }
 </script>
 

@@ -12,6 +12,7 @@
   import { camera as cam } from './camera/camera.svelte.ts';
   import { glProjection, glView } from './camera/geometry.ts';
   import { laserScan } from './camera/laserscan.svelte.ts';
+  import { load, save } from './persist.ts';
 
   let {
     job,
@@ -485,13 +486,7 @@
   const VIEW_KEY = 'swarf.view';
   /** Where the eye is from the target, and the target from the work's centre, both in units of the work's size. */
   type SavedView = { d: [number, number, number]; t: [number, number, number] };
-  const savedViews: Record<string, SavedView> = (() => {
-    try {
-      return JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as Record<string, SavedView>;
-    } catch {
-      return {};
-    }
-  })();
+  const savedViews = load<Record<string, SavedView>>(VIEW_KEY, {});
   let viewMoved = false;
   /** The page goes away while the view still glides: keep it as it is now. */
   const leaving = () => {
@@ -500,11 +495,7 @@
   const fitCenter = new THREE.Vector3();
   let fitSize = 1;
   function keepViews(): void {
-    try {
-      localStorage.setItem(VIEW_KEY, JSON.stringify(savedViews));
-    } catch {
-      // not kept
-    }
+    save(VIEW_KEY, savedViews);
   }
   /** Remember where the user turned the view to. */
   function rememberView(): void {
