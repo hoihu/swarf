@@ -1,10 +1,10 @@
 /**
- * Reads G-code back into moves, for previewing files from elsewhere and for round-trip tests.
+ * Reads G-code back into moves, for round-trip tests.
  * Understands the same boring subset the emitter writes (plus G20 inches and G91 incremental);
  * anything else is reported, not guessed at.
  */
-import type { Move } from './program.ts';
-import type { MachineKind, Vec3 } from './schema.ts';
+import type { Move } from '../../src/program.ts';
+import type { MachineKind, Vec3 } from '../../src/schema.ts';
 
 export interface ParsedMove {
   move: Move;

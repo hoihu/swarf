@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseGcode } from './support/parse.ts';
 import {
   EXAMPLES, emptyJob, carried, plainSetup, unmapPoint, mapPoint, faceAfter, turnedSize, setupList, setupJobs, switchSetup, addSetup, removeSetup, renameSetup, leftBy,
   alignProgram, surfaceAt, isAligned, reviewJob, adaptivePlans, offsetRegion, inRegion,
@@ -14,7 +15,6 @@ import {
   hasErrors,
   emit,
   levels,
-  parseGcode,
   walk,
   fitArcs,
   diffJobs,
