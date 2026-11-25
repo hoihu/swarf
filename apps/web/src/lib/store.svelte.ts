@@ -38,12 +38,12 @@ class Store {
   api = $state<ApiChoice>(
     load<ApiChoice>(API_KEY, (v) => (v && typeof v === 'object' && 'service' in v ? (v as ApiChoice) : null), () => ({ service: 'anthropic', baseURL: '', apiKey: '', model: API_SERVICES[0]!.models[0]! })),
   );
-  engine = $state<Engine>(load<Engine>(ENGINE_KEY, (v) => (v === 'claude-code' ? 'local' : v === 'local' || v === 'api' || v === 'auto' ? v : null), () => 'auto'));
+  engine = $state<Engine>(load<Engine>(ENGINE_KEY, (v) => (v === 'local' || v === 'api' || v === 'auto' ? v : null), () => 'auto'));
   /** Which coding agent on this computer answers. */
   harness = $state<HarnessId>(load<HarnessId>('swarf.harness', (v) => (isHarnessId(v) ? v : null), () => 'claude'));
   /** Model per coding agent ('' or missing = the CLI's default). */
   models = $state<Partial<Record<HarnessId, string>>>(
-    load<Partial<Record<HarnessId, string>>>('swarf.models', (v) => (v && typeof v === 'object' ? (v as Partial<Record<HarnessId, string>>) : null), () => ({ claude: load<string>('swarf.ccModel', (v) => (typeof v === 'string' ? v : null), () => '') })),
+    load<Partial<Record<HarnessId, string>>>('swarf.models', (v) => (v && typeof v === 'object' ? (v as Partial<Record<HarnessId, string>>) : null), () => ({})),
   );
 
   /** The model for the chosen coding agent ('' = its default). */

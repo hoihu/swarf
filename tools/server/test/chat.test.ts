@@ -76,9 +76,8 @@ describe('chat via Claude Code', () => {
     const { welcome } = await setup();
     expect(welcome).toMatchObject({
       type: 'welcome',
-      chat: { available: true, version: '9.9.9 (Claude Code, fake)' },
       harnesses: [
-        { id: 'claude', available: true },
+        { id: 'claude', available: true, version: '9.9.9 (Claude Code, fake)' },
         { id: 'copilot', name: 'GitHub Copilot CLI', available: true, version: 'GitHub Copilot CLI 9.9.9 (fake)' },
         { id: 'codex', available: true, version: 'codex-cli 0.166.0' },
         { id: 'opencode', name: 'OpenCode', available: true, version: '9.9.9' },

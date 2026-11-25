@@ -25,13 +25,13 @@ async function startServer(): Promise<LocalServer> {
 }
 
 /** A tab that runs tools against an in-memory job, like the app does. */
-async function fakeTab(s: LocalServer, opts: { key?: string; origin?: string; job?: Job; pictures?: { data: string; mimeType: string }[] } = {}): Promise<{ ws: WebSocket; job: () => Job; first: ServerToTab }> {
+async function fakeTab(s: LocalServer, opts: { key?: string; protocol?: number; origin?: string; job?: Job; pictures?: { data: string; mimeType: string }[] } = {}): Promise<{ ws: WebSocket; job: () => Job; first: ServerToTab }> {
   let job = opts.job ?? emptyJob('lathe');
   const port = { get: () => job, set: (j: Job) => (job = j), pictures: () => opts.pictures ?? [] };
   const ws = new WebSocket(`ws://127.0.0.1:${s.port}`, { origin: opts.origin ?? 'http://localhost:5173' });
   cleanup.push(async () => ws.close());
   const first = await new Promise<ServerToTab>((resolve, reject) => {
-    ws.once('open', () => ws.send(JSON.stringify({ type: 'hello', protocol: SERVER_PROTOCOL, accessKey: opts.key ?? KEY, client: 'test' } satisfies TabToServer)));
+    ws.once('open', () => ws.send(JSON.stringify({ type: 'hello', protocol: opts.protocol ?? SERVER_PROTOCOL, accessKey: opts.key ?? KEY, client: 'test' } satisfies TabToServer)));
     ws.once('message', (raw) => resolve(JSON.parse(String(raw)) as ServerToTab));
     ws.once('close', () => resolve({ type: 'denied', reason: 'closed' }));
     ws.once('error', reject);
@@ -65,6 +65,7 @@ describe('relay', () => {
     const s = await startServer();
     expect((await fakeTab(s, { key: 'wrong-key-0123456789' })).first).toEqual({ type: 'denied', reason: 'wrong access key' });
     expect((await fakeTab(s, { origin: 'https://evil.example' })).first.type).toBe('denied');
+    expect((await fakeTab(s, { protocol: SERVER_PROTOCOL + 1 })).first).toEqual({ type: 'denied', reason: `protocol ${SERVER_PROTOCOL + 1} not supported (server speaks ${SERVER_PROTOCOL})` });
     const ok = await fakeTab(s);
     expect(ok.first).toMatchObject({ type: 'welcome', protocol: SERVER_PROTOCOL });
     expect(s.connected).toBe(true);
