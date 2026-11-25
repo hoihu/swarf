@@ -1,5 +1,6 @@
 /** How the preview looks: the surroundings and the effects, as the user set them (kept in the browser). */
 import { loadPicture, savePicture, type SurroundName } from './surround.ts';
+import { load, save } from '../persist.ts';
 
 const KEY = 'swarf.look';
 
@@ -37,19 +38,15 @@ class Look {
   asked = false;
 
   constructor() {
-    try {
-      const s = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Saved>) };
-      this.surround = s.surround;
-      this.chips = s.chips;
-      this.coolant = s.coolant;
-      this.shadows = s.shadows;
-      this.soften = s.soften;
-      if ((SPEEDS as readonly number[]).includes(s.speed ?? 0)) this.speed = s.speed ?? 0;
-      this.asked = !!s.asked;
-      // sound never starts by itself
-    } catch {
-      // defaults
-    }
+    const s = { ...DEFAULTS, ...load<Partial<Saved>>(KEY, {}) };
+    this.surround = s.surround;
+    this.chips = s.chips;
+    this.coolant = s.coolant;
+    this.shadows = s.shadows;
+    this.soften = s.soften;
+    if ((SPEEDS as readonly number[]).includes(s.speed ?? 0)) this.speed = s.speed ?? 0;
+    this.asked = !!s.asked;
+    // sound never starts by itself
     if (typeof indexedDB !== 'undefined')
       void loadPicture().then(async (b) => {
         if (b) this.picture = await createImageBitmap(b).catch(() => null);
@@ -58,11 +55,7 @@ class Look {
   }
 
   save(): void {
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ surround: this.surround, chips: this.chips, coolant: this.coolant, shadows: this.shadows, sound: false, soften: this.soften, speed: this.speed, asked: this.asked } satisfies Saved));
-    } catch {
-      // not kept
-    }
+    save(KEY, { surround: this.surround, chips: this.chips, coolant: this.coolant, shadows: this.shadows, sound: false, soften: this.soften, speed: this.speed, asked: this.asked } satisfies Saved);
   }
 
   /** A picture dropped or chosen: it becomes the surroundings. */

@@ -6,6 +6,7 @@
 import { SERVER_PROTOCOL, parseConnect, runTabTool, type ChatEvent, type HarnessId, type HarnessInfo, type ServerToTab, type TabToServer } from '@swarf/agent';
 import type { Job } from '@swarf/cam';
 import { store } from './store.svelte.ts';
+import { load, remove, save } from './persist.ts';
 
 const KEY = 'swarf.connect';
 
@@ -34,11 +35,7 @@ class Bridge {
   start(): void {
     const fromLink = parseConnect(location.hash);
     if (fromLink) {
-      try {
-        localStorage.setItem(KEY, JSON.stringify(fromLink));
-      } catch {
-        // not remembered; this session still connects
-      }
+      save(KEY, fromLink);
       history.replaceState(null, '', location.pathname + location.search);
     }
     this.#target = fromLink ?? this.#saved();
@@ -47,11 +44,7 @@ class Bridge {
 
   /** Forget the server (the header's disconnect). */
   forget(): void {
-    try {
-      localStorage.removeItem(KEY);
-    } catch {
-      // nothing to forget
-    }
+    remove(KEY);
     this.#target = null;
     clearTimeout(this.#timer);
     this.#ws?.close();
@@ -75,12 +68,8 @@ class Bridge {
   }
 
   #saved(): { accessKey: string; port: number } | null {
-    try {
-      const v = JSON.parse(localStorage.getItem(KEY) ?? 'null') as { accessKey?: unknown; port?: unknown } | null;
-      return v && typeof v.accessKey === 'string' && typeof v.port === 'number' ? { accessKey: v.accessKey, port: v.port } : null;
-    } catch {
-      return null;
-    }
+    const v = load<{ accessKey?: unknown; port?: unknown } | null>(KEY, null);
+    return v && typeof v.accessKey === 'string' && typeof v.port === 'number' ? { accessKey: v.accessKey, port: v.port } : null;
   }
 
   #connect(): void {

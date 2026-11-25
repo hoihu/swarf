@@ -186,7 +186,7 @@ export function cover(t: THREE.Texture, aspect: number): void {
   }
 }
 
-// ---- keeping the user's picture (IndexedDB: too big for localStorage) ----
+// ---- keeping the user's picture (IndexedDB: too big for what persist.ts keeps) ----
 
 const DB = 'swarf';
 const STORE = 'files';

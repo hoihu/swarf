@@ -11,6 +11,7 @@ import { measureBlock, toGrey, type BlockFit, type Grey } from './setup.ts';
 import { findEnd, findShoulder, measureCylinder } from './caliper.ts';
 import type { LaserPlane } from './laser.ts';
 import { machine } from '../machine.svelte.ts';
+import { load, save } from '../persist.ts';
 import { store } from '../store.svelte.ts';
 import { simWorld } from '../simworld.ts';
 
@@ -51,11 +52,7 @@ export interface BarSeen {
 }
 
 function loadAll(): Record<string, CameraCalib> {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) ?? '{}') as Record<string, CameraCalib>;
-  } catch {
-    return {};
-  }
+  return load<Record<string, CameraCalib>>(KEY, {});
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -178,11 +175,7 @@ class Camera {
   #save(): void {
     const all = loadAll();
     all[this.#key()] = $state.snapshot(this.calib) as CameraCalib;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(all));
-    } catch {
-      // not kept: the session still has it
-    }
+    save(KEY, all);
   }
 
   /** Keep the laser's calibration with this camera's. */

@@ -4,6 +4,7 @@
  */
 import { Library, dropTool, jobFile, keepTool, libraryFile, openJobFile, openLibraryFile, takeTool, type MachineKind, type Tool } from '@swarf/cam';
 import { machine } from './machine.svelte.ts';
+import { load, save } from './persist.ts';
 import { store } from './store.svelte.ts';
 
 const KEY = 'swarf.library';
@@ -30,19 +31,11 @@ class Files {
   #timer: ReturnType<typeof setTimeout> | undefined;
 
   #load(): Library {
-    try {
-      return Library.safeParse(JSON.parse(localStorage.getItem(KEY) ?? '[]')).data ?? [];
-    } catch {
-      return [];
-    }
+    return Library.safeParse(load(KEY, [])).data ?? [];
   }
   #keep(lib: Library): void {
     this.library = lib;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(lib));
-    } catch {
-      // not kept: it stays for this visit
-    }
+    save(KEY, lib);
   }
   say(text: string, bad = false): void {
     this.message = { text, bad };
