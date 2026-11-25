@@ -29,6 +29,11 @@ function boolean(type: ClipperLib.ClipType, subject: Paths64, clip: Paths64, fil
 
 const union = (a: Paths64, fill = ClipperLib.PolyFillType.pftNonZero) => boolean(ClipperLib.ClipType.ctUnion, a, [], fill);
 
+/** A circle as a polygon of n corners, the first at angle 0, counter-clockwise. */
+export function circle(c: Pt, r: number, n = 48): Loop {
+  return Array.from({ length: n }, (_, k) => [c[0] + r * Math.cos((2 * Math.PI * k) / n), c[1] + r * Math.sin((2 * Math.PI * k) / n)] as Pt);
+}
+
 /** Signed area (positive = counter-clockwise, y up). */
 export function area(l: Loop): number {
   let a = 0;

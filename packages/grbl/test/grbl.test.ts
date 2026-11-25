@@ -419,4 +419,16 @@ describe('work offsets (simulated controller)', () => {
     await s.close();
     await sim.close();
   });
+
+  it('a number with two points is not a number: error 1, nothing set', async () => {
+    const sim = new SimGrbl({ wco: [-100, -50, -20], speed: 300 });
+    const s = new Streamer(sim, {}, { pollMs: 5 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await s.request('G10 L2 P1 Z1.2.3')).error).toBe(1);
+    expect(sim.wco).toEqual([-100, -50, -20]);
+    expect((await s.request('G10 L2 P1 Z+1.5')).ok).toBe(true);
+    expect(sim.wco).toEqual([-100, -50, 1.5]);
+    await s.close();
+    await sim.close();
+  });
 });

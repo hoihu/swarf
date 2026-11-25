@@ -9,7 +9,7 @@ import type { Analysis } from './check.ts';
 import { cuttingData, rpmFor } from './feeds.ts';
 import { opLabel, withIds } from './generate.ts';
 import { MATERIALS } from './materials.ts';
-import { plannedSeconds } from './planner.ts';
+import { segmentStats } from './planner.ts';
 import type { Job } from './schema.ts';
 import { LatheMaterial } from './sim.ts';
 
@@ -37,14 +37,11 @@ export function reviewJob(job: Job, analysis: Analysis): Finding[] {
   // per operation: deepest cut and time
   const deep = new Map<string, number>();
   const secs = new Map<string, number>();
-  let at = p.home;
-  for (const s of p.segments) {
-    secs.set(s.opId, (secs.get(s.opId) ?? 0) + plannedSeconds({ ...p, home: at, segments: [s] }, job.machine));
-    for (const m of s.moves) {
-      if (m.type !== 'rapid') deep.set(s.opId, Math.min(deep.get(s.opId) ?? Infinity, m.to.z));
-      at = m.to;
-    }
-  }
+  segmentStats(p, job.machine).forEach((g, i) => {
+    const id = p.segments[i]!.opId;
+    secs.set(id, (secs.get(id) ?? 0) + g.seconds);
+    if (g.cuts) deep.set(id, Math.min(deep.get(id) ?? Infinity, g.zMin));
+  });
 
   // one operation that takes most of the time
   if (analysis.seconds > 300) {

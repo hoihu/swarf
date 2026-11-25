@@ -9,7 +9,7 @@ import { generateLathe, latheSpeedDiameter } from './ops/lathe.ts';
 import { generateMill } from './ops/mill.ts';
 import { latheSafe, millSafeZ } from './ops/context.ts';
 import { CamError, v, type Move, type Program, type Segment } from './program.ts';
-import { OP_MACHINE, OP_TOOLS, type Job, type Operation, type Tool, type Vec3 } from './schema.ts';
+import { OP_MACHINE, OP_TOOLS, cone, type Job, type Operation, type Tool, type Vec3 } from './schema.ts';
 
 export interface Diagnostic {
   severity: 'error' | 'warning';
@@ -117,9 +117,8 @@ export function opLabel(op: Operation): string {
 function millSpeedDiameter(op: Operation, tool: Tool): number {
   const d = tool.diameter ?? 6;
   if (tool.type !== 'chamfer') return d;
-  const tan = Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
-  const tip = tool.tipDiameter ?? 0;
-  const at = (depth: number) => Math.min(d, Math.max(1, tip + 2 * depth * tan));
+  const { tan, tipR } = cone(tool);
+  const at = (depth: number) => Math.min(d, Math.max(1, 2 * tipR + 2 * depth * tan));
   if (op.type === 'mill_engrave') return at(op.depth);
   if (op.type === 'mill_spot') return Math.min(d, Math.max(1, op.diameter));
   if (op.type === 'mill_chamfer') return at(op.size / tan + op.tipClear);

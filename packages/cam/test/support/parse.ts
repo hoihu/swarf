@@ -3,6 +3,7 @@
  * Understands the same boring subset the emitter writes (plus G20 inches and G91 incremental);
  * anything else is reported, not guessed at.
  */
+import { words } from '../../src/lint-gcode.ts';
 import type { Move } from '../../src/program.ts';
 import type { MachineKind, Vec3 } from '../../src/schema.ts';
 
@@ -42,13 +43,10 @@ export function parseGcode(text: string, kind: MachineKind): Parsed {
 
   const lines = text.split(/\r?\n/);
   for (let ln = 0; ln < lines.length; ln++) {
-    const code = lines[ln]!.replace(/\([^)]*\)/g, '').replace(/;.*$/, '').trim().toUpperCase();
-    if (!code || code === '%') continue;
-    const words = [...code.matchAll(/([A-Z])\s*([-+]?(?:\d+\.?\d*|\.\d+))/g)].map((m) => ({ l: m[1]!, v: m[2]! }));
     const val: Partial<Record<string, number>> = {};
     let motionHere: number | null = null;
     let dwell = false;
-    for (const w of words) {
+    for (const w of words(lines[ln]!)) {
       if (w.l === 'G') {
         const g = String(Number(w.v));
         if (!SUPPORTED_G.has(g)) warnings.push({ line: ln, message: `G${g} is not supported` });

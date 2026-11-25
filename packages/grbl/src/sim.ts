@@ -41,6 +41,11 @@ interface Motion {
 
 const fmt = (n: number) => n.toFixed(3);
 
+/** A word as G-code writes it: a letter and a number (the pattern of cam's lint-gcode.ts). */
+const NUMBER = String.raw`[-+]?(?:\d+\.?\d*|\.\d+)`;
+const WORD = new RegExp(String.raw`([A-Z])\s*(${NUMBER})`, 'g');
+const LINE = new RegExp(String.raw`^(?:\s*[A-Z]\s*${NUMBER})*\s*$`);
+
 export class SimGrbl implements Transport {
   readonly lathe: boolean;
   /** Machine position; X is a radius on the lathe. */
@@ -211,7 +216,9 @@ export class SimGrbl implements Transport {
 
   #gcode(text: string, jog: boolean): string | null {
     const code = text.replace(/\(.*?\)|;.*$/g, '').toUpperCase();
-    const words = [...code.matchAll(/([A-Z])\s*(-?[\d.]+)/g)].map((m) => ({ l: m[1]!, v: Number(m[2]) }));
+    // grbl stops at anything that is not a word, such as the second point of X1.2.3: error 1 (expected a letter)
+    if (!LINE.test(code)) return 'error:1';
+    const words = [...code.matchAll(WORD)].map((m) => ({ l: m[1]!, v: Number(m[2]) }));
     let machineCoords = false;
     let absolute = this.#absolute;
     let motion: number | null = null;

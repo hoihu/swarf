@@ -104,3 +104,43 @@ export function plannedSeconds(p: Program, s: PlannerSettings): number {
   }
   return t;
 }
+
+/** One segment of a program as the review and the setup sheet see it. */
+export interface SegmentStats {
+  seconds: number;
+  /** Fastest cutting feed, mm/min (0: no cut). */
+  feed: number;
+  /** Lowest Z and X of the cutting moves (arcs followed); Infinity when it does not cut. */
+  zMin: number;
+  xMin: number;
+  cuts: boolean;
+  /** The box round all its moves, rapids too (null: no moves). */
+  box: { min: Vec3; max: Vec3 } | null;
+}
+
+/** Time, fastest feed, deepest point and extent of each segment, in order. */
+export function segmentStats(p: Program, s: PlannerSettings): SegmentStats[] {
+  let at = p.home;
+  return p.segments.map((seg) => {
+    const g: SegmentStats = { seconds: plannedSeconds({ ...p, home: at, segments: [seg] }, s), feed: 0, zMin: Infinity, xMin: Infinity, cuts: false, box: null };
+    for (const m of seg.moves) {
+      const pts = m.type === 'arc' ? arcPoints(at, m, 0.5) : [m.to];
+      for (const q of pts) {
+        const b = g.box;
+        g.box = b
+          ? { min: { x: Math.min(b.min.x, q.x), y: Math.min(b.min.y, q.y), z: Math.min(b.min.z, q.z) }, max: { x: Math.max(b.max.x, q.x), y: Math.max(b.max.y, q.y), z: Math.max(b.max.z, q.z) } }
+          : { min: { ...q }, max: { ...q } };
+      }
+      if (m.type !== 'rapid') {
+        g.cuts = true;
+        g.feed = Math.max(g.feed, m.f);
+        for (const q of pts) {
+          g.zMin = Math.min(g.zMin, q.z);
+          g.xMin = Math.min(g.xMin, q.x);
+        }
+      }
+      at = m.to;
+    }
+    return g;
+  });
+}

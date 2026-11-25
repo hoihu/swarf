@@ -96,6 +96,16 @@ export const Tool = z.object({
 });
 export type Tool = z.infer<typeof Tool>;
 
+/**
+ * A pointed cutter's cone: tan of half the angle at the point, the radius of the flat at its
+ * tip, and how high the cone rises from the tip to the full diameter.
+ */
+export function cone(tool: Tool): { tan: number; tipR: number; height: number } {
+  const tan = Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
+  const tipR = (tool.tipDiameter ?? 0) / 2;
+  return { tan, tipR, height: ((tool.diameter ?? 6) / 2 - tipR) / tan };
+}
+
 export const Stock = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('bar'),
@@ -204,6 +214,12 @@ export const LatheBore = z.object({
   finish: z.number().min(0).default(0.15).describe('Radial allowance for one finishing pass'),
 });
 
+/**
+ * ISO metric thread depth per mm of pitch (ISO 68: H = √3/2 P): a bolt's flanks are 17/24 H
+ * deep, a nut's 5/8 H. Used by lathe_thread and mill_thread.
+ */
+export const ISO_THREAD_DEPTH = { external: 0.61343, internal: 0.54127 } as const;
+
 export const LatheThread = z.object({
   type: z.literal('lathe_thread'),
   ...common,
@@ -213,7 +229,7 @@ export const LatheThread = z.object({
   starts: z.number().int().min(1).max(8).default(1).describe('Number of starts (multi-start thread: lead = pitch × starts, each start one pitch further along)'),
   zEnd: mm.describe('Z where the thread ends (towards the chuck); leave room, there is no pull-out'),
   zStart: mm.default(0).describe('Z where the thread starts (usually the face)'),
-  depth: pos.optional().describe('Radial thread depth (default ISO metric: external 0.6134 × pitch, internal 0.5413 × pitch)'),
+  depth: pos.optional().describe(`Radial thread depth (default ISO metric: external ${ISO_THREAD_DEPTH.external.toFixed(4)} × pitch, internal ${ISO_THREAD_DEPTH.internal.toFixed(4)} × pitch)`),
   firstCut: pos.default(0.25).describe('Radial depth of the first pass; later passes get shallower (constant chip area)'),
   springPasses: z.number().int().min(0).max(5).default(1).describe('Extra passes at full depth'),
   infeed: z.enum(['flank', 'radial']).default('flank').describe('flank: along the 29.5° flank like a compound slide; radial: straight in'),
@@ -256,6 +272,11 @@ const wallFinish = {
   direction: z.enum(['climb', 'conventional']).default('climb').describe('climb: the cutter rolls along the wall (best finish on a rigid machine); conventional: against it (kinder to a machine with backlash)'),
 };
 
+const adaptive = {
+  strategy: z.enum(['rings', 'adaptive']).default('rings').describe('rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets'),
+  load: z.number().min(0.05).max(0.4).default(0.15).describe('adaptive: the bite beside the cutter, as a fraction of its diameter'),
+};
+
 export const MillPocketRect = z.object({
   type: z.literal('mill_pocket_rect'),
   ...common,
@@ -265,8 +286,7 @@ export const MillPocketRect = z.object({
   entry: z.enum(['ramp', 'plunge']).default('ramp').describe('How the tool gets down to each level'),
   rampAngle,
   ...wallFinish,
-  strategy: z.enum(['rings', 'adaptive']).default('rings').describe('rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets'),
-  load: z.number().min(0.05).max(0.4).default(0.15).describe('adaptive: the bite beside the cutter, as a fraction of its diameter'),
+  ...adaptive,
 });
 
 export const MillPocketCircle = z.object({
@@ -280,8 +300,7 @@ export const MillPocketCircle = z.object({
   entry: z.enum(['helix', 'plunge']).default('helix').describe('How the tool gets down to each level'),
   rampAngle,
   ...wallFinish,
-  strategy: z.enum(['rings', 'adaptive']).default('rings').describe('rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets'),
-  load: z.number().min(0.05).max(0.4).default(0.15).describe('adaptive: the bite beside the cutter, as a fraction of its diameter'),
+  ...adaptive,
 });
 
 export const MillContourRect = z.object({
@@ -346,14 +365,15 @@ export const MillPocket = z.object({
   ...depthFields,
   stepover: z.number().gt(0).max(1).default(0.45),
   ...shapeEntry,
-  strategy: z.enum(['rings', 'adaptive']).default('rings').describe('rings: passes parallel to the wall, level by level. adaptive: a small bite (see load) over the whole depth of the flutes, spreading from where the cutter comes down; easier on the cutter and a small machine in deep pockets'),
-  load: z.number().min(0.05).max(0.4).default(0.15).describe('adaptive: the bite beside the cutter, as a fraction of its diameter'),
+  ...adaptive,
 });
+
+const holes = z.array(z.object({ x: mm, y: mm })).min(1);
 
 export const MillDrill = z.object({
   type: z.literal('mill_drill'),
   ...common,
-  points: z.array(z.object({ x: mm, y: mm })).min(1),
+  points: holes,
   zBottom: mm,
   zTop: mm.optional(),
   peck: pos.optional(),
@@ -373,8 +393,6 @@ export const MillSlot = z.object({
   rampAngle,
   ...wallFinish,
 });
-
-const holes = z.array(z.object({ x: mm, y: mm })).min(1);
 
 export const MillSpot = z.object({
   type: z.literal('mill_spot'),
@@ -576,9 +594,7 @@ export const Job = z.object({
     .object({
       /** Where the setup in hand comes in the order (0: first). */
       at: z.number().int().min(0),
-      name: z.string().min(1).max(60),
-      turn: Turn.default('none'),
-      from: CarriedFrom.optional(),
+      ...SetupPart.pick({ name: true, turn: true, from: true }).shape,
       others: z.array(SetupPart).max(11),
     })
     .optional(),

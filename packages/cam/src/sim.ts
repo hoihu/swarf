@@ -6,7 +6,7 @@
  * drill/endmill = a disc. Nose radius and drill point angle are ignored.
  */
 import { arcPoints, type Move } from './program.ts';
-import type { Stock, Tool, Vec3 } from './schema.ts';
+import { cone, type Stock, type Tool, type Vec3 } from './schema.ts';
 
 const EPS = 0.02;
 
@@ -163,9 +163,9 @@ export class LatheMaterial {
  */
 function lifter(tool: Tool): (d2: number) => number {
   if (tool.type !== 'chamfer') return () => 0;
-  const tip = (tool.tipDiameter ?? 0) / 2;
-  const slope = 1 / Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
-  return (d2) => Math.max(0, Math.sqrt(d2) - tip) * slope;
+  const { tan, tipR } = cone(tool);
+  const slope = 1 / tan;
+  return (d2) => Math.max(0, Math.sqrt(d2) - tipR) * slope;
 }
 
 /** Stretches of metal per column of a height map's grid (see MillMaterial.spans). */

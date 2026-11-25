@@ -38,6 +38,22 @@ const MOTION = new Set(['0', '1', '2', '3', '33']);
  */
 const ARC_TOL = 0.005 + 0.003;
 
+/** A number as G-code writes it: a sign, digits with at most one point (1, -2., .5, +0.25). */
+const NUMBER = String.raw`[-+]?(?:\d+\.?\d*|\.\d+)`;
+const WORD = new RegExp(String.raw`([A-Z])\s*(${NUMBER})`, 'g');
+const READABLE = new RegExp(`^(?:[A-Z]${NUMBER})+$`);
+
+/** A line of G-code without its comments, in upper case. */
+const uncommented = (line: string) => line.replace(/\([^)]*\)/g, '').replace(/;.*$/, '').toUpperCase();
+
+/**
+ * The words of a line of G-code: letter and number as written (comments left out, a space allowed
+ * between the two). What is not a word is skipped; lintGcode reports such lines.
+ */
+export function words(line: string): { l: string; v: string }[] {
+  return [...uncommented(line).matchAll(WORD)].map((m) => ({ l: m[1]!, v: m[2]! }));
+}
+
 export function lintGcode(text: string, kind: MachineKind): LintDiagnostic[] {
   const out: LintDiagnostic[] = [];
   const err = (line: number, code: string, message: string) => out.push({ severity: 'error', code, line, message });
@@ -57,18 +73,17 @@ export function lintGcode(text: string, kind: MachineKind): LintDiagnostic[] {
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const ln = i + 1;
-    const code = lines[i]!.replace(/\([^)]*\)/g, '').replace(/;.*$/, '').replace(/\s+/g, '').toUpperCase();
+    const code = uncommented(lines[i]!).replace(/\s+/g, '');
     if (!code) continue;
     last = ln;
-    if (!/^([A-Z][-+]?(\d+\.?\d*|\.\d+))+$/.test(code)) {
+    if (!READABLE.test(code)) {
       err(ln, 'UNREADABLE', `"${lines[i]!.trim()}" is not a list of words`);
       continue;
     }
-    const words = [...code.matchAll(/([A-Z])([-+]?(?:\d+\.?\d*|\.\d+))/g)].map((m) => ({ l: m[1]!, v: m[2]! }));
     const val: Partial<Record<string, number>> = {};
     const g: string[] = [];
     const m: string[] = [];
-    for (const w of words) {
+    for (const w of words(code)) {
       if (!LETTERS[kind].includes(w.l)) err(ln, 'UNSUPPORTED', `${w.l}${w.v} is outside the subset swarf writes for the ${kind}`);
       else if (w.l === 'G') {
         const c = String(Number(w.v));

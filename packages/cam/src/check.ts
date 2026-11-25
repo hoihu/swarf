@@ -8,7 +8,7 @@ import { walk, type Program } from './program.ts';
 import { alignmentChecks } from './align.ts';
 import { carried } from './carry.ts';
 import { plannedSeconds } from './planner.ts';
-import type { Job, Tool, Vec3 } from './schema.ts';
+import { cone, type Job, type Tool, type Vec3 } from './schema.ts';
 import { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
 import { cuttingData } from './feeds.ts';
 import { MATERIALS } from './materials.ts';
@@ -157,8 +157,8 @@ export function simulate(job: Job, program: Program, upTo = Infinity, o: { walls
         // a pointed cutter buried more than half its cone while it travels: it is cutting a groove,
         // not an edge (straight down is a spot: that is what its cone is for)
         if (plunge) continue;
-        const cone = ((tool.diameter ?? 6) / 2 - (tool.tipDiameter ?? 0) / 2) / Math.tan((((tool.angle ?? 90) / 2) * Math.PI) / 180);
-        if (depth > cone / 2 + 0.05) once({ severity: 'warning', code: 'DOC_HIGH', message: `T${tool.id} is ${depth.toFixed(2)} mm deep in material, more than half its cone (${(cone / 2).toFixed(2)} mm): for a chamfer, cut the wall beside the edge first; for engraving, go shallower.`, opId, move: index });
+        const { height } = cone(tool);
+        if (depth > height / 2 + 0.05) once({ severity: 'warning', code: 'DOC_HIGH', message: `T${tool.id} is ${depth.toFixed(2)} mm deep in material, more than half its cone (${(height / 2).toFixed(2)} mm): for a chamfer, cut the wall beside the edge first; for engraving, go shallower.`, opId, move: index });
       } else if (tool.type === 'threadmill') {
         // its depth of cut is the thread's, set by the passes
       } else if (lightOps.has(opId)) {
