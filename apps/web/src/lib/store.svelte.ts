@@ -1,7 +1,7 @@
 /**
  * App state: the job (persisted in this browser), its analysis, undo history and the API choice.
  */
-import { EXAMPLES, Job, analyze, emit, type Analysis, type Emitted } from '@swarf/cam';
+import { EXAMPLES, Job, analyze, emit, runnable, type Analysis, type Emitted, type Refused, type Runnable } from '@swarf/cam';
 import { API_SERVICES, isHarnessId, type ApiChoice, type HarnessId } from '@swarf/agent';
 import { load, save } from './persist.ts';
 
@@ -62,7 +62,10 @@ class Store {
   selected = $state<string | null>(null);
 
   analysis: Analysis = $derived(analyze(this.job));
+  /** The G-code as shown (also while the job has errors). */
   gcode: Emitted = $derived(emit(this.job, this.analysis.program));
+  /** The G-code that may leave the program (download, save, Run), or why there is none. */
+  ready: Runnable | Refused = $derived(runnable(this.job, this.analysis));
 
   /** Replace the job; the previous one goes on the undo stack. */
   set(job: Job, undoable = true): void {

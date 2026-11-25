@@ -1,7 +1,7 @@
 /**
  * The MCP side: lists swarf's tools and forwards calls to the app tab through the relay.
- * save_gcode runs here instead (it writes a file): the tab checks the job and writes the G-code
- * (the same the app shows); this side only refuses on check errors or writes the file.
+ * save_gcode runs here instead (it writes a file): the tab takes the G-code from `runnable` (the
+ * same the app downloads); this side only refuses when it got none, or writes the file.
  */
 import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';

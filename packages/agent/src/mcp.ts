@@ -4,7 +4,7 @@
  * get_context (the job state the in-app agent gets with every message) and save_gcode (run by
  * the local server, which can write files).
  */
-import { analyze, emit, errorsOf } from '@swarf/cam';
+import { analyze, runnable } from '@swarf/cam';
 import { formatJobContext, CAM_GUIDE } from './prompt.ts';
 import { CAM_TOOLS, TOOL_NAMES, runCamTool, type JobPort, type ToolOutcome } from './tools.ts';
 import type { ToolDefinition } from './types.ts';
@@ -14,7 +14,7 @@ export const MCP_TOOL_NAMES = { context: 'get_context', save: 'save_gcode', pict
 /** Asked of the tab by the server's save_gcode, never listed to a model: the tab's own checks and G-code. */
 export const TAB_GCODE_FILE = 'gcode_for_file';
 
-/** What the tab answers to TAB_GCODE_FILE (as JSON): no text while there are check errors. */
+/** What the tab answers to TAB_GCODE_FILE (as JSON): no text while there are errors (checks or G-code lint), from `runnable`. */
 export interface GcodeForFile {
   text: string;
   errors: string[];
@@ -29,7 +29,7 @@ Call get_context first: it has the machine, stock, tool table, operations and ch
 
 ${CAM_GUIDE}
 
-When the job is clean, save_gcode writes the program to a file if the user wants one; otherwise they download it from the app.`;
+When the job is clean, save_gcode writes the program to a file if the user wants one; otherwise they download it from the app. While the job has errors (checks or G-code lint) there is no G-code: get_gcode and save_gcode answer with the errors instead.`;
 
 /**
  * Appended to Claude Code's system prompt when it answers the app's chat (claude -p): the user
@@ -64,7 +64,7 @@ export function mcpTools(): ToolDefinition[] {
     },
     {
       name: MCP_TOOL_NAMES.save,
-      description: 'Write the generated G-code to a file on this computer (refused while the job has errors). path: absolute, or relative to the directory the server was started in; .nc is added when there is no extension.',
+      description: 'Write the generated G-code to a file on this computer (refused while the job has errors, check or G-code lint). path: absolute, or relative to the directory the server was started in; .nc is added when there is no extension.',
       input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
     },
   ];
@@ -84,8 +84,9 @@ export function runTabTool(port: JobPort, name: string, input: unknown): ToolOut
   if (name === TAB_GCODE_FILE) {
     const job = port.get();
     const a = analyze(job);
-    const errors = errorsOf(a.diagnostics).map((d) => `${d.code}${d.opId ? ` [${d.opId}]` : ''}: ${d.message}`);
-    const out: GcodeForFile = { text: errors.length ? '' : emit(job, a.program).text, errors, name: job.name, operations: a.program.segments.length, seconds: a.seconds };
+    const r = runnable(job, a);
+    const errors = r.ok ? [] : r.errors.map((d) => `${d.code}${d.opId ? ` [${d.opId}]` : ''}: ${d.message}`);
+    const out: GcodeForFile = { text: r.ok ? r.text : '', errors, name: job.name, operations: a.program.segments.length, seconds: a.seconds };
     return { content: JSON.stringify(out), isError: false, label: 'G-code for a file', detail: errors.length ? 'job has errors' : job.name };
   }
   if (name === TOOL_NAMES.ask) return { content: 'ask_user is not available here; ask your user directly.', isError: true, label: name, detail: 'not available' };

@@ -2148,7 +2148,7 @@
  },
  {
   "name": "get_gcode",
-  "description": "The generated G-code (one operation, or the start of the program).",
+  "description": "The generated G-code (one operation, or the start of the program). Refused while the job has errors (check or G-code lint): the answer is then the errors, not G-code.",
   "input_schema": {
    "type": "object",
    "properties": {

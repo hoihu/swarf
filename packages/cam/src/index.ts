@@ -4,6 +4,7 @@ export { cutting, cuttingData, rpmFor, type Cutting, type CuttingData } from './
 export { generate, withIds, opLabel, homeOf, type Diagnostic, type Generated } from './generate.ts';
 export { analyze, simulate, errorsOf, hasErrors, resumeFrom, type Analysis } from './check.ts';
 export { lintGcode, type LintDiagnostic } from './lint-gcode.ts';
+export { runnable, type Runnable, type Refused, type Blocker } from './pipeline.ts';
 export { LatheMaterial, MillMaterial, samplePath } from './sim.ts';
 export { emit, fixed, num, roundTo, type Emitted } from './emit.ts';
 export { LATHE, MILL, LATHE_TOOLS, MILL_TOOLS, EXAMPLES, emptyJob } from './presets.ts';

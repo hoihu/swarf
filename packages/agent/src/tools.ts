@@ -13,11 +13,13 @@ import {
   Tool,
   analyze,
   bbox,
-  emit,
   errorsOf,
   opLabel,
+  runnable,
   withIds,
   type Diagnostic,
+  type Program,
+  type Runnable,
   Turn,
   addSetup,
   faceAfter,
@@ -139,7 +141,7 @@ export const CAM_TOOLS: ToolDefinition[] = [
     description: 'Move an imported drawing on the stock: its extents\' lower-left corner goes to (x, y).',
     input_schema: schemaOf(PlaceShapeInput),
   },
-  { name: TOOL_NAMES.gcode, description: 'The generated G-code (one operation, or the start of the program).', input_schema: schemaOf(GcodeInput) },
+  { name: TOOL_NAMES.gcode, description: 'The generated G-code (one operation, or the start of the program). Refused while the job has errors (check or G-code lint): the answer is then the errors, not G-code.', input_schema: schemaOf(GcodeInput) },
   {
     name: TOOL_NAMES.addSetup,
     description:
@@ -159,6 +161,21 @@ export function formatDiagnostics(d: Diagnostic[], limit = 12): string {
   const lines = d.slice(0, limit).map((x) => `  ${x.severity.toUpperCase()} ${x.code}${x.opId ? ` [${x.opId}]` : ''}: ${x.message}`);
   if (d.length > limit) lines.push(`  … ${d.length - limit} more`);
   return `checks: ${errorsOf(d).length} error(s), ${d.filter((x) => x.severity === 'warning').length} warning(s)\n${lines.join('\n')}`;
+}
+
+/** One operation's lines of the whole program: from the line after the operation before it to its last move. */
+function linesOf(r: Runnable, program: Program, opId: string): string[] {
+  let n = 0;
+  let from = 0;
+  let to = -1;
+  for (const s of program.segments)
+    for (let k = 0; k < s.moves.length; k++, n++) {
+      const line = r.lineOfMove[n] ?? -1;
+      if (line < 0) continue;
+      if (s.opId === opId) to = Math.max(to, line);
+      else if (to < 0) from = Math.max(from, line + 1);
+    }
+  return r.text.split('\n').slice(from, to + 1);
 }
 
 function after(job: Job, what: string): string {
@@ -275,9 +292,10 @@ export function runCamTool(port: JobPort, name: string, input: unknown): ToolOut
       const p = GcodeInput.safeParse(input ?? {});
       if (!p.success) return fail('G-code', `Invalid input: ${zodMessage(p.error)}`);
       const a = analyze(job);
-      const program = p.data.opId ? { ...a.program, segments: a.program.segments.filter((s) => s.opId === p.data.opId) } : a.program;
-      if (p.data.opId && !program.segments.length) return fail('G-code', `No generated operation ${p.data.opId}.`);
-      const lines = emit(job, program).text.split('\n');
+      if (p.data.opId && !a.program.segments.some((s) => s.opId === p.data.opId)) return fail('G-code', `No generated operation ${p.data.opId}.`);
+      const r = runnable(job, a);
+      if (!r.ok) return { content: `No G-code while the job has errors (none of it, not even one operation's). Fix them first:\n${formatDiagnostics(r.errors)}`, isError: true, label: 'G-code', detail: `${r.errors.length} error(s)` };
+      const lines = p.data.opId ? linesOf(r, a.program, p.data.opId) : r.text.split('\n');
       const shown = lines.slice(0, p.data.maxLines);
       const more = lines.length - shown.length;
       return { content: shown.join('\n') + (more > 0 ? `\n… ${more} more lines` : ''), isError: false, label: `G-code${p.data.opId ? ` · ${p.data.opId}` : ''}`, detail: `${lines.length} lines` };

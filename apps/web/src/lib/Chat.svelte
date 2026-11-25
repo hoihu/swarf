@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { errorsOf, reviewJob } from '@swarf/cam';
+  import { reviewJob } from '@swarf/cam';
   import { Agent, DEMO_FALLBACK, HARNESSES, DEMO_SCRIPTS, ScriptedProvider, apiProblem, apiProvider, formatDiagnostics, formatJobContext, type AgentEvent, type ChatEvent, type HarnessId, type Provider } from '@swarf/agent';
   import { diffJobs, isEmptyDiff, type Job, type JobDiff } from '@swarf/cam';
   import { store } from './store.svelte.ts';
@@ -249,7 +249,7 @@
 
 ${text}`
             : `[job verification] The job still has errors. Fix them (or remove the operation and say why), then finish:
-${formatDiagnostics(errorsOf(store.analysis.diagnostics))}`;
+${formatDiagnostics(store.ready.ok ? [] : store.ready.errors)}`;
         const done = await new Promise<Extract<ChatEvent, { kind: 'done' }>>((resolve) => {
           const id = crypto.randomUUID();
           ccRun = id;
@@ -271,7 +271,7 @@ ${formatDiagnostics(errorsOf(store.analysis.diagnostics))}`;
           cur.error = done.error ?? `${name} stopped.`;
           return;
         }
-        const errors = errorsOf(store.analysis.diagnostics).length;
+        const errors = store.ready.ok ? 0 : store.ready.errors.length;
         if (!errors || round >= 2 || ccStopped) {
           if (errors) cur.notes.push(`${errors} error${errors === 1 ? '' : 's'} remain.`);
           return;

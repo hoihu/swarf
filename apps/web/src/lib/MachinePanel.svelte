@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { TURNS, emit, hasErrors, resumeFrom, setupList, switchSetup, toolOf, walk, type Job } from '@swarf/cam';
+  import { TURNS, resumeFrom, runnable, setupList, switchSetup, toolOf, walk, type Job } from '@swarf/cam';
   import JogPanel from './JogPanel.svelte';
   import Section from './Section.svelte';
   import { download } from './files.svelte.ts';
@@ -78,8 +78,9 @@
   });
   const startSeg = $derived(starts.find((s) => s.opId === startAt)?.seg ?? 0);
   const resume = $derived(startSeg > 0 ? resumeFrom(store.job, store.analysis.program, startSeg) : null);
-  // what will be run must be free of errors (errors of operations already done do not hold a restart up)
-  const errors = $derived(hasErrors(resume ? resume.diagnostics : store.analysis.diagnostics));
+  // what will be run, if it may be (errors of operations already done do not hold a restart up)
+  const ready = $derived(resume ? runnable(store.job, store.analysis, { fromSegment: startSeg }) : store.ready);
+  const errors = $derived(!ready.ok);
   const canStart = $derived(machine.connected && !busy && !waiting && !errors && st === 'Idle' && !machine.lost);
   // the program waits at a tool change: which tool it wants next (the first segment after the line it stopped at)
   $effect(() => {
@@ -152,32 +153,32 @@
     );
     if (!ok) return;
     // the program as checked just now, not as it was when the tab was opened
-    if (errors) return;
+    const run = ready;
+    if (!run.ok) return;
     machine.crash = '';
     simWorld.crashes = [];
     // the user has just said so: the zero is right for the tool the program starts with
     if (first) tooling.setActive(first.id);
     if (!resume) {
-      await machine.run(store.gcode.text, true);
+      await machine.run(run, true);
       return;
     }
     // the rest of the program; its lines numbered as in the whole one, for the G-code tab and the preview
-    const part = emit(store.job, resume.program, { fromSegment: startSeg });
     const whole = store.gcode.lineOfMove;
     const map: number[] = [];
     let last = whole[resume.firstMove - resume.added] ?? 0;
-    part.lineOfMove.forEach((line, k) => {
+    run.lineOfMove.forEach((line, k) => {
       if (line < 0) return;
       // (the way home put in before the start has no line in the whole program)
       const w = k >= resume.firstMove ? whole[k - resume.added] : undefined;
       if (w !== undefined && w >= 0) last = w;
       map[line] = last;
     });
-    for (let i = 0, cur = map.find((x) => x !== undefined) ?? 0; i < part.text.split('\n').length; i++) {
+    for (let i = 0, cur = map.find((x) => x !== undefined) ?? 0; i < run.text.split('\n').length; i++) {
       if (map[i] === undefined) map[i] = cur;
       else cur = map[i]!;
     }
-    await machine.run(part.text, true, map);
+    await machine.run(run, true, map);
   }
 
   async function resumeProgram(): Promise<void> {

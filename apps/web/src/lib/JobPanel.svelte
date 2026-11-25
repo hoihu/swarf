@@ -188,7 +188,8 @@
 
   // ---- G-code
   function download(): void {
-    saveAs(fileName(programName(job), '.nc'), store.gcode.text, 'text/plain');
+    const r = store.ready;
+    if (r.ok) saveAs(fileName(programName(job), '.nc'), r.text, 'text/plain');
   }
   const gcodeLines = $derived(store.gcode.text.split('\n'));
   const toolName = (id: number) => toolOf(job, id)?.name ?? `T${id} (missing)`;
@@ -389,13 +390,14 @@
       </div>
     {:else if tab === 'gcode'}
       <div class="row">
-        <button class="btn pri" onclick={download} disabled={hasErrors(store.analysis.diagnostics)} title="Fix errors before downloading">Download .nc</button>
+        <button class="btn pri" onclick={download} disabled={!store.ready.ok} title="Fix errors before downloading">Download .nc</button>
         <button class="btn" onclick={() => (files.sheet = true)} title="One page for the machine: stock, zero, tools, operations">Setup sheet</button>
         <button class="btn" onclick={() => ui.go('machine')} title="Connect the controller and run the program from here">Run it: to the machine</button>
         <span class="muted">{gcodeLines.length} lines</span>
       </div>
-      {#if hasErrors(store.analysis.diagnostics)}
+      {#if !store.ready.ok}
         <p class="diag error">The job has errors; fix them before running this on the machine.</p>
+        {#each store.ready.errors.filter((e) => e.line) as e, i (i)}<p class="diag error">{e.code}: {e.message}</p>{/each}
       {/if}
       <MeasuredNote />
       <pre class="gcode">{#each gcodeLines as line, i (i)}<span class="ln">{i + 1}</span><span class:cm={line.startsWith('(')}>{line}</span>
