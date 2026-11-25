@@ -7,7 +7,7 @@ import { alignmentLines } from './align.ts';
 import { TURNS } from './setups.ts';
 import type { Analysis } from './check.ts';
 import { MATERIALS } from './materials.ts';
-import { plannedSeconds } from './planner.ts';
+import { segmentStats } from './planner.ts';
 import { arcPoints, walk, type Program } from './program.ts';
 import type { Job, Tool, Vec3 } from './schema.ts';
 
@@ -98,32 +98,14 @@ export function setupSheet(job: Job, analysis: Analysis): Sheet {
   const st = job.stock;
 
   // per segment: time, the fastest feed, how deep
-  interface Seg { seconds: number; feed: number; zMin: number; xMin: number; cuts: boolean }
-  const segs: Seg[] = [];
-  let at = p.home;
+  const segs = segmentStats(p, job.machine);
   let min: Vec3 | null = null;
   let max: Vec3 | null = null;
   const grow = (q: Vec3) => {
     min = min ? { x: Math.min(min.x, q.x), y: Math.min(min.y, q.y), z: Math.min(min.z, q.z) } : { ...q };
     max = max ? { x: Math.max(max.x, q.x), y: Math.max(max.y, q.y), z: Math.max(max.z, q.z) } : { ...q };
   };
-  for (const s of p.segments) {
-    const g: Seg = { seconds: plannedSeconds({ ...p, home: at, segments: [s] }, job.machine), feed: 0, zMin: Infinity, xMin: Infinity, cuts: false };
-    for (const m of s.moves) {
-      const pts = m.type === 'arc' ? arcPoints(at, m, 0.5) : [m.to];
-      for (const q of pts) grow(q);
-      if (m.type !== 'rapid') {
-        g.cuts = true;
-        g.feed = Math.max(g.feed, m.f);
-        for (const q of pts) {
-          g.zMin = Math.min(g.zMin, q.z);
-          g.xMin = Math.min(g.xMin, q.x);
-        }
-      }
-      at = m.to;
-    }
-    segs.push(g);
-  }
+  for (const g of segs) if (g.box) [g.box.min, g.box.max].forEach(grow);
   if (p.segments.length) grow(p.home);
 
   // operations (an operation may be more than one segment)
