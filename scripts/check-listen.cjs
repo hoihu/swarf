@@ -1,6 +1,6 @@
 // Listening to the cut in a real browser: the microphone is a sound file (a three-flute cutter at
 // 6000 rpm that starts to chatter at 1840 Hz after six seconds), the machine the simulated one.
-//   npm run build && (cd apps/web && npx vite preview --port 4173) &
+//   npm run check:ui runs it; by hand: npm run dev &  (SWARF_URL overrides http://localhost:5173/)
 //   node scripts/check-listen.cjs <cut.wav> [outdir]      (needs Playwright)
 const { chromium } = require('playwright');
 const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 1000).toFixed(1), ...a);
@@ -10,7 +10,7 @@ const WAV = process.argv[2]; const OUT = process.argv[3] ?? require('os').tmpdir
   const ctx = await b.newContext({ viewport: { width: 1500, height: 950 }, permissions: ['microphone'] });
   const p = await ctx.newPage();
   p.on('pageerror', (e) => log('pageerror:', e.message.slice(0, 300)));
-  await p.goto('http://localhost:4173/');
+  await p.goto(process.env.SWARF_URL ?? 'http://localhost:5173/');
   await p.evaluate(() => { localStorage.clear(); localStorage.setItem('swarf.sections', 'all'); }); await p.reload();
   await p.getByRole('button', { name: 'File' }).click();
   await p.getByRole('menuitem', { name: 'Mill example' }).click();

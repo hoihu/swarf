@@ -1,6 +1,6 @@
 // A whole program in a real browser on the simulated mill (40× real time): Run, the tool change
 // (the program waits, the machine is free: Z is touched on the plate there), Resume, the end.
-//   npm run build && (cd apps/web && npx vite preview --port 4173) &
+//   npm run check:ui runs it; by hand: npm run dev &  (SWARF_URL overrides http://localhost:5173/)
 //   node scripts/check-run.cjs [setup]      (needs Playwright; setup: toe (default), side, block, straps, vise)
 const { chromium } = require('playwright');
 const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 1000).toFixed(1), ...a);
@@ -10,7 +10,7 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   p.on('pageerror', (e) => log('pageerror:', e.message.slice(0, 300)));
   const dialogs = [];
   p.on('dialog', (d) => { dialogs.push(d.message()); void d.accept(); });
-  await p.goto('http://localhost:4173/');
+  await p.goto(process.env.SWARF_URL ?? 'http://localhost:5173/');
   await p.evaluate(() => { localStorage.clear(); localStorage.setItem('swarf.sections', 'all'); }); await p.reload();
   await p.getByRole('button', { name: 'File' }).click();
   await p.getByRole('menuitem', { name: 'Mill example' }).click();

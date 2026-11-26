@@ -244,4 +244,4 @@ class Machine {
 }
 
 export const machine = new Machine();
-if (typeof window !== "undefined") (window as unknown as { __swarfMachine?: Machine }).__swarfMachine = machine;
+if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __swarfMachine?: Machine }).__swarfMachine = machine;

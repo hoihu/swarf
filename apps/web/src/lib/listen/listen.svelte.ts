@@ -148,4 +148,4 @@ class Listening {
 }
 
 export const listening = new Listening();
-if (typeof window !== 'undefined') Object.assign(window, { __swarfListening: listening });
+if (import.meta.env.DEV && typeof window !== 'undefined') Object.assign(window, { __swarfListening: listening });

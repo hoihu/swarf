@@ -206,4 +206,4 @@ class LaserScan {
 
 
 export const laserScan = new LaserScan();
-if (typeof window !== 'undefined') (window as unknown as { __swarfLaser?: LaserScan }).__swarfLaser = laserScan;
+if (import.meta.env.DEV && typeof window !== 'undefined') (window as unknown as { __swarfLaser?: LaserScan }).__swarfLaser = laserScan;

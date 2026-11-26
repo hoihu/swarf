@@ -1,7 +1,7 @@
 // The line laser in a real browser against the simulated mill and camera (true camera calibration
 // seeded): Z on the plate, laser calibration, a scan of the setup; prints found vs truth.
 // The setup on the simulated table: side (default), block, toe, straps, vise.
-//   npm run build && (cd apps/web && npx vite preview --port 4173) &
+//   npm run check:ui runs it; by hand: npm run dev &  (SWARF_URL overrides http://localhost:5173/)
 //   node scripts/check-laser.cjs [outdir] [setup]      (needs Playwright)
 const { chromium } = require('playwright');
 const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 1000).toFixed(1), ...a);
@@ -10,7 +10,7 @@ const OUT = process.argv[2] ?? require('os').tmpdir();
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage'] });
   const p = await b.newPage({ viewport: { width: 1500, height: 950 } });
   p.on('pageerror', (e) => log('pageerror:', e.message.slice(0, 300)));
-  await p.goto('http://localhost:4173/');
+  await p.goto(process.env.SWARF_URL ?? 'http://localhost:5173/');
   await p.evaluate(() => { localStorage.clear(); localStorage.setItem('swarf.sections', 'all'); }); await p.reload();
   await p.getByRole('button', { name: 'File' }).click();
   await p.getByRole('menuitem', { name: 'Mill example' }).click();

@@ -1,6 +1,6 @@
 // The jog panel in a real browser on the simulated mill: a step, hold-to-move with the mouse and
 // with a key, letting go, set zero, the spindle; and that it is shut while a program runs.
-//   npm run build && (cd apps/web && npx vite preview --port 4173) &
+//   npm run check:ui runs it; by hand: npm run dev &  (SWARF_URL overrides http://localhost:5173/)
 //   node scripts/check-jog.cjs [outdir]      (needs Playwright)
 const { chromium } = require('playwright');
 const OUT = process.argv[2];
@@ -11,7 +11,7 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   p.on('pageerror', (e) => log('pageerror:', e.message.slice(0, 300)));
   const dialogs = [];
   p.on('dialog', (d) => { dialogs.push(d.message().split('\n')[0]); void d.accept(); });
-  await p.goto('http://localhost:4173/');
+  await p.goto(process.env.SWARF_URL ?? 'http://localhost:5173/');
   await p.evaluate(() => { localStorage.clear(); localStorage.setItem('swarf.sections', 'all'); }); await p.reload();
   await p.getByRole('button', { name: 'File' }).click();
   await p.getByRole('menuitem', { name: 'Mill example' }).click();

@@ -1,5 +1,5 @@
 // A walk through the app for looking at its layout: both modes at desktop size, the machine mode connected, and a phone.
-//   npm run build && (cd apps/web && npx vite preview --port 4173) &
+//   npm run check:ui runs it; by hand: npm run dev &  (SWARF_URL overrides http://localhost:5173/)
 //   node scripts/tour.cjs [outdir] [all]      ('all': every section open; needs Playwright)
 const { chromium } = require('playwright');
 const OUT = process.argv[2] ?? require('os').tmpdir();
@@ -7,7 +7,7 @@ const OUT = process.argv[2] ?? require('os').tmpdir();
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage'] });
   const p = await b.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   p.on('pageerror', (e) => console.log('pageerror:', e.message.slice(0, 200)));
-  await p.goto('http://localhost:4173/');
+  await p.goto(process.env.SWARF_URL ?? 'http://localhost:5173/');
   await p.evaluate((all) => { localStorage.clear(); if (all) localStorage.setItem('swarf.sections', 'all'); }, process.argv[3] === 'all'); await p.reload();
   await p.getByRole('button', { name: 'File' }).click();
   await p.waitForTimeout(300);

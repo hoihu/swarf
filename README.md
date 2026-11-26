@@ -14,6 +14,8 @@ npm install
 npm run dev        # the web app at http://localhost:5173
 npm test           # vitest over all five workspaces (cam, grbl, agent, server, web)
 npm run typecheck
+npm run check:ui   # Playwright walks through the simulated workshop (scripts/check-*.cjs,
+                   # tour.cjs) against a dev server; npx playwright install chromium once
 ```
 
 ## Finding your way
@@ -486,6 +488,8 @@ What is checked before a program may run. An error blocks every way G-code leave
 `save_gcode` and `get_gcode` (they answer with the errors and no G-code, for one operation too),
 and the agent finishing (it is sent back to fix them). All of these take their text from one
 function, `runnable` in `packages/cam/src/pipeline.ts`.
+The `window.__swarf*` handles the browser scripts drive (the machine among them) exist only in
+`npm run dev`; a built app has none.
 
 - every move against the machine's travel, the chuck (lathe) and the job's obstacles (mill:
   clamps, straps, vise jaws from the laser scan or typed in), rapids too, and the way to and
