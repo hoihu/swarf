@@ -78,6 +78,8 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   log(`not following, it would be ${flat.min.toFixed(3)} to ${flat.max.toFixed(3)} mm deep`);
   const out = process.argv[2] ?? require('os').tmpdir();
   await p.screenshot({ path: out + '/measured-panel.png', clip: { x: 0, y: 0, width: 345, height: 950 }, timeout: 120000 });
+  // the G-code tab is in the job mode
+  await p.getByRole('group', { name: 'Where you are working' }).getByRole('button', { name: 'Job' }).click();
   await p.getByRole('tab', { name: 'G-code' }).click();
   await p.screenshot({ path: out + '/measured-gcode.png', clip: { x: 0, y: 0, width: 345, height: 600 }, timeout: 120000 });
   await p.getByRole('button', { name: /Forget/ }).click();

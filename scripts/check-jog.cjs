@@ -53,7 +53,8 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   await p.mouse.up();
   // keyboard: hold the left arrow
   await jog.getByRole('checkbox').check();
-  await p.locator('h4', { hasText: 'Move by hand' }).click();
+  // focus off the checkbox (arrows in a field do not jog): click a bit of the panel that is not a control
+  await jog.locator('.pad .mid').click();
   await p.keyboard.down('ArrowLeft');
   await p.waitForTimeout(600);
   await p.keyboard.up('ArrowLeft');
@@ -74,17 +75,17 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
   await jog.locator('.spin').getByRole('button', { name: 'On' }).click();
   await p.waitForTimeout(500);
   log('spindle on:', JSON.stringify(await W()), JSON.stringify(dialogs.slice(-1)));
-  if (OUT) await jog.screenshot({ path: OUT + '/jog.png' });
+  if (OUT) await jog.screenshot({ path: OUT + '/jog.png', timeout: 120000 });
   await jog.locator('.spin').getByRole('button', { name: 'Off' }).click();
   await p.waitForTimeout(500);
   log('spindle off:', JSON.stringify(await W()));
   // while a program runs: shut
   await p.evaluate(() => window.__swarfMachine.request('$J=G90 X40 Y25 Z30 F3000'));
   await p.waitForTimeout(2500);
-  await p.getByRole('button', { name: 'Run program' }).click();
+  await p.getByRole('button', { name: 'Run program' }).click({ timeout: 120000 });
   await p.waitForTimeout(1500);
   log('program running: jog buttons disabled', await jog.getByRole('button', { name: 'Jog X plus' }).isDisabled(), '| says', await jog.locator('p.muted').last().innerText());
-  await p.getByRole('button', { name: 'Stop', exact: true }).click();
+  await p.getByRole('button', { name: 'Stop', exact: true }).click({ timeout: 120000 });
   await p.waitForTimeout(800);
   log('after Stop', JSON.stringify(await W()), 'jog enabled', await jog.getByRole('button', { name: 'Jog X plus' }).isEnabled());
   await b.close();

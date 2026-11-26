@@ -16,7 +16,7 @@ const OUT = process.argv[2] ?? require('os').tmpdir();
   await p.waitForTimeout(1500);
   const whole = async (name) => { await p.waitForTimeout(1200); await p.screenshot({ path: `${OUT}/tour-${name}.png`, timeout: 120000 }); };
   await whole('job');
-  await p.getByRole('tab', { name: 'Setup' }).click();
+  await p.getByRole('tab', { name: 'Setup', exact: true }).click();
   await whole('job-setup');
   await p.getByRole('button', { name: /^Machine/ }).click();
   await whole('machine-off');
