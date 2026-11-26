@@ -20,8 +20,9 @@ docs/ARCHITECTURE.md.
 - `tools/server`: the local relay: an MCP server for Claude Code that forwards tool calls to the
   open app tab, and the harnesses that let Claude Code, Codex, Copilot CLI or OpenCode answer
   the app's chat (`src/harness/`).
-- `scripts`: manual checks outside CI: Playwright walks through the built app (`check-*.cjs`,
-  `tour.cjs`; need `npm run build` and `vite preview` on port 4173) and checks of
+- `scripts`: manual checks outside CI: Playwright walks through the app (`check-*.cjs`,
+  `tour.cjs`; `npm run check:ui` runs them all against its own dev server, since the
+  `window.__swarf*` hooks they drive exist only in dev) and checks of
   the real coding-agent CLIs (`check-codex.mjs`, `check-copilot.mjs`, `check-opencode.mjs`).
 
 ## Commands
@@ -36,7 +37,8 @@ npm test            # vitest: packages/*/test, tools/*/test, apps/*/test
 npm run build       # the web app (vite build)
 ```
 
-Also: `npm run dev` (app at http://localhost:5173), `npm run mcp` / `npm run server` (the relay).
+Also: `npm run dev` (app at http://localhost:5173), `npm run mcp` / `npm run server` (the relay),
+`npm run check:ui` (the Playwright scripts; `npx playwright install chromium` once; not in CI).
 Run all three checks before calling a change done.
 
 ## Invariants
