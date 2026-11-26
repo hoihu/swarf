@@ -3,7 +3,7 @@
  * at the machine position with the tool marker on its holder, and, while the lens is being
  * calibrated, the board held up in front of the camera at changing angles. It renders through a
  * known lens (with distortion) from a known position onto `canvas`, which the app reads like a
- * webcam's picture. Its true lens and pose are on `window.__swarfSimCamera`,
+ * webcam's picture. In dev builds its true lens and pose are on `window.__swarfSimCamera`,
  * to check a calibration against.
  */
 import * as THREE from 'three';
@@ -219,7 +219,7 @@ export class SimCamera {
       while (this.#history.length > 2 && this.#history[1]!.t < t - 1000) this.#history.shift();
     }, 10);
     this.#timer = setInterval(() => this.#render(), 100);
-    (window as unknown as { __swarfSimCamera?: unknown }).__swarfSimCamera = this;
+    if (import.meta.env.DEV) (window as unknown as { __swarfSimCamera?: unknown }).__swarfSimCamera = this;
   }
 
   /** The true pixel of a machine point in this camera's image (for tests). */

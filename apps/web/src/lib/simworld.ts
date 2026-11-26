@@ -124,4 +124,4 @@ export const simWorld = {
 };
 
 // for tests and the curious: what the simulator holds as the truth
-if (typeof window !== 'undefined') (window as unknown as { __swarfSimWorld?: typeof simWorld }).__swarfSimWorld = simWorld;
+if (import.meta.env.DEV && typeof window !== 'undefined') (window as unknown as { __swarfSimWorld?: typeof simWorld }).__swarfSimWorld = simWorld;

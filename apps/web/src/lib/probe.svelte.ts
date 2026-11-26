@@ -336,4 +336,4 @@ class Probe {
 }
 
 export const probe = new Probe();
-if (typeof window !== "undefined") (window as unknown as { __swarfProbe?: Probe }).__swarfProbe = probe;
+if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __swarfProbe?: Probe }).__swarfProbe = probe;

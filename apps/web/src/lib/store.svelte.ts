@@ -107,4 +107,4 @@ class Store {
 
 export const store = new Store();
 // for tests: the job in hand
-if (typeof window !== 'undefined') Object.assign(window, { __swarfStore: store, __swarfJob: Job });
+if (import.meta.env.DEV && typeof window !== 'undefined') Object.assign(window, { __swarfStore: store, __swarfJob: Job });

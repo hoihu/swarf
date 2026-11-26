@@ -568,4 +568,4 @@ function differs(a: BoardView, b: BoardView, width: number): boolean {
 
 export const camera = new Camera();
 // for tests and the curious: the calibration and the live state
-if (typeof window !== "undefined") (window as unknown as { __swarfCamera?: Camera }).__swarfCamera = camera;
+if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __swarfCamera?: Camera }).__swarfCamera = camera;
