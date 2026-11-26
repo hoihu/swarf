@@ -29,8 +29,9 @@ const T0 = Date.now(); const log = (...a) => console.log(((Date.now() - T0) / 10
     if (m.job === 'waiting') {
       changes++;
       log('waiting at a tool change:', JSON.stringify(m));
-      // the machine is free: touch Z on the plate with the new tool, as one would
-      await p.evaluate(() => window.__swarfMachine.request('$J=G90 X40 Y25 F3000'));
+      // the machine is free: touch Z on the plate with the new tool, as one would; up first, for the
+      // simulator puts in a new tool that may stick out further (the plate goes in under it)
+      await p.evaluate(() => window.__swarfMachine.request('$J=G90 X40 Y25 Z30 F3000'));
       await p.waitForTimeout(600);
       await p.waitForFunction(() => window.__swarfMachine.status?.state === 'Idle', null, { polling: 100 });
       await p.getByRole('button', { name: 'Touch the plate, set Z' }).click();
