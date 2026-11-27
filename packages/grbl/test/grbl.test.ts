@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RT, SimGrbl, Streamer, classify, parseStatus, prepare, type JobState, type Transport } from '../src/index.ts';
 
 /**
@@ -110,6 +110,10 @@ describe('parsing', () => {
 });
 
 describe('streaming', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('keeps the receive buffer full but never overfills it', async () => {
     const g = new FakeGrbl(128);
     const states: JobState[] = [];
@@ -223,35 +227,37 @@ describe('streaming', () => {
   });
 
   it('a controller that will not stand still is reset anyway after a moment', async () => {
+    vi.useFakeTimers();
     const g = new FakeGrbl();
     g.ignoreHold = true;
     const s = new Streamer(g, {}, { pollMs: 3 });
     await s.run(program(2000));
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.advanceTimersByTimeAsync(20);
     await s.stop();
     expect(g.realtime).not.toContain(RT.reset);
-    await new Promise((r) => setTimeout(r, 1600));
+    await vi.advanceTimersByTimeAsync(1600);
     await s.close();
     expect(g.realtime).toContain(RT.reset);
   }, 30000);
 
   it('notices a controller that stops answering: the job fails and says so', async () => {
+    vi.useFakeTimers();
     const g = new FakeGrbl();
     const states: JobState[] = [];
     let message = '';
     const link: boolean[] = [];
     const s = new Streamer(g, { job: (st, m) => { states.push(st); if (m) message = m; }, link: (l) => link.push(l) }, { pollMs: 20 });
     await s.run(program(4000));
-    await new Promise((r) => setTimeout(r, 60));
+    await vi.advanceTimersByTimeAsync(60);
     g.dead = true;
-    await new Promise((r) => setTimeout(r, 2300));
+    await vi.advanceTimersByTimeAsync(2300);
     expect(s.lost).toBe(true);
     expect(states.at(-1)).toBe('failed');
     expect(message).toMatch(/connection is lost.*emergency stop/);
     await expect(s.run(program(3))).rejects.toThrow(/does not answer/);
     // it comes back
     g.dead = false;
-    await new Promise((r) => setTimeout(r, 60));
+    await vi.advanceTimersByTimeAsync(60);
     expect(s.lost).toBe(false);
     expect(link).toEqual([true, false]);
     await s.close();
