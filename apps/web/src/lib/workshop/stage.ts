@@ -108,7 +108,7 @@ function fluted(diameter: number, length: number, flutes: number, point: number)
  * ER25 to 16, ER32 above). The collet and nut turn with the cutter (`spin`); the spindle's
  * housing stands still.
  */
-export function holderOn(g: THREE.Group, spin: THREE.Object3D, shank: number, y: number): void {
+function holderOn(g: THREE.Group, spin: THREE.Object3D, shank: number, y: number): void {
   const er = shank <= 7 ? { nut: 19, h: 11.5 } : shank <= 10 ? { nut: 28, h: 17.5 } : shank <= 13 ? { nut: 35, h: 19.5 } : shank <= 16 ? { nut: 42, h: 20 } : { nut: 50, h: 22.5 };
   const R = er.nut / 2;
   const H = er.h;

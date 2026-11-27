@@ -7,7 +7,7 @@ import { words } from '../../src/lint-gcode.ts';
 import type { Move } from '../../src/program.ts';
 import type { MachineKind, Vec3 } from '../../src/schema.ts';
 
-export interface ParsedMove {
+interface ParsedMove {
   move: Move;
   /** 0-based source line. */
   line: number;

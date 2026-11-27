@@ -17,7 +17,7 @@ export interface Spectrum {
   binHz: number;
 }
 
-export interface Peak {
+interface Peak {
   hz: number;
   db: number;
   /** dB above the spectrum's floor. */
@@ -56,7 +56,7 @@ function median(v: number[]): number {
 }
 
 /** Local maxima at least `min` dB over the floor, strongest first, with their place between bins. */
-export function peaks(s: Spectrum, floor: number, min: number, low: number, high: number): Peak[] {
+function peaks(s: Spectrum, floor: number, min: number, low: number, high: number): Peak[] {
   const i0 = Math.max(2, Math.ceil(low / s.binHz));
   const i1 = Math.min(s.db.length - 3, Math.floor(high / s.binHz));
   const out: Peak[] = [];

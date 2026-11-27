@@ -130,7 +130,7 @@ function prepared(img: CanvasImageSource & { width: number; height: number }, ma
   return c;
 }
 
-export function isPanorama(w: number, h: number): boolean {
+function isPanorama(w: number, h: number): boolean {
   return Math.abs(w / h - 2) < 0.08;
 }
 

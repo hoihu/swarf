@@ -30,7 +30,7 @@ export const TURNS: { turn: Turn; label: string; how: string }[] = [
   { turn: 'none', label: 'As it lay', how: 'The block lies as before (clamped again, or held differently).' },
 ];
 
-export const turnLabel = (t: Turn): string => TURNS.find((x) => x.turn === t)?.label ?? t;
+const turnLabel = (t: Turn): string => TURNS.find((x) => x.turn === t)?.label ?? t;
 
 /** The turn as a rotation: where a direction of the block as it lay points afterwards. */
 function rotate(turn: Turn, v: Vec3): Vec3 {

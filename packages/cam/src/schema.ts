@@ -141,7 +141,7 @@ const common = {
 
 // ---------- lathe ----------
 
-export const LatheFace = z.object({
+const LatheFace = z.object({
   type: z.literal('lathe_face'),
   ...common,
   z: mm.default(0).describe('Final face Z'),
@@ -150,7 +150,7 @@ export const LatheFace = z.object({
   fromDiameter: pos.optional().describe('Diameter to start from (default: stock diameter)'),
 });
 
-export const LatheTurn = z.object({
+const LatheTurn = z.object({
   type: z.literal('lathe_turn'),
   ...common,
   diameter: pos.describe('Finished diameter'),
@@ -161,7 +161,7 @@ export const LatheTurn = z.object({
   finish: z.number().min(0).default(0.2).describe('Radial allowance left for one finishing pass'),
 });
 
-export const LatheChamfer = z.object({
+const LatheChamfer = z.object({
   type: z.literal('lathe_chamfer'),
   ...common,
   diameter: pos.describe('Diameter of the edge to chamfer'),
@@ -169,7 +169,7 @@ export const LatheChamfer = z.object({
   size: pos.describe('Chamfer leg length at 45°'),
 });
 
-export const LatheGroove = z.object({
+const LatheGroove = z.object({
   type: z.literal('lathe_groove'),
   ...common,
   diameter: pos.describe('Groove bottom diameter'),
@@ -179,7 +179,7 @@ export const LatheGroove = z.object({
   peck: pos.optional().describe('Radial peck depth (default: none)'),
 });
 
-export const LathePartoff = z.object({
+const LathePartoff = z.object({
   type: z.literal('lathe_partoff'),
   ...common,
   z: mm.describe('Z of the cut flank nearest the face = part length as a negative number'),
@@ -188,14 +188,14 @@ export const LathePartoff = z.object({
   peck: pos.optional(),
 });
 
-export const ProfilePoint = z.object({
+const ProfilePoint = z.object({
   d: z.number().min(0).describe('Diameter'),
   z: mm.describe('Z'),
   c: pos.optional().describe('Chamfer at this corner (leg length)'),
   r: pos.optional().describe('Radius at this corner'),
 });
 
-export const LatheProfile = z.object({
+const LatheProfile = z.object({
   type: z.literal('lathe_profile'),
   ...common,
   points: z.array(ProfilePoint).min(2).optional().describe('The outline from the face towards the chuck; diameters never get smaller going towards the chuck. Start at d 0, z 0 to face as well. Or give shape instead.'),
@@ -206,7 +206,7 @@ export const LatheProfile = z.object({
   finish: z.number().min(0).default(0.2).describe('Allowance left by roughing for the finishing pass'),
 });
 
-export const LatheBore = z.object({
+const LatheBore = z.object({
   type: z.literal('lathe_bore'),
   ...common,
   diameter: pos.describe('Finished bore diameter'),
@@ -223,7 +223,7 @@ export const LatheBore = z.object({
  */
 export const ISO_THREAD_DEPTH = { external: 0.61343, internal: 0.54127 } as const;
 
-export const LatheThread = z.object({
+const LatheThread = z.object({
   type: z.literal('lathe_thread'),
   ...common,
   side: z.enum(['external', 'internal']).default('external').describe('internal: in a bore already at the minor diameter'),
@@ -238,7 +238,7 @@ export const LatheThread = z.object({
   infeed: z.enum(['flank', 'radial']).default('flank').describe('flank: along the 29.5° flank like a compound slide; radial: straight in'),
 });
 
-export const LatheDrill = z.object({
+const LatheDrill = z.object({
   type: z.literal('lathe_drill'),
   ...common,
   depth: pos.describe('Hole depth from the face (Z0), measured at full diameter'),
@@ -247,7 +247,7 @@ export const LatheDrill = z.object({
 
 // ---------- mill ----------
 
-export const MillFace = z.object({
+const MillFace = z.object({
   type: z.literal('mill_face'),
   ...common,
   z: mm.default(0).describe('Final top Z'),
@@ -280,7 +280,7 @@ const adaptive = {
   load: z.number().min(0.05).max(0.4).default(0.15).describe('adaptive: the bite beside the cutter, as a fraction of its diameter'),
 };
 
-export const MillPocketRect = z.object({
+const MillPocketRect = z.object({
   type: z.literal('mill_pocket_rect'),
   ...common,
   ...rect,
@@ -292,7 +292,7 @@ export const MillPocketRect = z.object({
   ...adaptive,
 });
 
-export const MillPocketCircle = z.object({
+const MillPocketCircle = z.object({
   type: z.literal('mill_pocket_circle'),
   ...common,
   cx: mm,
@@ -306,7 +306,7 @@ export const MillPocketCircle = z.object({
   ...adaptive,
 });
 
-export const MillContourRect = z.object({
+const MillContourRect = z.object({
   type: z.literal('mill_contour_rect'),
   ...common,
   ...rect,
@@ -321,7 +321,7 @@ export const MillContourRect = z.object({
 });
 
 /** Something on the mill table the tool must stay clear of (a clamp, a vise jaw): its outline in X/Y and its top, work coordinates. */
-export const Obstacle = z.object({
+const Obstacle = z.object({
   name: z.string().default('obstacle'),
   x0: mm,
   y0: mm,
@@ -329,7 +329,6 @@ export const Obstacle = z.object({
   y1: mm,
   top: mm,
 });
-export type Obstacle = z.infer<typeof Obstacle>;
 
 /** Imported 2D geometry (DXF, SVG) in mm, placed on the stock by `at`. */
 export const Shape = z.object({
@@ -348,7 +347,7 @@ const shapeEntry = {
   ...wallFinish,
 };
 
-export const MillContour = z.object({
+const MillContour = z.object({
   type: z.literal('mill_contour'),
   ...common,
   shape: z.string().describe('Shape id (an imported drawing)'),
@@ -361,7 +360,7 @@ export const MillContour = z.object({
   follow: z.boolean().default(false).describe('Follow the top as it was measured on the machine (the probed points kept with the job): the depth is kept against the real surface, for engraving on stock that is not flat'),
 });
 
-export const MillPocket = z.object({
+const MillPocket = z.object({
   type: z.literal('mill_pocket'),
   ...common,
   shape: z.string().describe('Shape id: its closed loops are the pocket, loops inside them islands that stay'),
@@ -373,7 +372,7 @@ export const MillPocket = z.object({
 
 const holes = z.array(z.object({ x: mm, y: mm })).min(1);
 
-export const MillDrill = z.object({
+const MillDrill = z.object({
   type: z.literal('mill_drill'),
   ...common,
   points: holes,
@@ -382,7 +381,7 @@ export const MillDrill = z.object({
   peck: pos.optional(),
 });
 
-export const MillSlot = z.object({
+const MillSlot = z.object({
   type: z.literal('mill_slot'),
   ...common,
   x0: mm.describe('Centre of one end'),
@@ -397,7 +396,7 @@ export const MillSlot = z.object({
   ...wallFinish,
 });
 
-export const MillSpot = z.object({
+const MillSpot = z.object({
   type: z.literal('mill_spot'),
   ...common,
   points: holes,
@@ -405,7 +404,7 @@ export const MillSpot = z.object({
   zTop: mm.optional(),
 });
 
-export const MillChamfer = z.object({
+const MillChamfer = z.object({
   type: z.literal('mill_chamfer'),
   ...common,
   size: pos.describe('Chamfer width, mm (measured on the top face)'),
@@ -423,7 +422,7 @@ export const MillChamfer = z.object({
   direction: wallFinish.direction,
 });
 
-export const MillEngrave = z.object({
+const MillEngrave = z.object({
   type: z.literal('mill_engrave'),
   ...common,
   text: z.string().min(1).max(200),
@@ -437,7 +436,7 @@ export const MillEngrave = z.object({
   follow: z.boolean().default(false).describe('Follow the top as it was measured on the machine (the probed points kept with the job): the depth is kept against the real surface, for engraving on stock that is not flat'),
 });
 
-export const MillThread = z.object({
+const MillThread = z.object({
   type: z.literal('mill_thread'),
   ...common,
   cx: mm,
@@ -532,13 +531,12 @@ export const OP_TOOLS: Record<OpType, ToolType[]> = {
  * block as it really sits, not as it was drawn. It belongs to one clamping: forget it when the
  * block is taken out.
  */
-export const Measured = z.object({
+const Measured = z.object({
   /** The block's front edge against the machine's X, degrees (counter-clockwise from above): the toolpath is turned by it about X0 Y0. */
   angle: z.number().min(-5).max(5).default(0),
   /** The top as touched, work coordinates: operations with `follow` keep their depth against it. */
   top: z.array(z.object({ x: mm, y: mm, z: mm })).max(400).default([]),
 });
-export type Measured = z.infer<typeof Measured>;
 
 /**
  * How the block is turned from one setup to the next, as the operator does it standing in front

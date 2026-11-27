@@ -19,7 +19,7 @@ export function childEnv(): NodeJS.ProcessEnv {
 }
 
 /** What to do when Claude Code is not logged in on this computer. */
-export const LOGIN_HINT = 'Claude Code is not logged in on this computer: run `claude auth login` in a terminal once (or start swarf with `npm start`, which offers it), then send again.';
+const LOGIN_HINT = 'Claude Code is not logged in on this computer: run `claude auth login` in a terminal once (or start swarf with `npm start`, which offers it), then send again.';
 
 /**
  * Is Claude Code logged in (`claude auth status`: exit 0 logged in, 1 not)? null: could not tell

@@ -12,7 +12,7 @@ import { segmentStats } from './planner.ts';
 import { arcPoints, walk, type Program } from './program.ts';
 import { toolOf, type Job, type Tool, type Vec3 } from './schema.ts';
 
-export interface SheetTool {
+interface SheetTool {
   id: number;
   name: string;
   /** What kind of tool, in a few words. */
@@ -26,7 +26,7 @@ export interface SheetTool {
   seconds: number;
 }
 
-export interface SheetOp {
+interface SheetOp {
   n: number;
   label: string;
   tool: number;

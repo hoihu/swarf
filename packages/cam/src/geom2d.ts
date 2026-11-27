@@ -45,7 +45,7 @@ export function area(l: Loop): number {
   return a / 2;
 }
 
-export function pointInLoop(p: Pt, l: Loop): boolean {
+function pointInLoop(p: Pt, l: Loop): boolean {
   let inside = false;
   for (let i = 0, j = l.length - 1; i < l.length; j = i++) {
     const [xi, yi] = l[i]!;

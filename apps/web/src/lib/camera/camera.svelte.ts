@@ -18,7 +18,7 @@ import { simWorld } from '../simworld.ts';
 const KEY = 'swarf.camera';
 export const SIM_SOURCE = 'sim';
 
-export interface CameraCalib {
+interface CameraCalib {
   lens?: Lens & { rms: number; views: number };
   /** Camera pose: Xc = R·X + t. `frame` machine: X in machine coordinates (needs the work offset live); work: in work coordinates. */
   pose?: Pose & { frame: 'machine' | 'work'; kind: 'lathe' | 'mill'; rms: number; points: number; method: 'machine' | 'marker'; tipPx?: number };
@@ -26,10 +26,10 @@ export interface CameraCalib {
   laser?: LaserPlane & { rms: number; points: number };
 }
 
-export type CameraView = 'scene' | 'camera' | 'overlay';
+type CameraView = 'scene' | 'camera' | 'overlay';
 
 /** The cutter as the camera sees it. */
-export interface ToolSeen {
+interface ToolSeen {
   diameter: number;
   scatter: number;
   /** Where its tip is against where the controller has it, mm (negative: lower, a longer tool). */
@@ -41,7 +41,7 @@ export interface ToolSeen {
 }
 
 /** The bar as the camera sees it. */
-export interface BarSeen {
+interface BarSeen {
   diameter: number;
   scatter: number;
   offset: number;

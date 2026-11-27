@@ -1,0 +1,17 @@
+// knip: no unused files, exports or dependencies (npm run knip, the fourth check in CI).
+// Workspaces, the Vite/Svelte entry points and the vitest tests are found by knip's plugins.
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      // The Playwright walks and the agent CLI checks are run by hand or by check-ui.mjs, not imported.
+      "entry": ["scripts/*.{mjs,cjs}"]
+    },
+    "packages/*": {
+      // A package's index.ts is its public API: what no other package (or its tests) imports is reported too.
+      "includeEntryExports": true
+    }
+  },
+  // Windows' registry tool, which browser.ts runs to find Chrome or Edge; not an npm binary.
+  "ignoreBinaries": ["reg"]
+}

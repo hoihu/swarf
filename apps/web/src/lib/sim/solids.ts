@@ -49,7 +49,7 @@ export function topOf(s: Solid, x: number, y: number): number {
 }
 
 /** Horizontal distance from (x, y) to the solid's outline (0 inside), and the nearest point of it. */
-export function footprintDistance(s: Solid, x: number, y: number): { dist: number; at: [number, number] } {
+function footprintDistance(s: Solid, x: number, y: number): { dist: number; at: [number, number] } {
   if (s.kind === 'cyl') {
     const d = Math.hypot(x - s.cx, y - s.cy);
     if (d <= s.r) return { dist: 0, at: [x, y] };

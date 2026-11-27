@@ -13,7 +13,7 @@ import { openWebSocket } from './websocket.ts';
 
 const URL_KEY = 'swarf.grblUrl';
 
-export interface ConsoleLine {
+interface ConsoleLine {
   dir: 'in' | 'out' | 'note';
   text: string;
 }

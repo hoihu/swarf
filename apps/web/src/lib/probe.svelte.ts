@@ -13,8 +13,6 @@ import { store } from './store.svelte.ts';
 import { tooling } from './tooling.svelte.ts';
 import { analyseSurface, type SurfaceResult } from './surface.ts';
 
-export { analyseSurface, type SurfaceResult };
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A guarded move stopped: the probe touched something on the way (at work Z `z`). */
@@ -27,7 +25,7 @@ class Touched extends Error {
 }
 
 
-export interface CornerResult {
+interface CornerResult {
   /** Front-left corner and top, work coordinates before the new zero was set. */
   corner: V3;
   /** The front edge against X, degrees (counter-clockwise positive). */

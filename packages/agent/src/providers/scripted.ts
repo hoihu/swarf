@@ -5,7 +5,7 @@
  */
 import type { Block, Message, Provider, StepRequest, StepResult } from '../types.ts';
 
-export type ScriptStep = Block[] | ((ctx: { userText: string; messages: Message[] }) => Block[]);
+type ScriptStep = Block[] | ((ctx: { userText: string; messages: Message[] }) => Block[]);
 
 export interface Script {
   name: string;

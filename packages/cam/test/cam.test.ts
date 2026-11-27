@@ -16,7 +16,6 @@ import {
   emit,
   fixed,
   roundTo,
-  levels,
   walk,
   fitArcs,
   diffJobs,
@@ -29,9 +28,10 @@ import {
   samplePath,
   MATERIALS,
   type Program,
-  type JobInput,
   type OperationInput,
 } from '../src/index.ts';
+import type { JobInput } from '../src/schema.ts';
+import { levels } from '../src/program.ts';
 
 const codes = (job: Job) => analyze(job).diagnostics.map((d) => d.code);
 const withOps = (kind: 'lathe' | 'mill', ops: OperationInput[], patch: Partial<JobInput> = {}): Job =>
