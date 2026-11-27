@@ -75,7 +75,7 @@ the access key from `~/.swarf/server.json`.
 ## How the preview looks
 
 The 3D preview shows the work in its surroundings: the mill's table with its T-slots, cutters
-with flutes one can see turn, a chuck with jaws that goes round, the work's material (aluminium,
+with flutes one can see turn in an ER collet and nut of the size their shank needs, a chuck with jaws that goes round, the work's material (aluminium,
 steel, brass, plastic) with cut surfaces bright and the raw stock's skin duller, a cut floor the
 darker the deeper it lies (so a pocket seen from the side reads as one). Press play and
 it cuts (beside the slider: quickly, the whole program in about ten seconds, or at its own

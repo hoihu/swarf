@@ -102,6 +102,73 @@ function fluted(diameter: number, length: number, flutes: number, point: number)
   return g;
 }
 
+/**
+ * The ER collet the shank sits in, its nut and the spindle above, from `y` (the nut's face) up:
+ * sized as the smallest ER collet that takes the shank (ER11 up to 7 mm, ER16 to 10, ER20 to 13,
+ * ER25 to 16, ER32 above). The collet and nut turn with the cutter (`spin`); the spindle's
+ * housing stands still.
+ */
+export function holderOn(g: THREE.Group, spin: THREE.Object3D, shank: number, y: number): void {
+  const er = shank <= 7 ? { nut: 19, h: 11.5 } : shank <= 10 ? { nut: 28, h: 17.5 } : shank <= 13 ? { nut: 35, h: 19.5 } : shank <= 16 ? { nut: 42, h: 20 } : { nut: 50, h: 22.5 };
+  const R = er.nut / 2;
+  const H = er.h;
+  const nutSteel = new THREE.MeshStandardMaterial({ color: '#c4cacf', metalness: 0.65, roughness: 0.3 });
+  // the collet's front: a cone round the shank, its slits showing, sunk a little in the nut
+  const cr = Math.max(shank / 2 + 0.8, R * 0.55);
+  const colletG = new THREE.LatheGeometry([new THREE.Vector2(shank / 2 + 0.05, 0.6), new THREE.Vector2(cr * 0.82, 0.6), new THREE.Vector2(cr, 1.6), new THREE.Vector2(cr, 2.2)], 64);
+  const collet = new THREE.Mesh(colletG, new THREE.MeshStandardMaterial({ color: '#8f989e', metalness: 0.95, roughness: 0.3, side: THREE.DoubleSide }));
+  collet.position.y = y;
+  spin.add(collet);
+  const slitM = new THREE.MeshStandardMaterial({ color: '#1d2023', roughness: 0.8 });
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    const len = cr - shank / 2;
+    const slit = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.35), slitM);
+    const m = shank / 2 + len / 2;
+    slit.position.set(Math.cos(a) * m, y + 0.62 + ((m - shank / 2) / len) * 0.9, Math.sin(a) * m);
+    slit.rotation.y = -a;
+    spin.add(slit);
+  }
+  // the nut: a ring turned round, a chamfer at its face, a lip over the collet
+  const prof = [
+    new THREE.Vector2(cr + 0.1, 0.9),
+    new THREE.Vector2(cr + 0.6, 0),
+    new THREE.Vector2(R - 1.6, 0),
+    new THREE.Vector2(R - 0.2, 1.2),
+    new THREE.Vector2(R, 1.8),
+    new THREE.Vector2(R, H - 1.0),
+    new THREE.Vector2(R - 0.6, H),
+    new THREE.Vector2(R * 0.7, H),
+  ];
+  const nut = new THREE.Mesh(new THREE.LatheGeometry(prof, 96), nutSteel);
+  nut.position.y = y;
+  nut.castShadow = true;
+  spin.add(nut);
+  // the spanner's notches round the nut
+  const notchM = new THREE.MeshStandardMaterial({ color: '#3a4045', metalness: 0.6, roughness: 0.5 });
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+    const notch = new THREE.Mesh(new THREE.BoxGeometry(1.4, H * 0.42, Math.max(2.5, R * 0.3)), notchM);
+    notch.position.set(Math.cos(a) * (R - 0.55), y + H * 0.55, Math.sin(a) * (R - 0.55));
+    notch.rotation.y = -a;
+    spin.add(notch);
+  }
+  // the spindle shaft's nose the nut screws on (turns), then the spindle's housing (stands still)
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.78, R * 0.78, 6, 64), nutSteel);
+  shaft.position.y = y + H + 3;
+  spin.add(shaft);
+  // (slimmer than most spindles' housings, which would hide the work from above)
+  const housingR = Math.max(16, R * 1.6);
+  const housingG = new THREE.LatheGeometry(
+    [new THREE.Vector2(R * 0.82, 0), new THREE.Vector2(housingR - 3, 0), new THREE.Vector2(housingR, 3), new THREE.Vector2(housingR, 45), new THREE.Vector2(0, 45)],
+    96,
+  );
+  const housing = new THREE.Mesh(housingG, new THREE.MeshStandardMaterial({ color: '#d4d8db', metalness: 0.55, roughness: 0.35 }));
+  housing.position.y = y + H + 6;
+  housing.castShadow = true;
+  g.add(housing);
+}
+
 /** The cutter as it hangs in the spindle: flutes, shank, collet nut. `spin`: the part that turns. */
 export function millToolMesh(type: 'endmill' | 'drill' | 'chamfer' | 'threadmill', diameter: number, fluteLength: number | undefined, flutes = 3, angle = 90): THREE.Group & { userData: { spin: THREE.Object3D } } {
   const g = new THREE.Group();
@@ -133,10 +200,7 @@ export function millToolMesh(type: 'endmill' | 'drill' | 'chamfer' | 'threadmill
     shank.position.y = top + shankLen / 2;
     shank.castShadow = true;
     spin.add(shank);
-    const nutR = Math.max(diameter * 1.25, 9);
-    const nut = new THREE.Mesh(new THREE.CylinderGeometry(nutR * 0.82, nutR, nutR * 1.1, 6), steel('#596167', 0.4));
-    nut.position.y = top + shankLen + nutR * 0.55;
-    spin.add(nut);
+    holderOn(g, spin, diameter, top + shankLen);
     g.add(spin);
     g.userData.spin = spin;
     g.userData.top = top + shankLen;
@@ -152,16 +216,7 @@ export function millToolMesh(type: 'endmill' | 'drill' | 'chamfer' | 'threadmill
   shank.position.y = cut + shankLen / 2;
   shank.castShadow = true;
   spin.add(shank);
-  // collet nut: a knurled ring with flats, and the spindle nose above it
-  const nutR = Math.max(diameter * 1.25, 9);
-  const nut = new THREE.Mesh(new THREE.CylinderGeometry(nutR * 0.82, nutR, nutR * 1.1, 6), steel('#596167', 0.4));
-  nut.position.y = cut + shankLen + nutR * 0.55;
-  nut.castShadow = true;
-  spin.add(nut);
-  const nose = new THREE.Mesh(new THREE.CylinderGeometry(nutR * 1.25, nutR * 1.08, nutR * 0.9, 40), new THREE.MeshStandardMaterial({ color: '#c3c9cd', metalness: 0.6, roughness: 0.35 }));
-  nose.position.y = cut + shankLen + nutR * 1.1 + nutR * 0.45;
-  nose.castShadow = true;
-  g.add(nose);
+  holderOn(g, spin, diameter, cut + shankLen);
   g.add(spin);
   g.userData.spin = spin;
   g.userData.top = cut + shankLen;
