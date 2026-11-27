@@ -32,6 +32,10 @@ class Machine {
   /** Network address of a grblHAL board (ws://host:81), remembered. */
   url = $state<string>(loadText(URL_KEY) ?? '');
   #s: Streamer | null = null;
+  /** The simulated controller, while it is the one connected. */
+  #sim: SimGrbl | null = null;
+  /** How fast the simulated machine runs against real time (1: real time). */
+  simSpeed = $state(simWorld.speed);
   /** The last probing result (machine coordinates as the controller reports them). */
   probe = $state<ProbeResult | null>(null);
   /** Connected to the simulated controller (the simulated camera and probe world go with it). */
@@ -81,6 +85,7 @@ class Machine {
         // what the simulated camera sees: the machine where it really is (not the last status report), the laser as switched
         simWorld.truth = { pos: () => [...sim.pos] as [number, number, number], laser: () => sim.flood };
         this.simulated = true;
+        this.#sim = sim;
         t = sim;
       } else if (network) {
         const [address, protocol] = this.url.trim().split(/\s+/);
@@ -140,10 +145,19 @@ class Machine {
     }
   }
 
+  /** Let the simulated machine run faster or slower than real time (also while it moves). */
+  setSimSpeed(v: number): void {
+    simWorld.speed = v;
+    this.simSpeed = v;
+    if (this.#sim) this.#sim.speed = v;
+    this.record.ev(`Simulator speed: ${v}×`);
+  }
+
   async disconnect(): Promise<void> {
     this.record.ev('disconnected');
     await this.#s?.close();
     this.#s = null;
+    this.#sim = null;
     this.connected = false;
     this.simulated = false;
     this.lost = false;

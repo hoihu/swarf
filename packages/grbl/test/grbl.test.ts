@@ -293,6 +293,25 @@ describe('simulated controller', () => {
     await sim.close();
   });
 
+  it('runs faster or slower when its speed is changed while it moves', async () => {
+    const sim = new SimGrbl();
+    const s = new Streamer(sim, {}, { pollMs: 5 });
+    await wait(20);
+    // 600 mm/min: 10 mm/s in real time, a long way to go
+    await s.run('G21 G90 G54\nG1 X1000 F600\nM30\n');
+    await wait(100);
+    const a = s.last?.wpos?.[0] ?? 0;
+    sim.speed = 20;
+    expect(sim.speed).toBe(20);
+    await wait(100);
+    const b = s.last?.wpos?.[0] ?? 0;
+    // a tenth of a second: about 1 mm in real time, about 20 mm at twenty times
+    expect(a).toBeLessThan(3);
+    expect(b - a).toBeGreaterThan(10);
+    await s.close();
+    await sim.close();
+  });
+
   it('spindle speed override: ±10 and ±1 %, reported, cleared by a reset', async () => {
     const sim = new SimGrbl({ speed: 200 });
     const s = new Streamer(sim, {}, { pollMs: 5 });

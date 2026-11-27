@@ -24,6 +24,7 @@
   }
   // what the simulated mill has on its table (the probe touches it, the simulated camera sees it)
   let simSetup = $state<SetupName>(simWorld.setup);
+  const SIM_SPEEDS = [1, 2, 5, 10, 20] as const;
   const setSimSetup = (v: SetupName) => {
     simSetup = v;
     simWorld.setup = v;
@@ -239,6 +240,16 @@
     <span class="grow"></span>
     <button class="btn" onclick={() => machine.disconnect()} disabled={busy || waiting}>Disconnect</button>
   </div>
+  {#if machine.simulated}
+    <div class="simspeed">
+      <label>The simulator runs
+        <select value={machine.simSpeed} onchange={(e) => machine.setSimSpeed(Number(e.currentTarget.value))}>
+          {#each SIM_SPEEDS as v (v)}<option value={v}>{v === 1 ? 'in real time' : `${v}× as fast`}</option>{/each}
+        </select>
+      </label>
+      <p class="muted small">Also while the program runs. A real machine runs at its own pace: there only the feed override changes it.</p>
+    </div>
+  {/if}
   {#if machine.simulated && !lathe}
     <div class="simsetup">
       <label>On the simulated table
@@ -364,9 +375,9 @@
   .grow { flex: 1; }
   .from { gap: 10px; align-items: center; margin-bottom: 6px; }
   .from select { max-width: 260px; }
-  .simsetup { margin-bottom: 10px; }
-  .simsetup label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-  .simsetup p { margin: 4px 0 0; }
+  .simsetup, .simspeed { margin-bottom: 10px; }
+  .simsetup label, .simspeed label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .simsetup p, .simspeed p { margin: 4px 0 0; }
   .state { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .badge { font-weight: 700; padding: 2px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
   .s-idle { color: var(--ok); }

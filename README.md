@@ -82,7 +82,9 @@ time, from 50× down to real time and a quarter of it): **chips** fly off the cu
 a spray of brass needles, long white strings of plastic), tumble, land on the work and the table
 and fade after a while; with **coolant** on, a hose looks at the cutter and the stream splashes
 off it; **sound** (off unless switched on) hums with the spindle and hisses with the cut. The
-same happens while a connected machine runs.
+same happens while a connected machine runs. Then the preview follows the machine, not Play: the
+cutter is the one the machine has in, it glides from one status report to the next (a fifth of a
+second behind), and the playing speed is shut (on the simulator, it has its own speed).
 
 **Look** (top right of the preview) picks the surroundings: a painted workshop, a studio, a
 night shift under the machine's own lamp, or none. Or your own: **drop a picture of your
@@ -154,7 +156,7 @@ After every assistant turn the chat shows what changed (operations added, change
 **Keep** and **Revert this turn**.
 
 No machine at hand: **Connect a simulated mill/lathe** runs a pretend grblHAL in the browser that
-moves in real time, reports MPos and WCO, spindle and probe input, and jogs (`packages/grbl/src/sim.ts`). The feed override (10–200 %) and the rapid override (100, 50 or 25 %) slow it down as they would a real one. On
+moves in real time, reports MPos and WCO, spindle and probe input, and jogs (`packages/grbl/src/sim.ts`). The feed override (10–200 %) and the rapid override (100, 50 or 25 %) slow it down as they would a real one; **The simulator runs** (beside it, also while a program runs) makes it 2 to 20 times as fast as real time, to see a long program through. On
 the simulated mill you choose what is on the table: the block alone, two steel blocks beside it,
 low edge clamps against a stop, strap clamps across its ends (step blocks, T-bolts and nuts
 standing 36 mm above the top) or a machine vise. The block itself is never quite where the job

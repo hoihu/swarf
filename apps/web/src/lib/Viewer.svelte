@@ -9,6 +9,7 @@
   import { SURROUNDS, cover, makeSurround, type Surround } from './workshop/surround.ts';
   import { MachineSound } from './workshop/sound.ts';
   import { SPEEDS, look } from './workshop/look.svelte.ts';
+  import { Glide } from './glide.ts';
   import { camera as cam } from './camera/camera.svelte.ts';
   import { glProjection, glView } from './camera/geometry.ts';
   import { laserScan } from './camera/laserscan.svelte.ts';
@@ -91,6 +92,9 @@
   const partMaterials = new Map<string, THREE.MeshStandardMaterial>();
   let lastTime = 0;
   let liveAt = '';
+  let livePos = '';
+  /** The machine's tool marker, smoothed between status reports. */
+  const glide = new Glide();
   /** Where the cutter's tip was at the last frame (scene), for the chips between there and here. */
   const lastTip = new THREE.Vector3();
   let haveTip = false;
@@ -472,7 +476,7 @@
       world.add(made);
       toolKey = key;
     }
-    tool!.position.copy(toScene(live ?? p, lathe));
+    tool!.position.copy(toScene(live ? glide.at(performance.now()) : p, lathe));
   }
 
   function updateRange(): void {
@@ -669,6 +673,11 @@
         if (meshDue && (now - meshAt > 90 || at >= total)) meshPart();
       }
     }
+    // a connected machine: the marker goes on towards the last status report
+    if (live && glide.moving(performance.now())) {
+      placeTool();
+      dirty = true;
+    }
     effects(dt);
     // render only when something changed: software GL (and laptops) thank us
     if (overlay && renderer) {
@@ -851,6 +860,10 @@
       // (a status report with the machine where it was is nothing to draw again)
       if (at === liveAt) return;
       liveAt = at;
+      const pos = live ? `${live.x},${live.y},${live.z}` : '';
+      if (!live) glide.reset();
+      else if (pos !== livePos) glide.report(live, performance.now());
+      livePos = pos;
       placeTool();
       dirty = true;
     });
@@ -1001,7 +1014,7 @@
     </button>
     <input type="range" min="0" max={total} bind:value={at} oninput={() => { playing = false; onScrub(); }} aria-label="Program position" />
     <span class="pos">{clockText(clock)} / {clockText(runtime)} · {at} / {total} moves</span>
-    <select class="speed" bind:value={look.speed} onchange={() => look.save()} aria-label="Playing speed" title="How fast Play goes">
+    <select class="speed" bind:value={look.speed} onchange={() => look.save()} aria-label="Playing speed" disabled={!!live} title={live ? 'How fast Play goes. Not while a machine is connected: the preview follows the machine (its feed override; on the simulator, how fast it runs)' : 'How fast Play goes'}>
       {#each SPEEDS as s (s)}<option value={s}>{s === 0 ? 'Quick (10 s)' : s === 1 ? 'Real time' : `${s}×`}</option>{/each}
     </select>
   </div>
@@ -1046,6 +1059,7 @@
   .play svg { fill: currentColor; }
   .speed { flex: none; font-size: 12px; padding: 4px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); color: var(--on-iron); border: 1px solid rgba(255, 255, 255, 0.14); color-scheme: dark; }
   .speed option { background: #1f2326; color: #eef0f1; }
+  .speed:disabled { opacity: 0.45; }
   .pos { font-size: 12px; color: var(--on-iron-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
   @media (max-width: 560px) { .pos { display: none; } }
 </style>

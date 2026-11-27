@@ -95,6 +95,14 @@ export class SimGrbl implements Transport {
     setTimeout(() => this.#emit('\r\nGrblHAL 1.1f [\'$\' or \'$HELP\' for help]\r\n'), 0);
   }
 
+  /** How fast it runs against real time (1: real time); may be changed while it moves. */
+  get speed(): number {
+    return this.#speed;
+  }
+  set speed(v: number) {
+    if (Number.isFinite(v) && v > 0) this.#speed = v;
+  }
+
   get label(): string {
     return `Simulated ${this.lathe ? 'lathe' : 'mill'}`;
   }
