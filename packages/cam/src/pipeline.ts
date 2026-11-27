@@ -16,7 +16,7 @@ export interface Runnable extends Emitted {
   readonly [passed]: true;
 }
 /** What holds a program up: a check error, or a lint finding with the (1-based) line it is on. */
-export type Blocker = Diagnostic & { severity: 'error'; line?: number };
+type Blocker = Diagnostic & { severity: 'error'; line?: number };
 export interface Refused {
   ok: false;
   errors: Blocker[];

@@ -26,7 +26,7 @@ export interface SimWorld {
   laser: boolean;
 }
 
-export { LASER };
+{ LASER };
 
 /** Where the tool marker sits relative to the tip, in machine coordinates (the "truth" the calibration finds). */
 // (on an arm beside the spindle, clear of the laser's fan)

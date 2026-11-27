@@ -5,7 +5,7 @@
  */
 import { Job, type JobInput, type Machine, type Tool } from './schema.ts';
 
-export const LATHE: Machine = {
+const LATHE: Machine = {
   kind: 'lathe',
   name: 'grblHAL lathe',
   envelope: { min: { x: -1, y: 0, z: -200 }, max: { x: 70, y: 0, z: 60 } },
@@ -38,7 +38,7 @@ export const MILL: Machine = {
   arcTolerance: 0.005,
 };
 
-export const LATHE_TOOLS: Tool[] = [
+const LATHE_TOOLS: Tool[] = [
   { id: 1, name: 'Turning, CCMT 09 R0.4 carbide', type: 'turning', edgeLength: 3, noseRadius: 0.4 },
   { id: 2, name: 'Parting blade 2 mm', type: 'grooving', width: 2 },
   { id: 3, name: 'Drill Ø6 HSS', type: 'drill', diameter: 6, fluteLength: 50 },

@@ -95,7 +95,7 @@ export function extractLine(on: Rgba, off: Rgba, threshold = 25): V2[] {
 }
 
 /** The camera's centre and the ray through a pixel, machine coordinates. */
-export function ray(lens: Lens, pose: Pose, px: V2): { C: V3; D: V3 } {
+function ray(lens: Lens, pose: Pose, px: V2): { C: V3; D: V3 } {
   const Rt = transpose(pose.R);
   const C = mulMV(Rt, pose.t).map((v) => -v) as V3;
   const [x, y] = pixelToRay(lens, px[0], px[1]);
@@ -103,7 +103,7 @@ export function ray(lens: Lens, pose: Pose, px: V2): { C: V3; D: V3 } {
 }
 
 /** Where a ray meets the plane n·X = c (null when parallel or behind the camera). */
-export function hitPlane(C: V3, D: V3, n: V3, c: number): V3 | null {
+function hitPlane(C: V3, D: V3, n: V3, c: number): V3 | null {
   const den = n[0] * D[0] + n[1] * D[1] + n[2] * D[2];
   if (Math.abs(den) < 1e-12) return null;
   const t = (c - (n[0] * C[0] + n[1] * C[1] + n[2] * C[2])) / den;
@@ -148,7 +148,7 @@ export function calibratePlane(lens: Lens, pose: Pose, zTop: number, views: { p:
 }
 
 /** A plane through points that may include strays: fits in a narrowing band around the last one. */
-export function fitPlaneRobust(pts: V3[], tol = 0.3): { n: V3; k: number; rms: number; inliers: number } {
+function fitPlaneRobust(pts: V3[], tol = 0.3): { n: V3; k: number; rms: number; inliers: number } {
   let use = pts;
   let fit = fitPlane(use);
   for (const band of [10, 3, 1, tol]) {
@@ -161,7 +161,7 @@ export function fitPlaneRobust(pts: V3[], tol = 0.3): { n: V3; k: number; rms: n
 }
 
 /** Least-squares plane n·X = k through points: the normal is the direction of least spread. */
-export function fitPlane(pts: V3[]): { n: V3; k: number; rms: number } {
+function fitPlane(pts: V3[]): { n: V3; k: number; rms: number } {
   const N = pts.length;
   const c = pts.reduce((s, p) => [s[0] + p[0] / N, s[1] + p[1] / N, s[2] + p[2] / N] as V3, [0, 0, 0] as V3);
   const M = [0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -222,7 +222,7 @@ function jacobi3(A: number[]): { values: number[]; vectors: number[] } {
 
 // ---------- the height map and what is in it ----------
 
-export interface HeightMap {
+interface HeightMap {
   /** Work X/Y of the first cell's corner, cell size (mm), cells across and deep. */
   x0: number;
   y0: number;
@@ -236,7 +236,7 @@ export interface HeightMap {
 }
 
 /** Points (work coordinates) into a grid of cells, averaging each cell's heights. */
-export function heightMap(points: V3[], cell = 0.5): HeightMap {
+function heightMap(points: V3[], cell = 0.5): HeightMap {
   // plain loops: spreading a hundred thousand points into Math.min overflows the stack
   let minX = Infinity;
   let minY = Infinity;

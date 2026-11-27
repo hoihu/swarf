@@ -15,8 +15,10 @@ npm start          # builds the app, logs Claude Code in if needed, serves it an
                    # Chrome or Edge (they alone reach a machine over USB), its chat answered by
                    # Claude Code (Ctrl-C stops it)
 npm run dev        # the web app at http://localhost:5173, for working on it
+npm run typecheck  # the four checks CI runs, in this order: typecheck, test, build, knip
 npm test           # vitest over all five workspaces (cam, grbl, agent, server, web)
-npm run typecheck
+npm run build      # the web app (vite build)
+npm run knip       # no unused files, exports or dependencies (knip.jsonc)
 npm run check:ui   # Playwright walks through the simulated workshop (scripts/check-*.cjs,
                    # tour.cjs) against a dev server; npx playwright install chromium once
 ```

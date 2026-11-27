@@ -26,7 +26,7 @@ export function roundTo(n: number, digits: number): number {
 export const fixed = (n: number, digits: number): string => String(roundTo(n, digits));
 
 /** 3 decimals, no trailing zeros, never "-0". */
-export function num(n: number): string {
+function num(n: number): string {
   let s = n.toFixed(3).replace(/\.?0+$/, '');
   if (s === '-0') s = '0';
   return s;

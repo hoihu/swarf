@@ -88,7 +88,7 @@ export function buildProfile(points: ProfilePoint[], chord = 0.002): P2[] {
  * Offset the profile by `dist` to the tool side (outwards: larger radius, towards the face).
  * Outer (convex) corners get a round join, inner corners the intersection of the offset sides.
  */
-export function offsetProfile(pts: P2[], dist: number, chord = 0.002): P2[] {
+function offsetProfile(pts: P2[], dist: number, chord = 0.002): P2[] {
   if (dist <= 0) return pts.map((p) => ({ ...p }));
   const segs: { a: P2; b: P2; d: P2; n: P2 }[] = [];
   for (let i = 1; i < pts.length; i++) {

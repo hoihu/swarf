@@ -37,7 +37,7 @@ export function withIds(ops: Operation[]): Operation[] {
   });
 }
 
-export function homeOf(job: Job): Vec3 {
+function homeOf(job: Job): Vec3 {
   if (job.machine.kind === 'lathe') {
     const s = latheSafe(job);
     return v(s.x + 5, 0, s.z + 20);

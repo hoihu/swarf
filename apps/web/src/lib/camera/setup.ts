@@ -17,7 +17,7 @@ export interface Grey {
   lum: Float32Array;
 }
 
-export interface EdgeFit {
+interface EdgeFit {
   /** Which edge: front (Y min), right (X max), back (Y max), left (X min). */
   side: 'front' | 'right' | 'back' | 'left';
   /** Hits used / searched. */

@@ -10,7 +10,7 @@ import { load, remove, save } from './persist.ts';
 
 const KEY = 'swarf.connect';
 
-export type BridgeStatus = 'off' | 'connecting' | 'connected' | 'offline' | 'denied';
+type BridgeStatus = 'off' | 'connecting' | 'connected' | 'offline' | 'denied';
 
 class Bridge {
   status = $state<BridgeStatus>('off');

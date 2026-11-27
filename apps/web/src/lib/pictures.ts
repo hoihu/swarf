@@ -9,7 +9,7 @@ export interface Attached {
 }
 
 /** The size a picture is sent at: the longer side at most `max` pixels (never enlarged). */
-export function fitted(w: number, h: number, max = 1568): { w: number; h: number } {
+function fitted(w: number, h: number, max = 1568): { w: number; h: number } {
   const k = Math.min(1, max / Math.max(w, h));
   return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) };
 }

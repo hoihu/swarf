@@ -18,7 +18,7 @@ export type Move =
 export type Plane = 'xy' | 'zx';
 
 /** The plane's first and second axis and the one along it (G17: X Y, Z; G18: Z X, Y). */
-export const PLANE_AXES: Record<Plane, [keyof Vec3, keyof Vec3, keyof Vec3]> = { xy: ['x', 'y', 'z'], zx: ['z', 'x', 'y'] };
+const PLANE_AXES: Record<Plane, [keyof Vec3, keyof Vec3, keyof Vec3]> = { xy: ['x', 'y', 'z'], zx: ['z', 'x', 'y'] };
 
 /** A point in the plane's own frame (x, y = first and second axis, z = the axis along it), and back. */
 export function toPlane(p: Vec3, plane: Plane = 'xy'): Vec3 {

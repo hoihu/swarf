@@ -15,7 +15,7 @@
 import { CamError } from '../program.ts';
 import { area, circle, depthOf, inRegion, intersect, normalize, offsetRegion, orient, regionArea, type Loop, type Pt } from '../geom2d.ts';
 
-export interface AdaptivePass {
+interface AdaptivePass {
   pts: Pt[];
   closed: boolean;
 }
@@ -50,7 +50,7 @@ function inside(p: Pt, outer: Loop, region: Loop[]): boolean {
 }
 
 /** The point of a region furthest from its edge, and how far that is (to about 0.05 mm). */
-export function deepest(region: Loop[]): { c: Pt; depth: number } {
+function deepest(region: Loop[]): { c: Pt; depth: number } {
   let lo = 0;
   let hi = 1;
   while (offsetRegion(region, -hi).length && hi < 1e4) hi *= 2;

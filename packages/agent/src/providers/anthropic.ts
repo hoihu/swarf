@@ -30,13 +30,7 @@ export const ANTHROPIC_MODELS: AnthropicModelInfo[] = [
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', adaptive: false, effort: false, fallbacks: false, price: { input: 1, output: 5 } },
 ];
 
-export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5';
-
-export function costUsd(modelId: string, u: { input: number; output: number; cacheRead: number; cacheWrite: number }): number {
-  const m = ANTHROPIC_MODELS.find((x) => modelId.startsWith(x.id));
-  if (!m) return 0;
-  return (u.input * m.price.input + u.cacheRead * m.price.input * 0.1 + u.cacheWrite * m.price.input * 1.25 + u.output * m.price.output) / 1e6;
-}
+const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5';
 
 export interface AnthropicOptions {
   apiKey: string;

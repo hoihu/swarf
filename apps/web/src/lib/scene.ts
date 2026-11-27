@@ -16,13 +16,13 @@ export interface WorkLook {
   roughness: number;
 }
 /** A cut floor's brightness against the top: darker the deeper it lies, down to 70 % at 3 mm. */
-export function depthShade(depth: number): number {
+function depthShade(depth: number): number {
   return 1 - 0.3 * Math.max(0, Math.min(1, depth / 3));
 }
 
 const PLAIN: WorkLook = { color: '#b8c2c2', raw: '#b8c2c2', metalness: 0.55, roughness: 0.4 };
 
-export const COLORS = {
+const COLORS = {
   feed: new THREE.Color('#6fb2e8'),
   rapid: new THREE.Color('#ef8a4c'),
   selected: new THREE.Color('#f2d16b'),

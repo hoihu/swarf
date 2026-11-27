@@ -35,11 +35,13 @@ npm ci
 npm run typecheck   # tsc over the workspaces + svelte-check --fail-on-warnings
 npm test            # vitest: packages/*/test, tools/*/test, apps/*/test
 npm run build       # the web app (vite build)
+npm run knip        # knip (knip.jsonc): no unused files, exports or dependencies
 ```
 
 Also: `npm run dev` (app at http://localhost:5173), `npm run mcp` / `npm run server` (the relay),
 `npm run check:ui` (the Playwright scripts; `npx playwright install chromium` once; not in CI).
-Run all three checks before calling a change done.
+Run all four checks before calling a change done. An export no other package or test uses
+fails knip: drop the `export` or the code rather than adding an ignore.
 
 ## Invariants
 
