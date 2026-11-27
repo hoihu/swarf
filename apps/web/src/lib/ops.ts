@@ -1,4 +1,4 @@
-import type { Job, MachineKind, OperationInput, OpType } from '@swarf/cam';
+import type { Job, MachineKind, MaterialId, OperationInput, OpType } from '@swarf/cam';
 
 /** Names and starting values for adding an operation by hand. */
 export const OP_TEMPLATES: Record<MachineKind, { type: OpType; name: string; make: (job: Job) => OperationInput; needsShape?: boolean }[]> = {
@@ -44,4 +44,10 @@ export function minutes(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   return `${m} min ${s.toString().padStart(2, '0')} s`;
+}
+
+/** The job in another workpiece material: the grade written for the one before (6082, POM…) no longer fits, so it goes. */
+export function withWorkMaterial(job: Job, id: MaterialId): Job {
+  if (id === job.workMaterial) return job;
+  return { ...job, workMaterial: id, material: undefined };
 }

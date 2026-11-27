@@ -4,7 +4,7 @@
   import MeasuredNote from './MeasuredNote.svelte';
   import { issuesByField, machineFields, opFields, toolFieldsFor } from './form.ts';
   import { store } from './store.svelte.ts';
-  import { OP_TEMPLATES } from './ops.ts';
+  import { OP_TEMPLATES, withWorkMaterial } from './ops.ts';
   import SetupBar from './SetupBar.svelte';
   import { ui } from './ui.svelte.ts';
   import { download as saveAs, fileName, files, programName } from './files.svelte.ts';
@@ -302,7 +302,7 @@
         <p class="muted">X0 Y0 is the front-left corner of the block, Z0 the top after facing.</p>
       {/if}
       <label class="wide">Material
-        <select value={job.workMaterial} onchange={(e) => store.set({ ...job, workMaterial: (e.currentTarget as HTMLSelectElement).value as MaterialId })}>
+        <select value={job.workMaterial} onchange={(e) => store.set(withWorkMaterial(job, (e.currentTarget as HTMLSelectElement).value as MaterialId))}>
           {#each Object.entries(MATERIALS) as [id, m] (id)}<option value={id}>{m.name}</option>{/each}
         </select>
       </label>
