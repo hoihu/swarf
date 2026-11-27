@@ -76,11 +76,13 @@ the access key from `~/.swarf/server.json`.
 
 The 3D preview shows the work in its surroundings: the mill's table with its T-slots, cutters
 with flutes one can see turn, a chuck with jaws that goes round, the work's material (aluminium,
-steel, brass, plastic) with cut surfaces bright and the raw stock's skin duller. Press play and
+steel, brass, plastic) with cut surfaces bright and the raw stock's skin duller, a cut floor the
+darker the deeper it lies (so a pocket seen from the side reads as one). Press play and
 it cuts (beside the slider: quickly, the whole program in about ten seconds, or at its own
 time, from 50× down to real time and a quarter of it): **chips** fly off the cutter in the material's own way (curls of aluminium, blued steel,
 a spray of brass needles, long white strings of plastic), tumble, land on the work and the table
-and fade after a while; with **coolant** on, a hose looks at the cutter and the stream splashes
+and fade after a while; **fresh cuts glow** orange where the cutter has just been and fade in
+two and a half seconds, so one sees where and how it cuts (Look → Fresh cuts glow); with **coolant** on, a hose looks at the cutter and the stream splashes
 off it; **sound** (off unless switched on) hums with the spindle and hisses with the cut. The
 same happens while a connected machine runs. Then the preview follows the machine, not Play: the
 cutter is the one the machine has in, it glides from one status report to the next (a fifth of a
@@ -327,7 +329,7 @@ whole flow without hardware and is how it is tested.
 | Time | estimated like grbl's planner: acceleration and junction deviation, forward and backward pass |
 | Checks | machine travel, chuck collision, rapids into material, boring into solid material, boring bars that don't fit or reach, cuts deeper than the flutes or the depth of cut for the material, plunging with a non-centre-cutting endmill, impossible operations; a separate lint of the written G-code text alone (modes before the first move, feed and spindle before cutting, only the boring subset, M5 and M30 at the end, arcs that end on their circle, thread passes along Z only, no sideways mill rapid below Z0 lower than the last retract); its findings block like check errors and are listed under the G-code tab |
 | G-code | a "boring" subset that runs the same on grblHAL, LinuxCNC and most others. This is the full list the emitter writes: G0 G1 G2 G3 (XY arcs with I J on the mill, ZX arcs with I K on the lathe), G33 Z K (thread passes, needs spindle sync), G4 P (spindle dwell), G17 (mill) / G18 (lathe), G7 / G8 (lathe X as diameter / radius), G21, G90, G94, G54, G97, S with M3, M5, M0 (tool changes), M30; words X Y Z I J K F S P. No G96/G95, cutter compensation, canned cycles or tool length offsets |
-| Preview | three.js: toolpath (feeds blue, rapids orange), the part as it is cut, timeline scrubber, tool marker |
+| Preview | three.js: toolpath (feeds blue, rapids orange), the part as it is cut (fresh cuts glow and fade), timeline scrubber, tool marker |
 | Job files | Save the job as a file (`<name>.swarf.json`: machine, stock, tools, operations, drawings, notes) and open it again, here or on another computer. A file is checked like any other input before it becomes the job |
 | Tool library | your own cutters, entered once: "Keep in the library" on a tool, "Add to the job" in any later job (lathe tools keep their stored offset in the tool post). Kept in this browser; saved and read as a file to move it |
 | Setup sheet | one printable page per job: stock, where the zero is, what holds the work, the tools in the order the program asks for them and how far each must reach, every operation with rpm, feed, depth and time, a drawing with the zero and the cuts |

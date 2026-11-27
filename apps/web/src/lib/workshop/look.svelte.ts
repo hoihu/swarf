@@ -12,6 +12,8 @@ interface Saved {
   asked?: boolean;
   surround: SurroundName;
   chips: boolean;
+  /** Where the cutter has just cut glows, and fades. */
+  glow?: boolean;
   coolant: boolean;
   shadows: boolean;
   sound: boolean;
@@ -19,11 +21,13 @@ interface Saved {
   speed?: PlaySpeed;
 }
 
-const DEFAULTS: Saved = { surround: 'workshop', chips: true, coolant: false, shadows: true, sound: false, soften: true };
+const DEFAULTS: Saved = { surround: 'workshop', chips: true, glow: true, coolant: false, shadows: true, sound: false, soften: true };
 
 class Look {
   surround = $state<SurroundName>(DEFAULTS.surround);
   chips = $state(DEFAULTS.chips);
+  /** Where the cutter has just cut glows, and fades in a few seconds. */
+  glow = $state(true);
   coolant = $state(DEFAULTS.coolant);
   shadows = $state(DEFAULTS.shadows);
   sound = $state(DEFAULTS.sound);
@@ -41,6 +45,7 @@ class Look {
     const s = { ...DEFAULTS, ...load<Partial<Saved>>(KEY, {}) };
     this.surround = s.surround;
     this.chips = s.chips;
+    this.glow = s.glow ?? true;
     this.coolant = s.coolant;
     this.shadows = s.shadows;
     this.soften = s.soften;
@@ -55,7 +60,7 @@ class Look {
   }
 
   save(): void {
-    save(KEY, { surround: this.surround, chips: this.chips, coolant: this.coolant, shadows: this.shadows, sound: false, soften: this.soften, speed: this.speed, asked: this.asked } satisfies Saved);
+    save(KEY, { surround: this.surround, chips: this.chips, glow: this.glow, coolant: this.coolant, shadows: this.shadows, sound: false, soften: this.soften, speed: this.speed, asked: this.asked } satisfies Saved);
   }
 
   /** A picture dropped or chosen: it becomes the surroundings. */
