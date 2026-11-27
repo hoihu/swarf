@@ -1,7 +1,8 @@
 export { Vec3, MachineKind, Machine, Tool, toolOf, Stock, Shape, Operation, OP_TOOLS, Turn, Job, type OperationInput, type OpType } from './schema.ts';
 export { arcPoints, walk, moveLength, type Move, type Program } from './program.ts';
 export { cuttingData } from './feeds.ts';
-export { generate, withIds, opLabel, type Diagnostic } from './generate.ts';
+export type { Diagnostic } from './diagnostic.ts';
+export { generate, withIds, opLabel } from './generate.ts';
 export { analyze, simulate, errorsOf, hasErrors, resumeFrom, type Analysis } from './check.ts';
 export { lintGcode } from './lint-gcode.ts';
 export { runnable, type Runnable, type Refused } from './pipeline.ts';

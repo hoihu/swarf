@@ -5,7 +5,7 @@
  */
 import { errorsOf, resumeFrom, type Analysis } from './check.ts';
 import { emit, type Emitted } from './emit.ts';
-import type { Diagnostic } from './generate.ts';
+import type { Diagnostic } from './diagnostic.ts';
 import { lintGcode } from './lint-gcode.ts';
 import type { Job, MachineKind } from './schema.ts';
 
@@ -16,7 +16,7 @@ export interface Runnable extends Emitted {
   readonly [passed]: true;
 }
 /** What holds a program up: a check error, or a lint finding with the (1-based) line it is on. */
-type Blocker = Diagnostic & { severity: 'error'; line?: number };
+type Blocker = Diagnostic & { severity: 'error' };
 export interface Refused {
   ok: false;
   errors: Blocker[];
@@ -40,7 +40,7 @@ export function runnable(job: Job, analysis: Analysis, o: { fromSegment?: number
 
 /** The emitted text with the check errors found for it: refused if there are any, or if the lint finds something. */
 export function judge(errors: Diagnostic[], emitted: Emitted, kind: MachineKind): Runnable | Refused {
-  const lint: Blocker[] = lintGcode(emitted.text, kind).map((l) => ({ severity: 'error', code: l.code, line: l.line, message: `G-code line ${l.line}: ${l.message}` }));
+  const lint: Blocker[] = lintGcode(emitted.text, kind).map((l) => ({ ...l, message: `G-code line ${l.line}: ${l.message}` }));
   const all = [...(errors as Blocker[]), ...lint];
   if (all.length) return { ok: false, errors: all };
   return { ok: true, text: emitted.text, lineOfMove: emitted.lineOfMove } as Runnable;

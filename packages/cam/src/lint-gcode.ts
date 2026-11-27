@@ -7,15 +7,10 @@
  * end lies on the circle their start and centre give, G33 passes that move along Z only, and on
  * the mill no sideways rapid below a height the program already rapided up to since its last cut.
  */
+import type { Diagnostic } from './diagnostic.ts';
 import type { MachineKind } from './schema.ts';
 
-export interface LintDiagnostic {
-  severity: 'error';
-  code: string;
-  /** 1-based line of the G-code text. */
-  line: number;
-  message: string;
-}
+type LintError = Diagnostic & { severity: 'error'; line: number };
 
 const COMMON_G = ['0', '1', '2', '3', '4', '21', '54', '90', '94'];
 const SUBSET_G: Record<MachineKind, Set<string>> = {
@@ -54,8 +49,8 @@ export function words(line: string): { l: string; v: string }[] {
   return [...uncommented(line).matchAll(WORD)].map((m) => ({ l: m[1]!, v: m[2]! }));
 }
 
-export function lintGcode(text: string, kind: MachineKind): LintDiagnostic[] {
-  const out: LintDiagnostic[] = [];
+export function lintGcode(text: string, kind: MachineKind): LintError[] {
+  const out: LintError[] = [];
   const err = (line: number, code: string, message: string) => out.push({ severity: 'error', code, line, message });
   const seen = new Set<string>();
   let modesChecked = false;

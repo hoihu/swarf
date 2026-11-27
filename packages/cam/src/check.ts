@@ -3,7 +3,8 @@
  * deeper than the tool can take. Runs the material model move by move, so it also yields the
  * finished part for the preview.
  */
-import { generate, retract, withIds, type Diagnostic } from './generate.ts';
+import type { Diagnostic } from './diagnostic.ts';
+import { generate, retract, withIds } from './generate.ts';
 import { walk, type Program } from './program.ts';
 import { alignmentChecks } from './align.ts';
 import { carried } from './carry.ts';

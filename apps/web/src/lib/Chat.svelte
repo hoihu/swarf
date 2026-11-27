@@ -149,7 +149,7 @@
       const look = reviewJob($state.snapshot(store.job) as Job, store.analysis);
       const warn = store.analysis.diagnostics.filter((d) => d.severity !== 'error').length;
       cur.text = look.length
-        ? `No model is connected, so this is the computed list, unweighed:\n\n${look.map((f) => `- ${f.opId ? `**${f.opId}**: ` : ''}${f.text}`).join('\n')}\n\nWith an assistant connected (settings), Review weighs these for this part and adds what a list cannot see.`
+        ? `No model is connected, so this is the computed list, unweighed:\n\n${look.map((f) => `- ${f.opId ? `**${f.opId}**: ` : ''}${f.message}`).join('\n')}\n\nWith an assistant connected (settings), Review weighs these for this part and adds what a list cannot see.`
         : `No model is connected, and the computed list has nothing: the order, the tools' reach and the holding raise no flags${warn ? `; the checks left ${warn} note${warn === 1 ? '' : 's'} in the Operations tab` : ''}. With an assistant connected (settings), Review also looks at what a list cannot see.`;
       busy = false;
       void scroll();
