@@ -6,6 +6,7 @@
  * assistant's review starts from them, and so can the user's.
  */
 import type { Analysis } from './check.ts';
+import type { Diagnostic } from './diagnostic.ts';
 import { fixed } from './emit.ts';
 import { cuttingData, rpmFor } from './feeds.ts';
 import { opLabel, withIds } from './generate.ts';
@@ -14,20 +15,15 @@ import { segmentStats } from './planner.ts';
 import { toolOf, type Job } from './schema.ts';
 import { LatheMaterial } from './sim.ts';
 
-export interface Finding {
-  code: string;
-  opId?: string;
-  text: string;
-}
 
 const zf = (v: number) => `Z${fixed(v, 1)}`;
 
-export function reviewJob(job: Job, analysis: Analysis): Finding[] {
-  const out: Finding[] = [];
+export function reviewJob(job: Job, analysis: Analysis): Diagnostic[] {
+  const out: Diagnostic[] = [];
   const ops = withIds(job.operations);
   const p = analysis.program;
   if (!ops.length || !p.segments.length) return out;
-  const add = (code: string, text: string, opId?: string) => out.push({ code, text, ...(opId ? { opId } : {}) });
+  const add = (code: string, message: string, opId?: string) => out.push({ severity: 'note', code, message, ...(opId ? { opId } : {}) });
   const label = (id: string) => {
     const o = ops.find((x) => x.id === id);
     return o ? `${id} (${opLabel(o)})` : id;
@@ -55,7 +51,7 @@ export function reviewJob(job: Job, analysis: Analysis): Finding[] {
     if (!t?.diameter || (t.type !== 'endmill' && t.type !== 'drill' && t.type !== 'chamfer')) continue;
     if (o.rpm !== undefined) continue;
     const want = rpmFor(cuttingData(t, job.workMaterial).vc, t.diameter);
-    if (want > job.machine.maxRpm * 2 && t.diameter <= 4 && !out.some((f) => f.code === 'RPM_SHORT' && f.text.startsWith(`T${t.id} `)))
+    if (want > job.machine.maxRpm * 2 && t.diameter <= 4 && !out.some((f) => f.code === 'RPM_SHORT' && f.message.startsWith(`T${t.id} `)))
       add('RPM_SHORT', `T${t.id} (Ø${t.diameter}) would like ${Math.round(want / 100) * 100} rpm in ${MATERIALS[job.workMaterial].name.toLowerCase()}; the spindle gives ${job.machine.maxRpm}. The feed is scaled down with it, so it is safe but slow; small cutters break when pushed, so do not raise the feed to make up for it.`, o.id);
   }
 

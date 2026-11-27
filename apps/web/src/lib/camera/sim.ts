@@ -26,8 +26,6 @@ export interface SimWorld {
   laser: boolean;
 }
 
-{ LASER };
-
 /** Where the tool marker sits relative to the tip, in machine coordinates (the "truth" the calibration finds). */
 // (on an arm beside the spindle, clear of the laser's fan)
 const MARKER_OFFSET = { mill: [50, -40, 58] as V3, lathe: [34, 22, 4] as V3 };

@@ -274,7 +274,7 @@
           <p class="muted small">Not errors: what a machinist would stop at before running this. "Review" in the assistant's pane weighs them for this part.</p>
           <ul>
             {#each look as f, i (i)}
-              <li>{#if f.opId}<button class="link" onclick={() => (store.selected = f.opId ?? null)}>{f.opId}</button> {/if}{f.text}</li>
+              <li>{#if f.opId}<button class="link" onclick={() => (store.selected = f.opId ?? null)}>{f.opId}</button> {/if}{f.message}</li>
             {/each}
           </ul>
         </details>

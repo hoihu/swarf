@@ -112,7 +112,7 @@ export function formatJobContext(job: Job): string {
   const look = reviewJob(job, a);
   if (look.length) {
     lines.push('worth a look (computed; not errors):');
-    for (const f of look) lines.push(`  ${f.code}${f.opId ? ` ${f.opId}` : ''}: ${f.text}`);
+    for (const f of look) lines.push(`  ${f.code}${f.opId ? ` ${f.opId}` : ''}: ${f.message}`);
   }
   lines.push('</job_state>');
   return lines.join('\n');

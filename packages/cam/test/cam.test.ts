@@ -1396,12 +1396,12 @@ describe('worth a look', () => {
     const f = reviewJob(job, analyze(job));
     const codes = f.map((x) => x.code);
     for (const c of ['ORDER_FACE', 'ORDER_SPOT', 'ORDER_CHAMFER', 'THIN_FLOOR', 'CUT_FREE', 'HOLDING_UNKNOWN']) expect(codes).toContain(c);
-    expect(f.find((x) => x.code === 'THIN_FLOOR')!.text).toMatch(/floor 0\.3 mm thick/);
+    expect(f.find((x) => x.code === 'THIN_FLOOR')!.message).toMatch(/floor 0\.3 mm thick/);
     // the Ø6 end mill goes 15.5 mm under the raw top: not yet four diameters; a Ø3 one would be
     expect(codes).not.toContain('SLENDER_TOOL');
     const thin = { ...job, tools: job.tools.map((t) => (t.id === 1 ? { ...t, diameter: 3, fluteLength: 16 } : t)) };
     const g = reviewJob(thin, analyze(thin));
-    expect(g.find((x) => x.code === 'SLENDER_TOOL')!.text).toMatch(/T1 \(Ø3\) goes 15\.5 mm deep, 5\.2 times its diameter/);
+    expect(g.find((x) => x.code === 'SLENDER_TOOL')!.message).toMatch(/T1 \(Ø3\) goes 15\.5 mm deep, 5\.2 times its diameter/);
     // and the spindle cannot turn a Ø3 cutter in aluminium as fast as it would like
     expect(g.map((x) => x.code)).toContain('RPM_SHORT');
     // clamps entered and tabs set: those two are gone
@@ -1421,7 +1421,7 @@ describe('worth a look', () => {
     const f = reviewJob(job, analyze(job));
     const codes = f.map((x) => x.code);
     for (const c of ['ORDER_FACE', 'ORDER_PARTOFF', 'SLENDER_PART', 'THREAD_NO_RELIEF']) expect(codes).toContain(c);
-    const s = f.find((x) => x.code === 'SLENDER_PART')!.text;
+    const s = f.find((x) => x.code === 'SLENDER_PART')!.message;
     expect(s).toMatch(/down to Ø(5\.\d|6) with 4\d(\.\d)? mm hanging beyond it \(7\.\d to 1\)/);
     // parting 19 mm from the jaws on Ø12 is fine; 40 mm is not
     expect(codes).not.toContain('PARTOFF_FAR');

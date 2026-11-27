@@ -3,6 +3,7 @@
  * impossible become error diagnostics (that operation is then left out); the rest of the job
  * still generates, so the user and the agent see all issues at once.
  */
+import type { Diagnostic } from './diagnostic.ts';
 import { cutting } from './feeds.ts';
 import { fitArcs } from './arcfit.ts';
 import { generateLathe, latheSpeedDiameter } from './ops/lathe.ts';
@@ -10,15 +11,6 @@ import { generateMill } from './ops/mill.ts';
 import { latheSafe, millSafeZ } from './ops/context.ts';
 import { CamError, v, type Move, type Program, type Segment } from './program.ts';
 import { OP_MACHINE, OP_TOOLS, cone, toolOf, type Job, type Operation, type Tool, type Vec3 } from './schema.ts';
-
-export interface Diagnostic {
-  severity: 'error' | 'warning';
-  code: string;
-  message: string;
-  opId?: string;
-  /** Index into the flattened move list (see program.walk). */
-  move?: number;
-}
 
 export interface Generated {
   program: Program;

@@ -43,7 +43,9 @@ user text ──► agent ──tool calls──► Job (zod-validated)
   Errors block the agent from finishing (fix budget 4), the G-code download (Job panel and
   File menu), the relay's `save_gcode` (the tab checks the job and writes the G-code; the relay
   only writes the file), `get_gcode` (whole or one operation: the errors, no G-code) and
-  **Run program**.
+  **Run program**. Checks, the lint and the review (`cam/src/review.ts`, severity `note`) all
+  report the one `Diagnostic` (`cam/src/diagnostic.ts`: severity, code, message, optional opId,
+  move, line).
 - **The gate** (`cam/src/pipeline.ts`): `runnable(job, analysis, { fromSegment? })` emits the
   program (or the rest of it from a segment, see `resumeFrom`) and answers `{ ok: true, text,
   lineOfMove }` or `{ ok: false, errors }`: the check errors plus the lint's findings, each an

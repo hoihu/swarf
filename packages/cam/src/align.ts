@@ -4,7 +4,8 @@
  * lowered with the touched surface. The checks and the preview work on the block as drawn; this
  * is applied when the G-code is written.
  */
-import { withIds, type Diagnostic } from './generate.ts';
+import type { Diagnostic } from './diagnostic.ts';
+import { withIds } from './generate.ts';
 import { arcPoints, type Move, type Program } from './program.ts';
 import type { Job, Vec3 } from './schema.ts';
 
