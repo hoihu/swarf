@@ -170,35 +170,10 @@ describe('the milled part in the preview', () => {
   });
 });
 
-describe('where the cutter has just been', () => {
+describe('the floor of a pocket', () => {
   const m = cutPart();
-  // the circular pocket's floor (cx 62, cy 25), stamped as cut just now
-  const i = Math.floor(62 / m.cell);
-  const j = Math.floor(25 / m.cell);
-  const cutAt = new Float32Array(m.nx * m.ny).fill(-1e9);
-  // the cells within 3 mm of it
-  const r = Math.ceil(3 / m.cell);
-  for (let b = -r; b <= r; b++) for (let a = -r; a <= r; a++) cutAt[(j + b) * m.nx + i + a] = 5000;
-  const group = millMesh(m, undefined, cutAt);
+  const group = millMesh(m);
 
-  it('carries the time each place was cut, for the glow that fades', () => {
-    const near: number[] = [];
-    const far: number[] = [];
-    for (const mesh of meshes(group)) {
-      const p = mesh.geometry.getAttribute('position');
-      const t = mesh.geometry.getAttribute('cutAt');
-      expect(t?.count).toBe(p.count);
-      for (let v = 0; v < p.count; v++) {
-        const d = Math.hypot(p.getX(v) - 62, -p.getZ(v) - 25);
-        // on the pocket's floor (the block's underside below it was not cut)
-        if (d < 2 && p.getY(v) < -3.9 && p.getY(v) > -4.1) near.push(t!.getX(v));
-        if (d > 10) far.push(t!.getX(v));
-      }
-    }
-    expect(near.length).toBeGreaterThan(0);
-    expect(near.filter((t) => t !== 5000)).toEqual([]);
-    expect(far.filter((t) => t >= 0).length).toBe(0);
-  });
   it('draws a deep floor darker than a shallow one, so that a pocket reads as a pocket', () => {
     const top = meshes(group)[0]!.geometry;
     const p = top.getAttribute('position');

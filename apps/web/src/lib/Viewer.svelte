@@ -3,13 +3,14 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { LatheMaterial, MillMaterial, moveLength, samplePath, simulate, toolOf, walk, type Job, type Move, type Program, type Tool, type Vec3 } from '@swarf/cam';
-  import { NOT_CUT, drawingLines, latheMesh, millMesh, obstacleMeshes, pathGeometry, sceneToWork, stockOutline, toScene, type PathGeometry } from './scene.ts';
+  import { drawingLines, latheMesh, millMesh, obstacleMeshes, pathGeometry, sceneToWork, stockOutline, toScene, type PathGeometry } from './scene.ts';
   import { CHIPS, Chips, Coolant } from './workshop/particles.ts';
   import { METAL, bedMesh, chuckGroup, latheToolMesh, millToolMesh, nozzleMesh, tableMesh } from './workshop/stage.ts';
   import { SURROUNDS, cover, makeSurround, type Surround } from './workshop/surround.ts';
   import { MachineSound } from './workshop/sound.ts';
   import { SPEEDS, look } from './workshop/look.svelte.ts';
   import { Glide } from './glide.ts';
+  import { Heat } from './heat.ts';
   import { camera as cam } from './camera/camera.svelte.ts';
   import { glProjection, glView } from './camera/geometry.ts';
   import { laserScan } from './camera/laserscan.svelte.ts';
@@ -94,49 +95,68 @@
   let liveAt = '';
   let livePos = '';
   /**
-   * Fresh cuts glow: when (seconds, on the clock heatNow) each cell of the mill material was last
-   * cut down, as the preview saw it; the part's shader fades the glow over HEAT_FADE seconds. A
-   * material made anew (scrubbing, a changed job) starts with nothing glowing.
+   * Fresh cuts glow: when each cell of the mill material was last cut down (Heat), in a texture
+   * the part's shader reads per pixel and fades over HEAT_FADE seconds (on the clock heatNow).
    */
   const HEAT_FADE = 2.5;
-  /** Added to the clock, so that a mesh without the times (0) never glows. */
-  const heatNow = () => 1e4 + performance.now() / 1000;
-  let heatOf: MillMaterial | null = null;
-  let heatPrev: Float32Array | null = null;
-  let heatAt: Float32Array | null = null;
-  let heatUntil = 0;
-  const heatU = { uNow: { value: 0 }, uFade: { value: HEAT_FADE }, uHot: { value: new THREE.Color('#ff6a1f') }, uGlow: { value: 1 } };
+  const heatNow = () => performance.now() / 1000;
+  const heat = new Heat();
+  let heatTex: THREE.DataTexture | null = null;
+  const heatU = {
+    uNow: { value: 0 },
+    uFade: { value: HEAT_FADE },
+    uHot: { value: new THREE.Color('#ff6a1f') },
+    uGlow: { value: 1 },
+    uHeat: { value: null as THREE.DataTexture | null },
+    uHeatSize: { value: new THREE.Vector2(1, 1) },
+    uHeatCells: { value: new THREE.Vector2(1, 1) },
+  };
 
-  /** The cells cut down since the last look, stamped with now. */
-  function noteHeat(m: MillMaterial): Float32Array {
-    if (m !== heatOf || !heatPrev || !heatAt || heatPrev.length !== m.h.length) {
-      heatOf = m;
-      heatPrev = m.h.slice();
-      heatAt = new Float32Array(m.h.length).fill(NOT_CUT);
-      return heatAt;
-    }
-    const now = heatNow();
-    for (let k = 0; k < m.h.length; k++) {
-      const h = m.h[k]!;
-      if (h < heatPrev[k]! - 0.005) {
-        heatAt[k] = now;
-        heatUntil = now + HEAT_FADE;
-      }
-      heatPrev[k] = h;
-    }
-    return heatAt;
+  /** The mill material looked at now: the cells cut since go into the texture. */
+  function noteHeat(m: MillMaterial): void {
+    const changed = heat.note(m, heatNow());
+    if (!heat.at) return;
+    if (!heatTex || heatTex.image.data !== heat.at) {
+      heatTex?.dispose();
+      heatTex = new THREE.DataTexture(heat.at, m.nx, m.ny, THREE.RedFormat, THREE.FloatType);
+      heatTex.minFilter = heatTex.magFilter = THREE.NearestFilter;
+      heatTex.needsUpdate = true;
+      heatU.uHeat.value = heatTex;
+      heatU.uHeatSize.value.set(m.nx * m.cell, m.ny * m.cell);
+      heatU.uHeatCells.value.set(m.nx, m.ny);
+    } else if (changed) heatTex.needsUpdate = true;
   }
 
-  /** The part's material learns to glow where it was cut a moment ago (the `cutAt` of each corner). */
+  /** The part's material learns to glow where the texture says it was cut a moment ago (the latest within a cell around, so walls glow too). */
   function glowing(mat: THREE.MeshStandardMaterial): void {
     mat.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, heatU);
       sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float cutAt;\nuniform float uNow;\nuniform float uFade;\nvarying float vHeat;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHeat = clamp(1.0 - (uNow - cutAt) / uFade, 0.0, 1.0);');
+        .replace('#include <common>', '#include <common>\nvarying vec2 vPlan;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPlan = vec2(position.x, -position.z);');
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 uHot;\nuniform float uGlow;\nvarying float vHeat;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\nfloat heat = vHeat * uGlow;\ndiffuseColor.rgb = mix(diffuseColor.rgb, uHot, heat * 0.85);')
+        .replace(
+          '#include <common>',
+          `#include <common>
+uniform vec3 uHot;
+uniform float uGlow;
+uniform float uNow;
+uniform float uFade;
+uniform sampler2D uHeat;
+uniform vec2 uHeatSize;
+uniform vec2 uHeatCells;
+varying vec2 vPlan;
+float freshCut() {
+  if (uGlow < 0.5) return 0.0;
+  vec2 c = vPlan / uHeatSize;
+  vec2 px = 1.0 / uHeatCells;
+  float t = -1e9;
+  for (int b = -1; b <= 1; b++)
+    for (int a = -1; a <= 1; a++) t = max(t, texture2D(uHeat, c + vec2(float(a), float(b)) * px).r);
+  return clamp(1.0 - (uNow - t) / uFade, 0.0, 1.0);
+}`,
+        )
+        .replace('#include <color_fragment>', '#include <color_fragment>\nfloat heat = freshCut();\ndiffuseColor.rgb = mix(diffuseColor.rgb, uHot, heat * 0.85);')
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uHot * heat * 0.6;');
     };
     mat.customProgramCacheKey = () => 'glow';
@@ -446,8 +466,12 @@
     dispose(part);
     const metal = METAL[job.workMaterial] ?? METAL.aluminium!;
     if (material instanceof LatheMaterial) part = latheMesh(material, metal, job.stock.kind === 'bar' ? job.stock.diameter / 2 : Infinity);
-    else if (material instanceof MillMaterial) part = millMesh(material, metal, noteHeat(material));
-    else part = null;
+    else if (material instanceof MillMaterial) {
+      noteHeat(material);
+      part = millMesh(material, metal);
+    } else part = null;
+    // only the mill material has the times (the lathe's part never glows)
+    heatU.uGlow.value = look.glow && material instanceof MillMaterial && heatU.uHeat.value ? 1 : 0;
     // the part is rebuilt at every step of the program: one material for all of them (a new one
     // each time would have its shader compiled again each time)
     part?.traverse((o) => {
@@ -725,8 +749,8 @@
     }
     // fresh cuts fade
     heatU.uNow.value = heatNow();
-    heatU.uGlow.value = look.glow ? 1 : 0;
-    if (heatU.uNow.value < heatUntil + 0.1) dirty = true;
+    heatU.uGlow.value = look.glow && material instanceof MillMaterial && heatU.uHeat.value ? 1 : 0;
+    if (heatU.uGlow.value && heatU.uNow.value < heat.until + HEAT_FADE + 0.1) dirty = true;
     // a connected machine: the marker goes on towards the last status report
     if (live && glide.moving(performance.now())) {
       placeTool();

@@ -14,9 +14,6 @@ export interface WorkLook {
   metalness: number;
   roughness: number;
 }
-/** `cutAt` of a place never cut (while the preview looked). */
-export const NOT_CUT = -1e9;
-
 /** A cut floor's brightness against the top: darker the deeper it lies, down to 70 % at 3 mm. */
 export function depthShade(depth: number): number {
   return 1 - 0.3 * Math.max(0, Math.min(1, depth / 3));
@@ -197,7 +194,7 @@ export function latheMesh(m: LatheMaterial, look: WorkLook = PLAIN, rawRadius = 
  * What is decided on an edge between two centres depends on those two only, so neighbouring
  * squares meet without gaps. A corner where three levels meet is filled in quarters.
  */
-function smoothSkin(heights: Float32Array, nx: number, ny: number, cw: number, exact: boolean, m: MillMaterial, pos: number[], col: number[], cutC: THREE.Color, rawC: THREE.Color, stamps: number[], stampAt: (x: number, y: number, spread: number) => number): THREE.BufferGeometry {
+function smoothSkin(heights: Float32Array, nx: number, ny: number, cw: number, exact: boolean, m: MillMaterial, pos: number[], col: number[], cutC: THREE.Color, rawC: THREE.Color): THREE.BufferGeometry {
   const bottom = m.bottom;
   const top = m.top;
   const wall = cw * 1.5;
@@ -244,8 +241,6 @@ function smoothSkin(heights: Float32Array, nx: number, ny: number, cw: number, e
     const f = raw ? 1 : depthShade(top - (a[2]! + b[2]! + c[2]!) / 3);
     const k = raw ? rawC : cutC;
     for (let v = 0; v < 3; v++) col.push(k.r * f, k.g * f, k.b * f);
-    // at each corner: flat stretches are long strips, the glow runs along them
-    stamps.push(stampAt(a[0]!, a[1]!, 0), stampAt(b[0]!, b[1]!, 0), stampAt(c[0]!, c[1]!, 0));
   };
   /** A polygon (x, y, z points, convex enough), as a fan. */
   const poly = (pts: number[][]) => {
@@ -255,7 +250,6 @@ function smoothSkin(heights: Float32Array, nx: number, ny: number, cw: number, e
   // made of short straight pieces) and sharp at real corners
   const wpos: number[] = [];
   const wcol: number[] = [];
-  const wstamp: number[] = [];
   /** Per vertex: the wall's own facing (scene x, z) and where it stands (plan key). */
   const wn: number[] = [];
   const wkey: string[] = [];
@@ -291,10 +285,8 @@ function smoothSkin(heights: Float32Array, nx: number, ny: number, cw: number, e
     const k = raw ? rawC : cutC;
     const ka = `${p[0]!.toFixed(4)},${p[1]!.toFixed(4)}`;
     const kb = `${q[0]!.toFixed(4)},${q[1]!.toFixed(4)}`;
-    const t = stampAt((p[0]! + q[0]!) / 2, (p[1]! + q[1]!) / 2, 1);
     for (const key of [ka, kb, kb, ka, kb, ka]) {
       wcol.push(k.r, k.g, k.b);
-      wstamp.push(t);
       wn.push(fx, -fy);
       wkey.push(key);
     }
@@ -483,12 +475,11 @@ function smoothSkin(heights: Float32Array, nx: number, ny: number, cw: number, e
   g.setAttribute('position', new THREE.Float32BufferAttribute(wpos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(wcol, 3));
   g.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-  g.setAttribute('cutAt', new THREE.Float32BufferAttribute(wstamp, 1));
   return g;
 }
 
 /** The milled block from the height map: its skin with walls along the outline of the cut (smoothSkin), or, where a part brought hollows with it from earlier setups, a column per cell with those hollows. */
-export function millMesh(m: MillMaterial, look: WorkLook = PLAIN, cutAt: Float32Array | null = null): THREE.Group {
+export function millMesh(m: MillMaterial, look: WorkLook = PLAIN): THREE.Group {
   const group = new THREE.Group();
   // resample to at most ~320 cells per side for the mesh (the grid is about 300 on its longer side)
   const k = Math.max(1, Math.ceil(Math.max(m.nx, m.ny) / 320));
@@ -507,21 +498,6 @@ export function millMesh(m: MillMaterial, look: WorkLook = PLAIN, cutAt: Float32
   // one flat quad per cell top, plus vertical faces where neighbours differ (a voxel-style skin)
   const pos: number[] = [];
   const col: number[] = [];
-  const stamps: number[] = [];
-  /** When the material at plan (x, y) was last cut (`cutAt`, the latest within `spread` cells), NOT_CUT if never. */
-  const stampAt = (x: number, y: number, spread: number): number => {
-    if (!cutAt) return NOT_CUT;
-    const i = Math.floor(x / m.cell);
-    const j = Math.floor(y / m.cell);
-    let t = NOT_CUT;
-    for (let b = -spread; b <= spread; b++)
-      for (let a = -spread; a <= spread; a++) {
-        const ii = i + a;
-        const jj = j + b;
-        if (ii >= 0 && jj >= 0 && ii < m.nx && jj < m.ny) t = Math.max(t, cutAt[jj * m.nx + ii]!);
-      }
-    return t;
-  };
   const cutC = new THREE.Color(look.color);
   const rawC = new THREE.Color(look.raw);
   // `raw`: a face of the block as it came (its top where nothing was taken off, its outside)
@@ -529,8 +505,6 @@ export function millMesh(m: MillMaterial, look: WorkLook = PLAIN, cutAt: Float32
     pos.push(...a, ...b, ...c, ...a, ...c, ...d);
     const k = raw ? rawC : cutC;
     for (let v = 0; v < 6; v++) col.push(k.r, k.g, k.b);
-    const t = stampAt((a[0]! + c[0]!) / 2, -(a[2]! + c[2]!) / 2, 1);
-    for (let v = 0; v < 6; v++) stamps.push(t);
   };
   const P = (x: number, y: number, z: number) => [x, z, -y];
   const bottom = m.bottom;
@@ -573,7 +547,7 @@ export function millMesh(m: MillMaterial, look: WorkLook = PLAIN, cutAt: Float32
   };
   // cut from above only (no hollows): walls that follow the cut's outline
   const hollow = !!m.spans && columns.some((c) => c.length > 2 || (c.length === 2 && c[0]! > bottom + 1e-4));
-  const walls = hollow ? null : smoothSkin(heights, nx, ny, cw, k === 1, m, pos, col, cutC, rawC, stamps, stampAt);
+  const walls = hollow ? null : smoothSkin(heights, nx, ny, cw, k === 1, m, pos, col, cutC, rawC);
   const gaps: number[] = [];
   for (let j = 0; j < ny && hollow; j++) {
     for (let i = 0; i < nx; i++) {
@@ -608,7 +582,6 @@ export function millMesh(m: MillMaterial, look: WorkLook = PLAIN, cutAt: Float32
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setAttribute('cutAt', new THREE.Float32BufferAttribute(stamps, 1));
   g.computeVertexNormals();
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: look.metalness, roughness: look.roughness, flatShading: true, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(g, mat);
