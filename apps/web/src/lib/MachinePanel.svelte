@@ -8,6 +8,7 @@
   import { machine } from './machine.svelte.ts';
   import { store } from './store.svelte.ts';
   import { simWorld } from './simworld.ts';
+  import { toolAtLine } from './inspindle.ts';
   import { SETUPS, type SetupName } from './sim/setups.ts';
 
   let mdi = $state('');
@@ -46,16 +47,9 @@
   // the simulator: which cutter is in the spindle (for what it runs into)
   $effect(() => {
     if (!machine.simulated || machine.job !== 'running' || machine.line < 0) return;
-    const move = store.gcode.lineOfMove.findIndex((l) => l >= machine.line);
-    let n = 0;
-    for (const seg of store.analysis.program.segments) {
-      n += seg.moves.length;
-      if (move < n) {
-        const d = toolOf(store.job, seg.tool)?.diameter;
-        if (d) simWorld.toolDiameter = d;
-        break;
-      }
-    }
+    const id = toolAtLine(store.analysis.program, store.gcode.lineOfMove, machine.line);
+    const d = id === null ? undefined : toolOf(store.job, id)?.diameter;
+    if (d) simWorld.toolDiameter = d;
   });
   const lathe = $derived(store.job.machine.kind === 'lathe');
   const pct = $derived(machine.total ? Math.round((machine.acked / machine.total) * 100) : 0);

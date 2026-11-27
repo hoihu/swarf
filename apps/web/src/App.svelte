@@ -10,6 +10,8 @@
   import { minutes } from './lib/ops.ts';
   import { bridge } from './lib/bridge.svelte.ts';
   import { machine } from './lib/machine.svelte.ts';
+  import { tooling } from './lib/tooling.svelte.ts';
+  import { toolAtLine } from './lib/inspindle.ts';
   import { files } from './lib/files.svelte.ts';
   import SetupSheet from './lib/SetupSheet.svelte';
   import FileMenu from './lib/FileMenu.svelte';
@@ -38,6 +40,16 @@
     if (!p) return null;
     const lathe = store.job.machine.kind === 'lathe';
     return lathe ? { x: store.job.machine.xMode === 'diameter' ? p[0] / 2 : p[0], y: 0, z: p[2] } : { x: p[0], y: p[1], z: p[2] };
+  });
+  /** The cutter in the connected machine's spindle, for the preview's tool marker: the one the running program has in, the one being changed to, or the one the zero is right for (null: not known, the preview goes by its own position). */
+  const liveTool = $derived.by(() => {
+    if (!live) return null;
+    if (machine.job === 'waiting' && tooling.pending !== null) return tooling.pending;
+    if (machine.job === 'running' || machine.job === 'paused') {
+      const id = toolAtLine(store.analysis.program, store.gcode.lineOfMove, machine.line);
+      if (id !== null) return id;
+    }
+    return tooling.pending ?? tooling.active;
   });
   const tools = $derived(new Set(store.analysis.program.segments.map((s) => s.tool)).size);
 </script>
@@ -87,7 +99,7 @@
     <div class="pane-left for-job"><JobPanel /></div>
     <div class="pane-left for-machine"><div class="scroll"><MachinePanel /></div></div>
     <div class="pane-view">
-      <Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} spindle={machine.status?.spindle ?? 0} />
+      <Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} {liveTool} spindle={machine.status?.spindle ?? 0} />
       {#if camera.running && camera.view === 'camera'}<CameraView />{/if}
     </div>
     <div class="pane-right for-job"><Chat onSettings={() => (settings = true)} /></div>

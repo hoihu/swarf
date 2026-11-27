@@ -19,8 +19,9 @@
     program,
     selected = null,
     live = null,
+    liveTool = null,
     spindle = 0,
-  }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null; /** The connected machine's spindle speed (0: off). */ spindle?: number } = $props();
+  }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null; /** The tool in the connected machine's spindle (null: not known; the marker then shows the tool at the scrubber's place). */ liveTool?: number | null; /** The connected machine's spindle speed (0: off). */ spindle?: number } = $props();
 
   let host: HTMLDivElement;
   let renderer: THREE.WebGLRenderer | null = null;
@@ -451,7 +452,8 @@
     const lathe = program.kind === 'lathe';
     const t = current();
     const p = between ?? (at > 0 ? tips[at - 1]!.p : program.home);
-    const id = t?.tool ?? program.segments[0]?.tool ?? 0;
+    // with a machine connected the marker stands where the machine is, so it shows the machine's cutter, not the one at the scrubber's place
+    const id = (live ? liveTool : null) ?? t?.tool ?? program.segments[0]?.tool ?? 0;
     const spec = toolOf(job, id);
     const d = spec?.diameter ?? 6;
     const key = `${lathe}:${spec?.type}:${d}:${spec?.angle}:${look.coolant}`;
@@ -588,7 +590,7 @@
     const rpm = live ? spindle : playing && t ? t.rpm : 0;
     const tip = tool ? tool.position : lastTip;
     const moved = haveTip && tip.distanceToSquared(lastTip) > 1e-8;
-    const cutting = !overlay && rpm > 0 && moved && (live ? engaged(live, t?.tool ?? 0) : chipping);
+    const cutting = !overlay && rpm > 0 && moved && (live ? engaged(live, liveTool ?? t?.tool ?? 0) : chipping);
     if (rpm > 0 && !overlay) {
       const turn = dt * Math.min(40, Math.max(8, rpm / 150));
       const spin = (lathe ? fixture : tool)?.userData.spin as THREE.Object3D | undefined;
@@ -599,7 +601,7 @@
       dirty = true;
     }
     if (cutting && look.chips) {
-      const d = toolOf(job, t?.tool ?? 0)?.diameter ?? 6;
+      const d = toolOf(job, (live ? liveTool : null) ?? t?.tool ?? 0)?.diameter ?? 6;
       const away = new THREE.Vector3();
       if (lathe) away.set(0.35, 0.5, 0.8).normalize();
       else {
@@ -613,7 +615,7 @@
     }
     if (look.coolant && rpm > 0 && !overlay && nozzle && tool) {
       const mouth = (nozzle.userData.mouth as THREE.Vector3).clone().add(tool.position);
-      const d = toolOf(job, t?.tool ?? 0)?.diameter ?? 6;
+      const d = toolOf(job, (live ? liveTool : null) ?? t?.tool ?? 0)?.diameter ?? 6;
       const target = lathe ? tip.clone().add(new THREE.Vector3(0.5, 0.5, 0)) : tip.clone().add(new THREE.Vector3(-d * 0.3, d * 0.5, d * 0.2));
       const width = Math.max(0.9, Math.min(1.6, d * 0.2));
       coolant.emit(mouth, target, width, dt);
@@ -841,9 +843,9 @@
     });
   });
 
-  // follow the machine
+  // follow the machine (and the cutter it has in)
   $effect(() => {
-    const at = live ? `${live.x},${live.y},${live.z}` : '';
+    const at = live ? `${live.x},${live.y},${live.z},${liveTool}` : '';
     if (!mounted) return;
     untrack(() => {
       // (a status report with the machine where it was is nothing to draw again)
