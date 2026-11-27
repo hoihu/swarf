@@ -5,7 +5,7 @@
  * Ported from 4k7 (tools/server/src/harness/claude.ts).
  */
 import { CHAT_RULES, type HarnessInfo } from '@swarf/agent';
-import { detectCli, findCli, rulesFile, type ChatJob, type Harness, type Invocation, type RunSink } from './types.ts';
+import { detectCli, findCli, rulesFile, spawnCliSync, type ChatJob, type Harness, type Invocation, type RunSink } from './types.ts';
 
 /**
  * Environment for the headless Claude: never the markers of a Claude Code session that may have
@@ -18,8 +18,33 @@ export function childEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-export function detectClaude(bin: string): HarnessInfo {
-  return { id: 'claude', name: 'Claude Code', ...detectCli(bin, 'Claude Code', childEnv(), 'SWARF_CLAUDE_BIN', 'claude.com/claude-code') };
+/** What to do when Claude Code is not logged in on this computer. */
+export const LOGIN_HINT = 'Claude Code is not logged in on this computer: run `claude auth login` in a terminal once (or start swarf with `npm start`, which offers it), then send again.';
+
+/**
+ * Is Claude Code logged in (`claude auth status`: exit 0 logged in, 1 not)? null: could not tell
+ * (an older CLI without `auth`, or it did not answer).
+ */
+export function claudeLoggedIn(bin: string, env: NodeJS.ProcessEnv = childEnv()): boolean | null {
+  const path = findCli(bin, env);
+  if (!path) return null;
+  const r = spawnCliSync(path, ['auth', 'status'], { encoding: 'utf8', timeout: 15_000, env });
+  if (r.error) return null;
+  try {
+    const s = JSON.parse(r.stdout) as { loggedIn?: unknown };
+    if (typeof s.loggedIn === 'boolean') return s.loggedIn;
+  } catch {
+    // not JSON: an older CLI
+  }
+  return null;
+}
+
+/** Whether Claude Code can answer the chat; not logged in, it is still offered (logging in later needs no restart), with how to log in. */
+export function detectClaude(bin: string, env: NodeJS.ProcessEnv = childEnv()): HarnessInfo {
+  const found = detectCli(bin, 'Claude Code', env, 'SWARF_CLAUDE_BIN', 'claude.com/claude-code');
+  const info: HarnessInfo = { id: 'claude', name: 'Claude Code', ...found };
+  if (found.available && claudeLoggedIn(bin, env) === false) info.reason = LOGIN_HINT;
+  return info;
 }
 
 export class ClaudeHarness implements Harness {
@@ -113,7 +138,7 @@ export function streamReader(sink: RunSink): (line: string) => void {
         sink.finish({
           kind: 'done',
           ok,
-          ...(ok ? {} : { error: m.result || m.subtype || 'Claude Code reported an error.' }),
+          ...(ok ? {} : { error: /not logged in/i.test(m.result ?? '') ? LOGIN_HINT : m.result || m.subtype || 'Claude Code reported an error.' }),
           ...(typeof m.total_cost_usd === 'number' ? { costUsd: m.total_cost_usd } : {}),
           ...(m.session_id ? { session: m.session_id } : {}),
         });

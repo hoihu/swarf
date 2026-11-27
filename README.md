@@ -11,7 +11,9 @@ and the preview show that before anything reaches the machine.
 
 ```
 npm install
-npm run dev        # the web app at http://localhost:5173
+npm start          # builds the app, logs Claude Code in if needed, serves it and opens it,
+                   # its chat answered by Claude Code (Ctrl-C stops it)
+npm run dev        # the web app at http://localhost:5173, for working on it
 npm test           # vitest over all five workspaces (cam, grbl, agent, server, web)
 npm run typecheck
 npm run check:ui   # Playwright walks through the simulated workshop (scripts/check-*.cjs,
@@ -38,8 +40,11 @@ bottom.
 ## Who answers the chat
 
 - **A coding agent on this computer** (no API key, your own login and plan): Claude Code, GitHub
-  Copilot CLI, Codex CLI or OpenCode, picked under **Assistant**. Run `npm run build && npm run server` and
-  open the link it prints. The server runs the CLI headlessly for each message with swarf as its
+  Copilot CLI, Codex CLI or OpenCode, picked under **Assistant**. Run `npm start` (it builds the
+  app, runs the server and opens the link it prints; or `npm run build && npm run server` and open
+  the link yourself). Claude Code must be logged in on this computer: `npm start` checks
+  (`claude auth status`) and offers `claude auth login` if not; the server says so at its start,
+  under **Assistant**, and in the chat's error, and logging in later needs no restart. The server runs the CLI headlessly for each message with swarf as its
   only MCP server: no shell, no files, no web, just the CAM tools, which act on the open tab.
   Conversations continue; if the checks still find errors when the agent finishes, the app sends it
   back to fix them (twice at most). Set `SWARF_CLAUDE_BIN`, `SWARF_COPILOT_BIN`,

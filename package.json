@@ -15,6 +15,7 @@
     "apps/*"
   ],
   "scripts": {
+    "start": "node tools/server/src/start.ts",
     "dev": "npm run dev -w @swarf/web",
     "build": "npm run build -w @swarf/web",
     "test": "vitest run",

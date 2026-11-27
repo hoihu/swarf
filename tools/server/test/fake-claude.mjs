@@ -11,6 +11,11 @@ if (args[0] === '--version') {
   console.log('9.9.9 (Claude Code, fake)');
   process.exit(0);
 }
+if (args[0] === 'auth' && args[1] === 'status') {
+  const loggedIn = !process.env.FAKE_CLAUDE_LOGGED_OUT;
+  console.log(JSON.stringify({ loggedIn, authMethod: loggedIn ? 'claude.ai' : 'none' }));
+  process.exit(loggedIn ? 0 : 1);
+}
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\n');
 let text = '';
 for await (const c of process.stdin) text += c;

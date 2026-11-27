@@ -7,7 +7,7 @@ import WebSocket from 'ws';
 import { SERVER_PROTOCOL, runTabTool, type ChatEvent, type HarnessId, type ServerToTab, type TabToServer } from '@swarf/agent';
 import { emptyJob, type Job } from '@swarf/cam';
 import { ChatRunner } from '../src/chat.ts';
-import { ClaudeHarness, streamReader } from '../src/harness/claude.ts';
+import { ClaudeHarness, claudeLoggedIn, detectClaude, streamReader } from '../src/harness/claude.ts';
 import { CodexHarness } from '../src/harness/codex.ts';
 import { CopilotHarness } from '../src/harness/copilot.ts';
 import { OpenCodeHarness } from '../src/harness/opencode.ts';
@@ -133,6 +133,24 @@ describe('chat via Claude Code', () => {
     read(JSON.stringify({ type: 'result', subtype: 'error_max_turns', is_error: true, result: '' }));
     expect(got).toEqual([{ kind: 'text', text: 'whole text' }]);
     expect(done).toEqual({ kind: 'done', ok: false, error: 'error_max_turns' });
+  });
+
+  it('says how to log in when Claude Code is not logged in', () => {
+    let done: { error?: string } | null = null;
+    const read = streamReader({ emit: () => {}, finish: (d) => (done ??= d), log: () => {} });
+    read(JSON.stringify({ type: 'result', subtype: 'success', is_error: true, result: 'Not logged in · Please run /login' }));
+    expect(done!.error).toMatch(/claude auth login/);
+  });
+
+  it('finds out whether Claude Code is logged in, and says so when it is not', () => {
+    expect(claudeLoggedIn(FAKE, process.env)).toBe(true);
+    expect(detectClaude(FAKE).reason).toBeUndefined();
+    const out = { ...process.env, FAKE_CLAUDE_LOGGED_OUT: '1' };
+    expect(claudeLoggedIn(FAKE, out)).toBe(false);
+    const d = detectClaude(FAKE, out);
+    // still offered (logging in later needs no restart), with how to log in
+    expect(d.available).toBe(true);
+    expect(d.reason).toMatch(/claude auth login/);
   });
 });
 

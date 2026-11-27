@@ -54,11 +54,11 @@
       </label>
       <p class="muted small">
         {#if bridge.status === 'connected' && info?.available}
-          {info.version} is ready on this computer; it uses your own login and plan, and only gets swarf's tools.
+          {#if info.reason}<span class="warn">{info.reason}</span>{:else}{info.version} is ready on this computer; it uses your own login and plan, and only gets swarf's tools.{/if}
         {:else if bridge.status === 'connected'}
           {info?.reason ?? `The server cannot run ${HARNESSES[harness]}.`}
         {:else}
-          Start the swarf server with <code class="inline">npm run server</code> and open the link it prints.
+          Start swarf with <code class="inline">npm start</code>: it builds the app, logs Claude Code in if needed and opens it connected.
         {/if}
       </p>
       <label>
@@ -130,6 +130,7 @@
 </dialog>
 
 <style>
+  .warn { color: var(--warn); }
   dialog { border: 1px solid var(--line-2); border-radius: 12px; padding: 0; width: min(460px, calc(100vw - 24px)); background: var(--panel); color: var(--ink); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); }
   dialog::backdrop { background: rgba(20, 26, 23, 0.55); }
   form { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }

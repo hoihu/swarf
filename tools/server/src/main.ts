@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   server.setHttpHandler((req, res) => ((req.url ?? '').split('?')[0] === '/mcp' ? mcpHttp(req, res) : app(req, res)));
   const port = await server.start();
   log(`v${VERSION} on 127.0.0.1:${port}; access key in ${configPath()}`);
-  for (const h of found) log(h.available ? `app chat via ${h.name}: ${h.version}` : `app chat via ${h.name}: no (${h.reason})`);
+  for (const h of found) log(h.available ? `app chat via ${h.name}: ${h.version}${h.reason ? `\n[swarf]   ! ${h.reason}` : ''}` : `app chat via ${h.name}: no (${h.reason})`);
   if (!dir) log(`the app is not built (npm run build): the link points at the dev server (npm run dev)`);
   log(`open the app: ${server.appLink()}`);
   if (open) openBrowser(server.appLink());
