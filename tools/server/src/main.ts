@@ -27,7 +27,7 @@ import { CodexHarness } from './harness/codex.ts';
 import { CopilotHarness } from './harness/copilot.ts';
 import { OpenCodeHarness } from './harness/opencode.ts';
 import { LocalServer } from './server.ts';
-import { spawn } from 'node:child_process';
+import { openBrowser } from './browser.ts';
 
 const serve = process.argv.includes('--serve');
 const open = process.argv.includes('--open');
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   for (const h of found) log(h.available ? `app chat via ${h.name}: ${h.version}${h.reason ? `\n[swarf]   ! ${h.reason}` : ''}` : `app chat via ${h.name}: no (${h.reason})`);
   if (!dir) log(`the app is not built (npm run build): the link points at the dev server (npm run dev)`);
   log(`open the app: ${server.appLink()}`);
-  if (open) openBrowser(server.appLink());
+  if (open) openBrowser(server.appLink(), log);
 
   let mcp: ReturnType<typeof createMcpServer> | null = null;
   if (!serve) {
@@ -74,11 +74,6 @@ async function main(): Promise<void> {
     process.stdin.on('end', shutdown);
     process.stdin.on('close', shutdown);
   }
-}
-
-function openBrowser(url: string): void {
-  const [cmd, args] = process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
-  spawn(cmd as string, args as string[], { stdio: 'ignore', detached: true }).on('error', () => log(`could not open a browser; open ${url}`)).unref();
 }
 
 main().catch((e) => {

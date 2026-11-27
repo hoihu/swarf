@@ -11,8 +11,9 @@ and the preview show that before anything reaches the machine.
 
 ```
 npm install
-npm start          # builds the app, logs Claude Code in if needed, serves it and opens it,
-                   # its chat answered by Claude Code (Ctrl-C stops it)
+npm start          # builds the app, logs Claude Code in if needed, serves it and opens it in
+                   # Chrome or Edge (they alone reach a machine over USB), its chat answered by
+                   # Claude Code (Ctrl-C stops it)
 npm run dev        # the web app at http://localhost:5173, for working on it
 npm test           # vitest over all five workspaces (cam, grbl, agent, server, web)
 npm run typecheck

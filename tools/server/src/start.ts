@@ -2,7 +2,8 @@
 /**
  * `npm start`: swarf in one go. Builds the app, makes sure Claude Code is logged in (if it is
  * installed and is not, it offers `claude auth login` right here), then runs the server with the
- * app and opens it in the browser, the app's chat answered by Claude Code.
+ * app and opens it in Chrome or Edge (the browsers with Web Serial, for the machine on USB), the
+ * app's chat answered by Claude Code.
  *
  *   npm start              build, log in if needed, serve, open the browser
  *   npm start -- --no-open the same without opening the browser
