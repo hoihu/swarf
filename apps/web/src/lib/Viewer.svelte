@@ -3,7 +3,7 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { LatheMaterial, MillMaterial, moveLength, samplePath, simulate, toolOf, walk, type Job, type Move, type Program, type Tool, type Vec3 } from '@swarf/cam';
-  import { drawingLines, latheMesh, millMesh, obstacleMeshes, pathGeometry, sceneToWork, stockOutline, toScene, type PathGeometry } from './scene.ts';
+  import { drawingLines, latheMesh, millMesh, solidsMesh, obstacleMeshes, pathGeometry, sceneToWork, stockOutline, toScene, type PathGeometry } from './scene.ts';
   import { CHIPS, Chips, Coolant } from './workshop/particles.ts';
   import { METAL, bedMesh, chuckGroup, latheToolMesh, millToolMesh, nozzleMesh, tableMesh } from './workshop/stage.ts';
   import { SURROUNDS, cover, makeSurround, type Surround } from './workshop/surround.ts';
@@ -11,6 +11,7 @@
   import { SPEEDS, look } from './workshop/look.svelte.ts';
   import { Glide } from './glide.ts';
   import { Heat } from './heat.ts';
+  import type { Solid } from './sim/solids.ts';
   import { camera as cam } from './camera/camera.svelte.ts';
   import { glProjection, glView } from './camera/geometry.ts';
   import { laserScan } from './camera/laserscan.svelte.ts';
@@ -22,8 +23,9 @@
     selected = null,
     live = null,
     liveTool = null,
+    fixtures = null,
     spindle = 0,
-  }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null; /** The tool in the connected machine's spindle (null: not known; the marker then shows the tool at the scrubber's place). */ liveTool?: number | null; /** The connected machine's spindle speed (0: off). */ spindle?: number } = $props();
+  }: { job: Job; program: Program; selected?: string | null; /** The machine's work position while a controller is connected (lathe: x is a radius). */ live?: Vec3 | null; /** The tool in the connected machine's spindle (null: not known; the marker then shows the tool at the scrubber's place). */ liveTool?: number | null; /** What holds the block on the simulated mill's table (its solids, where the simulator's zero is from the work zero now, the table's top), while it is connected. */ fixtures?: { key: string; solids: Solid[]; shift: [number, number, number]; floor: number } | null; /** The connected machine's spindle speed (0: off). */ spindle?: number } = $props();
 
   let host: HTMLDivElement;
   let renderer: THREE.WebGLRenderer | null = null;
@@ -509,7 +511,8 @@ float freshCut() {
       if (obs) g.add(obs);
       fixture = g;
       world.add(fixture);
-      stage = tableMesh(s.x, s.y, s.top - s.z);
+      // the simulated vise stands on the table: the table goes down under it
+      stage = tableMesh(s.x, s.y, fixtures ? fixtures.floor + fixtures.shift[2] : s.top - s.z);
     } else if (s.kind === 'bar') {
       const d = job.machine.chuckDiameter ?? s.diameter * 2.5;
       const chuck = chuckGroup(s.front - s.stickout, d, s.diameter);
@@ -930,6 +933,28 @@ float freshCut() {
     });
   });
 
+  // what holds the block on the simulated table
+  let holders: THREE.Group | null = null;
+  let holdersKey = '';
+  $effect(() => {
+    const f = fixtures;
+    void job;
+    if (!mounted) return;
+    untrack(() => {
+      const key = f ? `${f.key}|${f.shift.map((v) => v.toFixed(3)).join(',')}|${JSON.stringify(job.stock)}` : '';
+      if (key === holdersKey) return;
+      holdersKey = key;
+      dispose(holders);
+      holders = f ? solidsMesh(f.solids, f.shift) : null;
+      if (holders) {
+        holders.visible = !overlay;
+        world.add(holders);
+      }
+      buildFixture();
+      dirty = true;
+    });
+  });
+
   // follow the machine (and the cutter it has in)
   $effect(() => {
     const at = live ? `${live.x},${live.y},${live.z},${liveTool}` : '';
@@ -993,6 +1018,7 @@ float freshCut() {
       // the chuck would hide the real one; drawings and obstacles stay (the obstacles are worth comparing)
       if (fixture) fixture.visible = !on || job.stock.kind === 'block';
       if (stage) stage.visible = !on;
+      if (holders) holders.visible = !on;
       placeBackground();
       controls.enabled = !on;
       dirty = true;

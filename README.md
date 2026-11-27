@@ -166,7 +166,8 @@ No machine at hand: **Connect a simulated mill/lathe** runs a pretend grblHAL in
 moves in real time, reports MPos and WCO, spindle and probe input, and jogs (`packages/grbl/src/sim.ts`). The feed override (10–200 %) and the rapid override (100, 50 or 25 %) slow it down as they would a real one; **The simulator runs** (beside it, also while a program runs) makes it 2 to 20 times as fast as real time, to see a long program through. On
 the simulated mill you choose what is on the table: the block alone, two steel blocks beside it,
 low edge clamps against a stop, strap clamps across its ends (step blocks, T-bolts and nuts
-standing 36 mm above the top) or a machine vise. The block itself is never quite where the job
+standing 36 mm above the top) or a machine vise, drawn in the preview while the simulator is connected (they move with the work
+zero). The block itself is never quite where the job
 says (0.8 mm off, turned 0.25°, 0.37 mm low, tilted). The probe touches the same solids the
 simulated camera draws and its laser lights (`apps/web/src/lib/sim/`); the simulated camera's
 picture lags the machine like a webcam's and has sensor noise, and the laser's fan casts shadows.

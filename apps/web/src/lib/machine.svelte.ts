@@ -5,6 +5,7 @@ import { Recorder, recorded } from './record.ts';
 import type { Runnable } from '@swarf/cam';
 import { RT, SimGrbl, Streamer, type JobState, type ProbeResult, type Reply, type Status, type Transport } from '@swarf/grbl';
 import { simWorld } from './simworld.ts';
+import type { SetupName } from './sim/setups.ts';
 import { store } from './store.svelte.ts';
 import { loadText, saveText } from './persist.ts';
 import { openSerial, serialSupported } from './serial.ts';
@@ -34,6 +35,8 @@ class Machine {
   #s: Streamer | null = null;
   /** The simulated controller, while it is the one connected. */
   #sim: SimGrbl | null = null;
+  /** What holds the block on the simulated mill's table (sim/setups.ts). */
+  simSetup = $state<SetupName>(simWorld.setup);
   /** How fast the simulated machine runs against real time (1: real time). */
   simSpeed = $state(simWorld.speed);
   /** The last probing result (machine coordinates as the controller reports them). */
@@ -143,6 +146,12 @@ class Machine {
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  /** Put another way of holding the block on the simulated table. */
+  setSimSetup(v: SetupName): void {
+    simWorld.setup = v;
+    this.simSetup = v;
   }
 
   /** Let the simulated machine run faster or slower than real time (also while it moves). */

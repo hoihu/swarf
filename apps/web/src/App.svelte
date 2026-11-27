@@ -10,6 +10,7 @@
   import { minutes } from './lib/ops.ts';
   import { bridge } from './lib/bridge.svelte.ts';
   import { machine } from './lib/machine.svelte.ts';
+  import { simWorld } from './lib/simworld.ts';
   import { tooling } from './lib/tooling.svelte.ts';
   import { toolAtLine } from './lib/inspindle.ts';
   import { files } from './lib/files.svelte.ts';
@@ -50,6 +51,16 @@
       if (id !== null) return id;
     }
     return tooling.pending ?? tooling.active;
+  });
+  /** What holds the block on the simulated mill's table, for the preview, while the simulator is connected. */
+  const fixtures = $derived.by(() => {
+    const st = machine.status;
+    if (!machine.simulated || store.job.stock.kind !== 'block' || !st?.mpos || !st.wpos || !simWorld.origin) return null;
+    const setup = machine.simSetup;
+    const w = simWorld.world(store.job);
+    // the simulator's solids are placed from the zero it started with; the preview draws from the zero now
+    const shift = [0, 1, 2].map((i) => simWorld.origin![i]! - (st.mpos![i]! - st.wpos![i]!)) as [number, number, number];
+    return { key: setup, solids: w.solids, shift, floor: w.floor };
   });
   const tools = $derived(new Set(store.analysis.program.segments.map((s) => s.tool)).size);
 </script>
@@ -99,7 +110,7 @@
     <div class="pane-left for-job"><JobPanel /></div>
     <div class="pane-left for-machine"><div class="scroll"><MachinePanel /></div></div>
     <div class="pane-view">
-      <Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} {liveTool} spindle={machine.status?.spindle ?? 0} />
+      <Viewer job={store.job} program={store.analysis.program} selected={store.selected} {live} {liveTool} {fixtures} spindle={machine.status?.spindle ?? 0} />
       {#if camera.running && camera.view === 'camera'}<CameraView />{/if}
     </div>
     <div class="pane-right for-job"><Chat onSettings={() => (settings = true)} /></div>

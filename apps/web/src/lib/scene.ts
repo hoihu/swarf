@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three';
 import { LatheMaterial, MillMaterial, arcPoints, walk, type Job, type Program, type Vec3 } from '@swarf/cam';
+import { topOf, type Solid } from './sim/solids.ts';
 
 /** How the work looks: cut surfaces bright, what is left of the raw stock duller. */
 export interface WorkLook {
@@ -600,4 +601,48 @@ export function millMesh(m: MillMaterial, look: WorkLook = PLAIN): THREE.Group {
   box.translate(m.sx / 2, (m.top + bottom) / 2, -m.sy / 2);
   group.add(new THREE.LineSegments(new THREE.EdgesGeometry(box), new THREE.LineBasicMaterial({ color: COLORS.stock, transparent: true, opacity: 0.6 })));
   return group;
+}
+
+/**
+ * What holds the block on the simulated mill's table (sim/setups.ts: blocks, clamps, straps,
+ * vise, the tool setter, a touch plate), not the block itself. The solids are in work
+ * coordinates of the zero the simulator started with; `shift` moves them into the work zero of
+ * now (start zero − zero now, machine coordinates).
+ */
+export function solidsMesh(solids: Solid[], shift: [number, number, number]): THREE.Group {
+  const looks: Record<Solid['look'], THREE.Material> = {
+    stock: new THREE.MeshStandardMaterial({ color: '#b8c2c2' }),
+    steel: new THREE.MeshStandardMaterial({ color: '#8d959b', metalness: 0.7, roughness: 0.4 }),
+    dark: new THREE.MeshStandardMaterial({ color: '#2d3236', metalness: 0.5, roughness: 0.5 }),
+    copper: new THREE.MeshStandardMaterial({ color: '#c08a50', metalness: 0.8, roughness: 0.35 }),
+  };
+  // built in work coordinates (Z up), then turned so that Z is the scene's up: (x, y, z) → (x, z, −y)
+  const g = new THREE.Group();
+  g.rotation.x = -Math.PI / 2;
+  const [ox, oy, oz] = shift;
+  for (const s of solids) {
+    if (s.stock) continue;
+    let m: THREE.Mesh;
+    if (s.kind === 'cyl') {
+      m = new THREE.Mesh(new THREE.CylinderGeometry(s.r, s.r, s.z1 - s.z0, 40).rotateX(Math.PI / 2), looks[s.look]);
+      m.position.set(ox + s.cx, oy + s.cy, oz + (s.z0 + s.z1) / 2);
+    } else {
+      // a unit-high box, turned and placed, then each corner at its height: the bottom, or the top there
+      const geo = new THREE.BoxGeometry(s.w, s.d, 1).translate(0, 0, 0.5).rotateZ((s.angle * Math.PI) / 180).translate(s.cx, s.cy, 0);
+      const p = geo.getAttribute('position') as THREE.BufferAttribute;
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i);
+        const y = p.getY(i);
+        p.setXYZ(i, ox + x, oy + y, oz + (p.getZ(i) > 0.5 ? topOf(s, x, y) : s.z0));
+      }
+      geo.computeVertexNormals();
+      m = new THREE.Mesh(geo, looks[s.look]);
+    }
+    m.name = s.name;
+    m.castShadow = true;
+    m.receiveShadow = true;
+    g.add(m);
+  }
+  g.updateMatrixWorld(true);
+  return g;
 }

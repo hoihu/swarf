@@ -23,12 +23,10 @@
     }
   }
   // what the simulated mill has on its table (the probe touches it, the simulated camera sees it)
-  let simSetup = $state<SetupName>(simWorld.setup);
   const SIM_SPEEDS = [1, 2, 5, 10, 20] as const;
-  const setSimSetup = (v: SetupName) => {
-    simSetup = v;
-    simWorld.setup = v;
-  };
+  const simSetup = $derived(machine.simSetup);
+  const setSimSetup = (v: SetupName) => machine.setSimSetup(v);
+
   let log: HTMLDivElement | undefined = $state();
 
   const st = $derived(machine.status?.state ?? 'Unknown');
