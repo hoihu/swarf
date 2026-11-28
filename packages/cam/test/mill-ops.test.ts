@@ -10,6 +10,7 @@ import {
   walk,
   type OperationInput,
 } from '../src/index.ts';
+import { cone, type Tool, type Vec3 } from '../src/schema.ts';
 
 describe('shapes', () => {
   const circle = (cx: number, cy: number, r: number, n = 72): [number, number][] => Array.from({ length: n }, (_, i) => [cx + r * Math.cos((2 * Math.PI * i) / n), cy + r * Math.sin((2 * Math.PI * i) / n)]);
@@ -378,5 +379,66 @@ describe('more mill operations', () => {
     // 0.61343 P deep at the last pass
     const radii = helix.map((m) => Math.hypot(m.to.x - 30, m.to.y - 25));
     expect(Math.min(...radii)).toBeCloseTo(6 + 2.5 - 0.61343 * 1.75, 4);
+  });
+});
+
+describe('the height map', () => {
+  // what the model did cell by cell before it went a row at a time: every cell centre in the
+  // circle, tested by its distance, cut to the tool's surface there (a pointed cutter: its cone)
+  function reference(m: { cell: number; nx: number; ny: number; bottom: number; h: Float32Array }, points: Vec3[], tool: Tool): { depth: number; lowered: number } {
+    const lift = (d2: number) => (tool.type === 'chamfer' ? Math.max(0, Math.sqrt(d2) - cone(tool).tipR) * (1 / cone(tool).tan) : 0);
+    const each = (p: Vec3, r: number, fn: (k: number, d2: number) => void) => {
+      if (r <= 0) return;
+      const c = m.cell;
+      for (let j = Math.max(0, Math.floor((p.y - r) / c)); j <= Math.min(m.ny - 1, Math.floor((p.y + r) / c)); j++)
+        for (let i = Math.max(0, Math.floor((p.x - r) / c)); i <= Math.min(m.nx - 1, Math.floor((p.x + r) / c)); i++) {
+          const dx = (i + 0.5) * c - p.x;
+          const dy = (j + 0.5) * c - p.y;
+          if (dx * dx + dy * dy <= r * r) fn(j * m.nx + i, dx * dx + dy * dy);
+        }
+    };
+    let depth = 0;
+    let lowered = 0;
+    for (const p of points)
+      each(p, tool.diameter! / 2 - m.cell, (k, d2) => {
+        if (m.h[k]! > m.bottom + 0.02) depth = Math.max(depth, m.h[k]! - Math.max(p.z + lift(d2), m.bottom));
+      });
+    for (const p of points)
+      each(p, tool.diameter! / 2, (k, d2) => {
+        const z = Math.max(p.z + lift(d2), m.bottom);
+        if (m.h[k]! > z + 1e-6) {
+          if (m.h[k]! > z + 0.01) lowered++;
+          m.h[k] = z;
+        }
+      });
+    return { depth, lowered };
+  }
+
+  it('takes off exactly the cells under the cutter, for flat and pointed cutters', () => {
+    const tools: Tool[] = [
+      { id: 1, name: 'e6', type: 'endmill', diameter: 6, flutes: 3 },
+      { id: 2, name: 'e1', type: 'endmill', diameter: 1, flutes: 2 },
+      { id: 3, name: 'd', type: 'drill', diameter: 2.5 },
+      { id: 4, name: 'c90', type: 'chamfer', diameter: 10, angle: 90, tipDiameter: 0.5 },
+      { id: 5, name: 'c60', type: 'chamfer', diameter: 6, angle: 60 },
+    ];
+    let s = 1;
+    const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    for (const cell of [0.2, 1 / 3, 0.5]) {
+      const stock = { kind: 'block' as const, x: 30, y: 20, z: 8, top: 0 };
+      const m = new MillMaterial(stock, cell);
+      const ref = new MillMaterial(stock, cell);
+      for (let n = 0; n < 150; n++) {
+        const tool = tools[n % tools.length]!;
+        // every third move on the grid's half cells, where centres fall right on the circle's rim
+        const q = (v: number) => (n % 3 ? v : (Math.round((v / cell) * 2) / 2) * cell);
+        const pts = Array.from({ length: 1 + Math.floor(rnd() * 12) }, () => ({ x: q(rnd() * 36 - 3), y: q(rnd() * 26 - 3), z: -rnd() * 9 }));
+        const before = m.lowered;
+        const depth = m.cutPath(pts, tool);
+        const want = reference(ref, pts, tool);
+        expect([depth, m.lowered - before]).toEqual([want.depth, want.lowered]);
+      }
+      expect(m.h).toEqual(ref.h);
+    }
   });
 });
