@@ -504,3 +504,30 @@ describe('number helpers', () => {
     expect(Object.is(roundTo(-0.0001, 2), 0)).toBe(true);
   });
 });
+
+describe('analyze, again for the same job', () => {
+  it('is quick the second time for an equal job', () => {
+    const first = analyze(EXAMPLES.mill());
+    const t0 = performance.now();
+    const again = analyze(EXAMPLES.mill());
+    expect(performance.now() - t0).toBeLessThan(1);
+    expect(again.diagnostics).toEqual(first.diagnostics);
+    expect(again.seconds).toBe(first.seconds);
+  });
+
+  it('works it out again when anything in the job changes', () => {
+    const job = EXAMPLES.mill();
+    const clean = analyze(job);
+    expect(hasErrors(clean.diagnostics)).toBe(false);
+    // the pocket deeper than the 15 mm block
+    const deep = { ...job, operations: job.operations.map((o) => (o.id === 'op2' ? { ...o, zBottom: -18 } : o)) };
+    expect(analyze(deep).diagnostics.map((d) => d.code)).toContain('BELOW_STOCK');
+    // steel cuts slower
+    expect(analyze({ ...job, workMaterial: 'steel' }).seconds).toBeGreaterThan(clean.seconds);
+    // a clamp over the drill hole at X8 Y8
+    const clamp = { ...job, obstacles: [{ name: 'clamp', x0: 4, y0: 4, x1: 12, y1: 12, top: 10 }] };
+    expect(analyze(clamp).diagnostics.map((d) => d.code)).toContain('OBSTACLE');
+    // and the job as it was is still clean
+    expect(analyze(EXAMPLES.mill()).diagnostics).toEqual(clean.diagnostics);
+  });
+});

@@ -171,8 +171,23 @@ export function simulate(job: Job, program: Program, upTo = Infinity, o: { walls
   return { material, diagnostics };
 }
 
+/** The last few analyses, by the whole job (its only input), so an equal job is not worked out again. Shared: read them, never change them. */
+const recent = new Map<string, Analysis>();
+// (NaN and Infinity would both write as null)
+const jobKey = (job: Job) => JSON.stringify(job, (_, v) => (typeof v === 'number' && !Number.isFinite(v) ? String(v) : v));
+
 /** Generate + simulate: everything the UI and the agent need to judge a job. */
 export function analyze(job: Job): Analysis {
+  const key = jobKey(job);
+  const hit = recent.get(key);
+  recent.delete(key);
+  const a = hit ?? work(job);
+  recent.set(key, a);
+  if (recent.size > 4) recent.delete(recent.keys().next().value!);
+  return a;
+}
+
+function work(job: Job): Analysis {
   const gen = generate(job);
   const sim = simulate(job, gen.program);
   let moves = 0;
