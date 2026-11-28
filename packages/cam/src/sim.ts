@@ -159,10 +159,10 @@ export class LatheMaterial {
 
 /**
  * How far above its tip a cutter's cutting surface is at a distance from its axis (given
- * squared): nothing for a flat end mill; a pointed cutter rises as a cone from its tip flat.
+ * squared): null for a flat end mill (nothing); a pointed cutter rises as a cone from its tip flat.
  */
-function lifter(tool: Tool): (d2: number) => number {
-  if (tool.type !== 'chamfer') return () => 0;
+function lifter(tool: Tool): ((d2: number) => number) | null {
+  if (tool.type !== 'chamfer') return null;
   const { tan, tipR } = cone(tool);
   const slope = 1 / tan;
   return (d2) => Math.max(0, Math.sqrt(d2) - tipR) * slope;
@@ -221,8 +221,12 @@ export class MillMaterial {
     }
   }
 
-  /** Calls fn for every cell whose centre lies within `radius` of p (with its distance from p, squared). */
-  private each(p: Vec3, radius: number, fn: (k: number, d2: number) => void): void {
+  /**
+   * The cells whose centre lies within `radius` of p, a row at a time: fn(j, a, b, dy) for each
+   * row j with any (columns a..b, dy from the centres to p). The span comes from the circle's
+   * half-width at the row, nudged to the very cells the distance test picks (rounding at the rim).
+   */
+  private rows(p: Vec3, radius: number, fn: (j: number, a: number, b: number, dy: number) => void): void {
     if (radius <= 0) return;
     const c = this.cell;
     const i0 = Math.max(0, Math.floor((p.x - radius) / c));
@@ -230,24 +234,44 @@ export class MillMaterial {
     const j0 = Math.max(0, Math.floor((p.y - radius) / c));
     const j1 = Math.min(this.ny - 1, Math.floor((p.y + radius) / c));
     const r2 = radius * radius;
+    const inside = (i: number, dy: number) => {
+      const dx = (i + 0.5) * c - p.x;
+      return dx * dx + dy * dy <= r2;
+    };
     for (let j = j0; j <= j1; j++) {
       const dy = (j + 0.5) * c - p.y;
-      for (let i = i0; i <= i1; i++) {
-        const dx = (i + 0.5) * c - p.x;
-        const d2 = dx * dx + dy * dy;
-        if (d2 <= r2) fn(j * this.nx + i, d2);
-      }
+      const w = Math.sqrt(Math.max(0, r2 - dy * dy));
+      let a = Math.max(i0, Math.ceil((p.x - w) / c - 0.5));
+      let b = Math.min(i1, Math.floor((p.x + w) / c - 0.5));
+      while (b < i1 && inside(b + 1, dy)) b++;
+      while (a > i0 && inside(a - 1, dy)) a--;
+      while (a <= b && !inside(a, dy)) a++;
+      while (b >= a && !inside(b, dy)) b--;
+      if (a <= b) fn(j, a, b, dy);
     }
   }
 
   /** Deepest material above the tool bottom under its footprint at p. */
   engagement(p: Vec3, tool: Tool): number {
     let worst = 0;
-    // shrunk by one cell: the wall the tool runs along is not material it cuts
+    const c = this.cell;
     const lift = lifter(tool);
-    this.each(p, (tool.diameter ?? 1) / 2 - this.cell, (k, d2) => {
-      const above = this.h[k]! - Math.max(p.z + lift(d2), this.bottom);
-      if (this.h[k]! > this.bottom + EPS && above > worst) worst = above;
+    const { h: hs, nx, bottom } = this;
+    const floor = Math.max(p.z + 0, bottom); // (+ 0: never a -0 in the map)
+    // shrunk by one cell: the wall the tool runs along is not material it cuts
+    this.rows(p, (tool.diameter ?? 1) / 2 - c, (j, a, b, dy) => {
+      for (let i = a, k = j * nx + a; i <= b; i++, k++) {
+        const h = hs[k]!;
+        if (h <= bottom + EPS) continue;
+        // a flat cutter: the highest cell is the deepest (h - floor rounds the same way for all)
+        if (!lift) {
+          if (h - floor > worst) worst = h - floor;
+          continue;
+        }
+        const dx = (i + 0.5) * c - p.x;
+        const above = h - Math.max(p.z + lift(dx * dx + dy * dy), bottom);
+        if (above > worst) worst = above;
+      }
     });
     return worst;
   }
@@ -270,47 +294,66 @@ export class MillMaterial {
     const c = this.cell;
     const r2 = radius * radius;
     const rim = Math.max(0, radius - c * 1.01) ** 2;
+    const { h, nx, bottom } = this;
     for (const p of points) {
-      this.each(p, radius, (k, d2) => {
-        const z = Math.max(p.z + lift(d2), this.bottom);
-        const lowered = this.h[k]! > z + 1e-6;
-        if (lowered) {
-          if (this.h[k]! > z + 0.01) this.lowered++;
-          this.h[k] = z;
+      const floor = Math.max(p.z + 0, bottom); // (+ 0: never a -0 in the map)
+      this.rows(p, radius, (j, a, b, dy) => {
+        // a flat cutter without walls to note needs no distance: one level over the whole span
+        if (!lift && !walls) {
+          for (let k = j * nx + a, e = j * nx + b; k <= e; k++) {
+            if (h[k]! > floor + 1e-6) {
+              if (h[k]! > floor + 0.01) this.lowered++;
+              h[k] = floor;
+            }
+          }
+          return;
         }
-        // only a cell near the circle's edge has a neighbour outside it, and only one at this
-        // cut's level has its wall from this cut (one already deeper has it from another)
-        if (!walls || d2 < rim || (!lowered && Math.abs(this.h[k]! - z) > 1e-6)) return;
-        const i = k % this.nx;
-        const j = (k - i) / this.nx;
-        const fx = (i + 0.5) * c - p.x;
-        const fy = (j + 0.5) * c - p.y;
-        for (let q = 0; q < 4; q++) {
-          const di = q < 2 ? 1 - 2 * q : 0;
-          const dj = q < 2 ? 0 : 5 - 2 * q;
-          const ni = i + di;
-          const nj = j + dj;
-          if (ni < 0 || nj < 0 || ni >= this.nx || nj >= this.ny) continue;
-          const n = nj * this.nx + ni;
-          // the neighbour is not higher, or inside this circle too: no wall of this cut there
-          if (this.h[n]! <= z + EPS) continue;
-          const gx = fx + di * c;
-          const gy = fy + dj * c;
-          if (gx * gx + gy * gy <= r2) continue;
-          // where the circle leaves the line from this centre to the neighbour's: |f + t·d| = r
-          const b = (fx * di + fy * dj) * c;
-          const cc = fx * fx + fy * fy - r2;
-          const t = Math.min(1, Math.max(0, (-b + Math.sqrt(Math.max(0, b * b - c * c * cc))) / (c * c)));
-          // kept per edge from the lower-numbered cell; the furthest any circle at this level reached
-          const e = di ? this.ex : this.ey;
-          const at = di > 0 || dj > 0 ? k : n;
-          const v = di > 0 || dj > 0 ? t : 1 - t;
-          const old = e[at]!;
-          if (lowered || Number.isNaN(old)) e[at] = v;
-          else e[at] = di > 0 || dj > 0 ? Math.max(old, v) : Math.min(old, v);
+        for (let i = a, k = j * nx + a; i <= b; i++, k++) {
+          const fx = (i + 0.5) * c - p.x;
+          const d2 = fx * fx + dy * dy;
+          const z = lift ? Math.max(p.z + lift(d2), bottom) : floor;
+          const lowered = h[k]! > z + 1e-6;
+          if (lowered) {
+            if (h[k]! > z + 0.01) this.lowered++;
+            h[k] = z;
+          }
+          // only a cell near the circle's edge has a neighbour outside it, and only one at this
+          // cut's level has its wall from this cut (one already deeper has it from another)
+          if (walls && d2 >= rim && (lowered || Math.abs(h[k]! - z) <= 1e-6)) this.wall(k, fx, dy, z, r2, lowered);
         }
       });
     }
     return worst;
+  }
+
+  /** Notes where a cut at level z, centre (fx, fy) from cell k's, leaves walls to k's neighbours. */
+  private wall(k: number, fx: number, fy: number, z: number, r2: number, lowered: boolean): void {
+    const c = this.cell;
+    const i = k % this.nx;
+    const j = (k - i) / this.nx;
+    for (let q = 0; q < 4; q++) {
+      const di = q < 2 ? 1 - 2 * q : 0;
+      const dj = q < 2 ? 0 : 5 - 2 * q;
+      const ni = i + di;
+      const nj = j + dj;
+      if (ni < 0 || nj < 0 || ni >= this.nx || nj >= this.ny) continue;
+      const n = nj * this.nx + ni;
+      // the neighbour is not higher, or inside this circle too: no wall of this cut there
+      if (this.h[n]! <= z + EPS) continue;
+      const gx = fx + di * c;
+      const gy = fy + dj * c;
+      if (gx * gx + gy * gy <= r2) continue;
+      // where the circle leaves the line from this centre to the neighbour's: |f + t·d| = r
+      const b = (fx * di + fy * dj) * c;
+      const cc = fx * fx + fy * fy - r2;
+      const t = Math.min(1, Math.max(0, (-b + Math.sqrt(Math.max(0, b * b - c * c * cc))) / (c * c)));
+      // kept per edge from the lower-numbered cell; the furthest any circle at this level reached
+      const e = di ? this.ex : this.ey;
+      const at = di > 0 || dj > 0 ? k : n;
+      const v = di > 0 || dj > 0 ? t : 1 - t;
+      const old = e[at]!;
+      if (lowered || Number.isNaN(old)) e[at] = v;
+      else e[at] = di > 0 || dj > 0 ? Math.max(old, v) : Math.min(old, v);
+    }
   }
 }
