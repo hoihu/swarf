@@ -5,7 +5,8 @@
  * other services, local servers and company gateways speak.
  */
 import type { Provider } from '../types.ts';
-import { AnthropicProvider, ANTHROPIC_MODELS, type Effort } from './anthropic.ts';
+import { ANTHROPIC_MODELS, type Effort } from './anthropic-models.ts';
+import type { AnthropicOptions } from './anthropic.ts';
 import { OpenAICompatProvider } from './openai.ts';
 
 export type ApiServiceId = 'anthropic' | 'openai' | 'openrouter' | 'gemini' | 'local' | 'openai-compatible' | 'anthropic-compatible';
@@ -86,7 +87,26 @@ export function apiProvider(c: ApiChoice): Provider {
   const s = apiService(c.service);
   const baseURL = c.baseURL || s.baseURL;
   if (s.format === 'anthropic') {
-    return new AnthropicProvider({ apiKey: c.apiKey, model: c.model, ...(c.effort ? { effort: c.effort } : {}), ...(baseURL !== API_SERVICES[0]!.baseURL ? { baseURL } : {}) });
+    return lazyAnthropic({ apiKey: c.apiKey, model: c.model, ...(c.effort ? { effort: c.effort } : {}), ...(baseURL !== API_SERVICES[0]!.baseURL ? { baseURL } : {}) });
   }
   return new OpenAICompatProvider({ baseURL, apiKey: c.apiKey, model: c.model });
+}
+
+/** The Anthropic provider, with its SDK loaded on the first step (a failed load is that step's error; the next step tries again). */
+function lazyAnthropic(opts: AnthropicOptions): Provider {
+  let real: Promise<Provider> | undefined;
+  return {
+    id: 'anthropic',
+    label: ANTHROPIC_MODELS.find((m) => m.id === opts.model)?.label ?? opts.model ?? 'Anthropic',
+    async step(req) {
+      real ??= import('./anthropic.ts').then(
+        (m) => new m.AnthropicProvider(opts),
+        (e: unknown) => {
+          real = undefined;
+          throw e;
+        },
+      );
+      return (await real).step(req);
+    },
+  };
 }
